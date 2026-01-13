@@ -10,7 +10,16 @@ interface SetupGuideModalProps {
   onClose: () => void;
 }
 
-const SQL_SCRIPT = `-- 1. Create the Templates Table (if it doesn't exist)
+const SQL_SCRIPT = `-- 1. CRITICAL: Add missing columns (Run this to fix upload errors)
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS author_avatar text;
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS tags text[];
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS source_code text;
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS video_url text;
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS gallery_images text[];
+ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS file_url text;
+
+-- 2. Create the Templates Table (if it doesn't exist)
 CREATE TABLE IF NOT EXISTS public.templates (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -37,15 +46,6 @@ CREATE TABLE IF NOT EXISTS public.templates (
   sales bigint DEFAULT 0,
   earnings bigint DEFAULT 0
 );
-
--- 2. FIX MISSING COLUMNS (Run this to fix 'column not found' errors)
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS tags text[];
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS source_code text;
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS description text;
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS video_url text;
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS gallery_images text[];
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS file_url text;
-ALTER TABLE public.templates ADD COLUMN IF NOT EXISTS author_avatar text;
 
 -- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.templates ENABLE ROW LEVEL SECURITY;
@@ -418,9 +418,9 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
                             <div className="flex items-start gap-3 p-4 mb-6 rounded-xl bg-orange-900/10 border border-orange-500/20">
                                 <ShieldCheckIcon className="w-5 h-5 text-orange-400 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <p className="text-xs font-bold text-orange-300 uppercase mb-1">Fixing "Column Not Found" & Permissions</p>
+                                    <p className="text-xs font-bold text-orange-300 uppercase mb-1">Fixing "Column Not Found"</p>
                                     <p className="text-xs text-orange-200/70 leading-relaxed">
-                                        This script updates your database to support case-insensitive emails and adds missing columns. Crucial for deletions to work.
+                                        This script adds the missing <code>tags</code> and <code>author_avatar</code> columns to your database. Running this in your Supabase SQL Editor will fix your upload errors.
                                     </p>
                                 </div>
                             </div>

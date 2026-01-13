@@ -5,6 +5,7 @@ import { playClickSound } from '../audio';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
 import { isApiConfigured } from '../api';
+import { motion } from 'framer-motion';
 
 interface HeaderProps {
   session: Session | null;
@@ -104,12 +105,24 @@ const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, o
 
                 {session ? (
                     <>
-                        <button 
+                        {/* 
+                            UPDATED BUTTON: CLEAN SOLID (No Gradient Stroke)
+                            Removed the gradient mesh and colored border for a pure, solid look.
+                        */}
+                        <motion.button 
                             onClick={() => { playClickSound(); onUploadClick(); }}
-                            className="hidden sm:flex items-center gap-2 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/5 shadow-inner"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="group relative hidden sm:inline-flex items-center gap-2 px-6 py-2 rounded-full bg-zinc-900/50 border border-white/10 hover:border-white/30 transition-all duration-300 shadow-[0_0_0_0_rgba(255,255,255,0)] hover:shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)] overflow-hidden"
                         >
-                            Upload
-                        </button>
+                            {/* Moving Sheen - Subtle White */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-in-out"></div>
+
+                            <UploadIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" strokeWidth={2} />
+                            <span className="relative z-10 text-[10px] font-bold uppercase tracking-widest text-slate-300 group-hover:text-white transition-colors">
+                                Upload
+                            </span>
+                        </motion.button>
                         
                         <div className="relative" ref={menuRef}>
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="block rounded-full focus:outline-none active:scale-95 transition-transform ml-1">

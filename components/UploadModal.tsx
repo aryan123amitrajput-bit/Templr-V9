@@ -23,9 +23,11 @@ interface UploadModalProps {
 const CATEGORY_OPTIONS = ['Portfolio', 'SaaS', 'E-commerce', 'Blog', 'Dashboard', 'Mobile', 'Landing Page', 'Admin', 'Social', 'Crypto'];
 const MAX_VIDEO_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
-const SectionLabel = ({ children, required }: { children?: React.ReactNode, required?: boolean }) => (
-  <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-    {children} {required && <span className="text-red-400/80">*</span>}
+const SectionLabel = ({ children, required, optional }: { children?: React.ReactNode, required?: boolean, optional?: boolean }) => (
+  <label className="block text-sm font-medium text-zinc-300 mb-1.5 flex items-center gap-2">
+    {children} 
+    {required && <span className="text-red-400/80">*</span>}
+    {optional && <span className="text-zinc-600 text-[10px] font-normal uppercase tracking-wider bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">Optional</span>}
   </label>
 );
 
@@ -104,9 +106,9 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl }: { file: Fi
         <div 
             onClick={() => inputRef.current?.click()}
             className={`
-                group relative w-full aspect-video bg-[#18181b] rounded-xl border-2 border-dashed 
-                ${error ? 'border-red-500/30' : 'border-zinc-800 hover:border-zinc-700'} 
-                flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all
+                group relative w-full aspect-video bg-[#121214] rounded-2xl border-2 border-dashed 
+                ${error ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#18181b]'} 
+                flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all duration-300
             `}
         >
             <input 
@@ -120,29 +122,34 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl }: { file: Fi
             {hasContent ? (
                 <>
                     {type === 'image' ? (
-                        <img src={previewSrc} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
+                        <img src={previewSrc} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
                     ) : (
                         <video src={previewSrc} className="absolute inset-0 w-full h-full object-cover" muted loop autoPlay />
                     )}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="px-4 py-2 bg-white/10 backdrop-blur rounded-full text-xs font-medium text-white border border-white/20">
-                            Change {type === 'image' ? 'Image' : 'Video'}
+                    
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-sm">
+                        <span className="px-5 py-2.5 bg-white/10 backdrop-blur rounded-full text-xs font-bold text-white border border-white/20 shadow-xl uppercase tracking-wider transform translate-y-2 group-hover:translate-y-0 transition-transform">
+                            Replace Media
                         </span>
                     </div>
                 </>
             ) : (
-                <div className="text-center p-6">
-                    <div className="w-12 h-12 rounded-full bg-zinc-900 flex items-center justify-center mx-auto mb-3 border border-zinc-800 text-zinc-500 group-hover:text-zinc-300 group-hover:border-zinc-700 transition-all">
-                        {type === 'image' ? <LayersIcon className="w-5 h-5" /> : <UploadIcon className="w-5 h-5" />}
+                <div className="text-center p-6 relative z-10">
+                    <div className="w-16 h-16 rounded-full bg-zinc-900/80 flex items-center justify-center mx-auto mb-4 border border-zinc-800 text-zinc-500 group-hover:text-blue-400 group-hover:border-blue-500/30 group-hover:scale-110 transition-all duration-300 shadow-xl">
+                        {type === 'image' ? <LayersIcon className="w-7 h-7" /> : <UploadIcon className="w-7 h-7" />}
                     </div>
-                    <p className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200">
-                        Upload {type === 'image' ? 'Thumbnail' : 'Preview Video'}
+                    <p className="text-sm font-bold text-zinc-300 group-hover:text-white transition-colors uppercase tracking-wide">
+                        Drop {type === 'image' ? 'Image' : 'Video'} Here
                     </p>
-                    <p className="text-xs text-zinc-600 mt-1">
-                        {type === 'image' ? '1920x1080 recommended' : 'MP4 or WebM, max 20MB'}
+                    <p className="text-xs text-zinc-500 mt-2 font-mono">
+                        {type === 'image' ? 'JPG, PNG • 1920x1080' : 'MP4, WebM • Max 20MB'}
                     </p>
                 </div>
             )}
+            
+            {/* Scanline Effect (Decoration) */}
+            <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(0,0,0,0.4)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none opacity-20"></div>
         </div>
     );
 };
@@ -261,7 +268,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               title,
               description,
               category,
-              tags,
+              tags: tags || [], // Ensure tags is always an array
               externalLink: link,
               imageUrl,
               videoUrl,
@@ -271,6 +278,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               fileUrl: zipUrl, 
               sourceCode: codeMode === 'paste' ? sourceCode : '',
               fileName: zipFile?.name || (isEditing ? initialData?.fileName : 'design-assets'),
+              // Fallback to 'image' if no download/link is provided
               fileType: zipUrl ? 'zip' : (sourceCode ? 'code' : (link ? 'link' : 'image')),
               fileSize: zipFile?.size || 0,
               initialStatus: visibility === 'public' ? 'approved' : 'draft'
@@ -312,11 +320,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
             <div className="flex-1 overflow-y-auto custom-scrollbar px-8 py-6 space-y-8 bg-[#09090b]">
                 <section>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-3">
                         <SectionLabel required>Preview Media</SectionLabel>
-                        <div className="flex bg-[#18181b] rounded-lg p-0.5 border border-zinc-800">
-                            <button onClick={() => { setPreviewType('image'); playClickSound(); }} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
-                            <button onClick={() => { setPreviewType('video'); playClickSound(); }} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
+                        <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
+                            <button onClick={() => { setPreviewType('image'); playClickSound(); }} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
+                            <button onClick={() => { setPreviewType('video'); playClickSound(); }} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
                         </div>
                     </div>
                     
@@ -335,7 +343,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         <StyledInput value={title} onChange={e => setTitle(e.target.value)} error={errors.title} />
                     </div>
                     <div>
-                        <SectionLabel>Description</SectionLabel>
+                        <SectionLabel optional>Description</SectionLabel>
                         <StyledTextarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-5">
@@ -349,14 +357,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
                             </div>
                         </div>
                         <div>
-                            <SectionLabel>Tags</SectionLabel>
+                            <SectionLabel optional>Tags</SectionLabel>
                             <TagInput value={tags} onChange={setTags} placeholder="Add..." />
                         </div>
                     </div>
                 </section>
 
-                <section className="p-5 rounded-xl bg-[#18181b]/50 border border-white/5">
-                    <SectionLabel>Live Demo Link</SectionLabel>
+                <section className="p-5 rounded-xl bg-[#121214] border border-white/5">
+                    <SectionLabel optional>Live Demo Link</SectionLabel>
                     <div className="relative">
                         <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <StyledInput style={{ paddingLeft: '2.5rem' }} value={link} onChange={e => setLink(e.target.value)} />
@@ -364,28 +372,38 @@ const UploadModal: React.FC<UploadModalProps> = ({
                 </section>
 
                 <section>
-                    <div className="flex items-center justify-between mb-2">
-                        <SectionLabel>Source Code</SectionLabel>
-                        <div className="flex bg-[#18181b] rounded-lg p-0.5 border border-zinc-800">
-                            <button onClick={() => setCodeMode('zip')} className={`px-3 py-1 text-xs font-medium rounded-md ${codeMode === 'zip' ? 'bg-zinc-700 text-white' : 'text-zinc-500'}`}>Zip</button>
-                            <button onClick={() => setCodeMode('paste')} className={`px-3 py-1 text-xs font-medium rounded-md ${codeMode === 'paste' ? 'bg-zinc-700 text-white' : 'text-zinc-500'}`}>Paste</button>
+                    <div className="flex items-center justify-between mb-3">
+                        <SectionLabel optional>Source Code</SectionLabel>
+                        <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
+                            <button onClick={() => setCodeMode('zip')} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${codeMode === 'zip' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>Zip</button>
+                            <button onClick={() => setCodeMode('paste')} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${codeMode === 'paste' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>Paste</button>
                         </div>
                     </div>
                     <div className="rounded-xl border border-zinc-800 overflow-hidden">
                         {codeMode === 'zip' ? (
-                            <div onClick={() => zipInputRef.current?.click()} className="h-32 bg-[#18181b] flex flex-col items-center justify-center cursor-pointer hover:bg-[#202024]">
+                            <div onClick={() => zipInputRef.current?.click()} className="h-32 bg-[#121214] flex flex-col items-center justify-center cursor-pointer hover:bg-[#18181b] transition-colors border border-dashed border-transparent hover:border-zinc-700 m-1 rounded-lg">
                                 <input ref={zipInputRef} type="file" accept=".zip" className="hidden" onChange={e => { setZipFile(e.target.files?.[0] || null); playClickSound(); }} />
-                                {zipFile ? <div className="text-white text-sm">{zipFile.name}</div> : <p className="text-zinc-500 text-sm">Upload Zip {isEditing && initialData?.fileUrl?.endsWith('.zip') ? '(Overwrite existing)' : ''}</p>}
+                                {zipFile ? (
+                                    <div className="flex items-center gap-2 text-white text-sm bg-blue-500/20 px-3 py-1 rounded-full border border-blue-500/30">
+                                        <ZipIcon className="w-4 h-4" /> {zipFile.name}
+                                    </div>
+                                ) : (
+                                    <div className="text-center">
+                                        <UploadIcon className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+                                        <p className="text-zinc-400 text-xs font-bold uppercase">Upload Zip File</p>
+                                        {isEditing && initialData?.fileUrl?.endsWith('.zip') && <p className="text-[10px] text-zinc-600 mt-1">(Overwrites existing file)</p>}
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            <textarea value={sourceCode} onChange={e => setSourceCode(e.target.value)} className="w-full h-32 bg-[#0c0c0e] p-4 font-mono text-xs text-zinc-300 outline-none resize-none" placeholder="Paste code..." />
+                            <textarea value={sourceCode} onChange={e => setSourceCode(e.target.value)} className="w-full h-32 bg-[#0c0c0e] p-4 font-mono text-xs text-zinc-300 outline-none resize-none" placeholder="Paste code here..." />
                         )}
                     </div>
                 </section>
             </div>
 
             <div className="p-6 border-t border-white/5 bg-[#09090b] flex justify-end gap-3">
-                <button onClick={handleSubmit} disabled={isSubmitting} className={`px-6 py-2.5 rounded-lg text-sm font-bold bg-white text-black hover:bg-zinc-200 transition-colors ${isSubmitting ? 'opacity-70' : ''}`}>
+                <button onClick={handleSubmit} disabled={isSubmitting} className={`px-8 py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-zinc-200 transition-colors shadow-lg ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}>
                     {isSubmitting ? 'Saving...' : (isEditing ? 'Update Asset' : 'Publish Asset')}
                 </button>
             </div>

@@ -298,37 +298,38 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                 </span>
             </motion.button>
 
-            {/* Secondary Button: Submit Work */}
+            {/* Secondary Button: Submit Work - BLACK CRYSTAL */}
             <motion.button 
                 onClick={() => { playClickSound(); onUploadClick(); }}
-                whileHover={{ 
-                    scale: 1.05,
-                    boxShadow: "0 0 40px rgba(79, 70, 229, 0.4)"
-                }}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className="group relative h-14 min-w-[200px] rounded-full"
+                className="group relative h-14 min-w-[200px] rounded-full overflow-hidden shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8)]"
             >
-                {/* Neon Glow Backdrop */}
-                <div className="absolute -inset-[5px] rounded-full bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 opacity-60 group-hover:opacity-100 blur-xl transition-all duration-500 animate-pulse-glow"></div>
+                {/* Base: Deep Obsidian */}
+                <div className="absolute inset-0 bg-[#050505] z-0"></div>
+
+                {/* Crystal Facet 1: Top Gloss */}
+                <div className="absolute top-0 inset-x-0 h-[45%] bg-gradient-to-b from-white/10 to-transparent opacity-100 z-0"></div>
+
+                {/* Crystal Facet 2: Bottom Reflection */}
+                <div className="absolute bottom-0 inset-x-0 h-[30%] bg-gradient-to-t from-white/10 to-transparent opacity-60 z-0"></div>
+
+                {/* Crystal Facet 3: Diagonal Sheen */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0 transform translate-y-2 scale-110"></div>
+
+                {/* Rim Light: Sharp Glass Edge */}
+                <div className="absolute inset-0 rounded-full border border-white/10 shadow-[inset_0_0_12px_rgba(255,255,255,0.05)] group-hover:border-white/20 transition-all z-10"></div>
                 
-                {/* Thick Border Container */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 p-[3px] group-hover:p-[4px] transition-all duration-300">
-                    
-                    {/* Core Fill */}
-                    <div className="h-full w-full rounded-full bg-[#020202] hover:bg-[#0a0a0a] transition-all flex items-center justify-center gap-3 relative overflow-hidden shadow-[inset_0_2px_10px_rgba(0,0,0,1)]">
-                        
-                        {/* Internal Gloss */}
-                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/10 rounded-t-full pointer-events-none"></div>
+                {/* Inner Glow (Hover) */}
+                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 blur-md transition-opacity duration-500 z-0"></div>
 
-                        {/* Icon */}
-                        <UploadIcon className="w-4 h-4 text-cyan-300 group-hover:text-white transition-colors drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-
-                        {/* Text */}
-                        <span className="text-sm font-bold uppercase tracking-widest text-white group-hover:text-cyan-50 transition-colors drop-shadow-md">
-                            Submit Work
-                        </span>
-                    </div>
+                {/* Content */}
+                <div className="relative z-20 flex items-center justify-center gap-3 h-full px-8">
+                    <UploadIcon className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                    <span className="text-sm font-bold uppercase tracking-widest text-slate-300 group-hover:text-white transition-colors text-shadow-sm">
+                        Submit Work
+                    </span>
                 </div>
             </motion.button>
 

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Template as MockTemplate, templates as MockTemplates } from './db';
 
 // ==========================================
-//   TEMPLR PRODUCTION ENGINE v9.30 (REAL SAAS)
+//   TEMPLR PRODUCTION ENGINE v9.32 (REAL SAAS)
 // ==========================================
 
 // User provided credentials
@@ -284,18 +284,46 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         file_name: templateData.fileName || 'Project Files',
         file_type: templateData.fileType || 'link',
         file_size: templateData.fileSize || 0,
-        status: templateData.initialStatus || 'approved'
+        status: templateData.initialStatus || 'approved',
+        // Try to include optional fields, but if DB schema is old, we'll strip them in catch block
+        tags: templateData.tags || [],
+        description: templateData.description,
+        video_url: templateData.videoUrl,
+        gallery_images: templateData.galleryImages,
+        source_code: templateData.sourceCode,
+        file_url: templateData.fileUrl || templateData.externalLink
     };
 
-    if (templateData.fileUrl || templateData.externalLink) dbPayload.file_url = templateData.fileUrl || templateData.externalLink;
-    if (templateData.description) dbPayload.description = templateData.description;
-    if (templateData.videoUrl) dbPayload.video_url = templateData.videoUrl;
-    if (templateData.galleryImages) dbPayload.gallery_images = templateData.galleryImages;
-    if (templateData.tags) dbPayload.tags = templateData.tags;
-    if (templateData.sourceCode) dbPayload.source_code = templateData.sourceCode;
-
-    const { error } = await supabase.from('templates').insert(dbPayload);
-    if (error) throw new Error(error.message);
+    // --- ROBUST AUTO-RETRY WRAPPER ---
+    // If the insert fails because a column (like 'tags' or 'author_avatar') 
+    // doesn't exist in the DB, we automatically strip those fields and retry.
+    try {
+        const { error } = await supabase.from('templates').insert(dbPayload);
+        if (error) throw error;
+    } catch (error: any) {
+        const msg = error.message?.toLowerCase() || '';
+        
+        // Detect "column not found" errors
+        if (msg.includes('column') && (msg.includes('not find') || msg.includes('does not exist'))) {
+            console.warn("Database schema missing columns. Retrying with minimal payload...", msg);
+            
+            // Create a safe payload by removing ALL optional/new fields that might cause schema errors
+            // This ensures the upload succeeds even on an older DB schema
+            const safePayload = { ...dbPayload };
+            delete safePayload.tags;
+            delete safePayload.author_avatar;
+            delete safePayload.source_code;
+            delete safePayload.video_url;
+            delete safePayload.gallery_images;
+            // keep description, file_url if possible, but if strict, we might need to be even more aggressive.
+            
+            const { error: retryError } = await supabase.from('templates').insert(safePayload);
+            if (retryError) throw new Error("Upload failed. Please run the SQL Setup script in the 'Connect Backend' menu to fix database columns.");
+        } else {
+            // Throw genuine errors (auth, RLS, etc)
+            throw new Error(error.message);
+        }
+    }
 };
 
 export const updateTemplateData = async (id: string, data: Partial<NewTemplateData>, userEmail: string): Promise<void> => {
@@ -341,7 +369,7 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
             .update(syncUpdates)
             .eq('author_email', data.user.email);
       } catch (e) {
-          console.warn("Profile sync warning:", e);
+          console.warn("Profile sync warning (DB might be missing columns):", e);
       }
   }
 
@@ -427,6 +455,19 @@ export const seedDatabase = async (user: Session['user']): Promise<void> => {
         views: t.views,
         file_size: 1024 * 1024 * 5
     }));
-    const { error } = await supabase.from('templates').insert(payloads);
-    if (error) throw new Error(error.message);
+    
+    // Safety check for seeding too
+    try {
+        const { error } = await supabase.from('templates').insert(payloads);
+        if (error) throw error;
+    } catch(e: any) {
+        if (e.message?.includes('author_avatar') || e.message?.includes('tags')) {
+             console.warn("Retrying seed with minimal payload");
+             const cleanPayloads = payloads.map(({ author_avatar, tags, source_code, ...rest }: any) => rest);
+             const { error: retryError } = await supabase.from('templates').insert(cleanPayloads);
+             if (retryError) throw new Error(retryError.message);
+        } else {
+            throw new Error(e.message);
+        }
+    }
 };
