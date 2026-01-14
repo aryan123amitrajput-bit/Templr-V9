@@ -298,38 +298,51 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                 </span>
             </motion.button>
 
-            {/* Secondary Button: Submit Work - BLACK CRYSTAL */}
+            {/* Secondary Button: Submit Work - ULTRA GLOW */}
             <motion.button 
                 onClick={() => { playClickSound(); onUploadClick(); }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className="group relative h-14 min-w-[200px] rounded-full overflow-hidden shadow-[0_10px_30px_-10px_rgba(0,0,0,0.8)]"
+                className="group relative h-14 min-w-[200px] rounded-full"
             >
-                {/* Base: Deep Obsidian */}
-                <div className="absolute inset-0 bg-[#050505] z-0"></div>
-
-                {/* Crystal Facet 1: Top Gloss */}
-                <div className="absolute top-0 inset-x-0 h-[45%] bg-gradient-to-b from-white/10 to-transparent opacity-100 z-0"></div>
-
-                {/* Crystal Facet 2: Bottom Reflection */}
-                <div className="absolute bottom-0 inset-x-0 h-[30%] bg-gradient-to-t from-white/10 to-transparent opacity-60 z-0"></div>
-
-                {/* Crystal Facet 3: Diagonal Sheen */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0 transform translate-y-2 scale-110"></div>
-
-                {/* Rim Light: Sharp Glass Edge */}
-                <div className="absolute inset-0 rounded-full border border-white/10 shadow-[inset_0_0_12px_rgba(255,255,255,0.05)] group-hover:border-white/20 transition-all z-10"></div>
+                {/* 1. Deep Atmosphere Glow (Blue/Purple Base) */}
+                <div className="absolute -inset-4 rounded-full bg-blue-600/30 blur-2xl opacity-40 group-hover:opacity-70 transition-opacity duration-500"></div>
                 
-                {/* Inner Glow (Hover) */}
-                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 blur-md transition-opacity duration-500 z-0"></div>
+                {/* 2. Intense Rim Flare (Cyan) */}
+                <div className="absolute -inset-1 rounded-full bg-cyan-400/40 blur-md opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
 
-                {/* Content */}
-                <div className="relative z-20 flex items-center justify-center gap-3 h-full px-8">
-                    <UploadIcon className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
-                    <span className="text-sm font-bold uppercase tracking-widest text-slate-300 group-hover:text-white transition-colors text-shadow-sm">
-                        Submit Work
-                    </span>
+                {/* Crystal Container */}
+                <div className="absolute inset-0 rounded-full overflow-hidden bg-slate-900/90 backdrop-blur-2xl border border-white/10 group-hover:border-cyan-300/50 shadow-[0_0_30px_-10px_rgba(34,211,238,0.3)] group-hover:shadow-[0_0_50px_-10px_rgba(34,211,238,0.6),inset_0_0_20px_rgba(34,211,238,0.2)] transition-all duration-500">
+                    
+                    {/* Base Dark Crystal */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-slate-800 via-black to-slate-950 z-0"></div>
+
+                    {/* Top Light Catch (The Facet) */}
+                    <div className="absolute top-0 inset-x-0 h-[50%] bg-gradient-to-b from-white/10 to-transparent z-10 border-b border-white/5 opacity-100 group-hover:from-cyan-300/20 transition-colors"></div>
+                    
+                    {/* Sharp Top Edge Highlight */}
+                    <div className="absolute top-0 left-6 right-6 h-[1px] bg-white/60 blur-[1px] group-hover:bg-cyan-200 group-hover:blur-[2px] transition-all z-20"></div>
+
+                    {/* Bottom Glow (Internal Light) */}
+                    <div className="absolute bottom-0 inset-x-0 h-[50%] bg-gradient-to-t from-blue-500/20 to-transparent z-10 opacity-60 group-hover:opacity-100 transition-opacity"></div>
+
+                    {/* Moving Sheen */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out z-20"></div>
+
+                    {/* Content */}
+                    <div className="relative z-40 flex items-center justify-center gap-3 h-full px-8">
+                        {/* Icon with Bloom */}
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-cyan-400 blur-md opacity-0 group-hover:opacity-50 transition-opacity"></div>
+                            <UploadIcon className="relative w-4 h-4 text-cyan-100 group-hover:text-white transition-colors drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" />
+                        </div>
+                        
+                        {/* Text with Bloom */}
+                        <span className="text-sm font-bold uppercase tracking-widest text-white text-shadow-sm group-hover:text-shadow-[0_0_15px_rgba(34,211,238,1)] transition-all">
+                            Submit Work
+                        </span>
+                    </div>
                 </div>
             </motion.button>
 
