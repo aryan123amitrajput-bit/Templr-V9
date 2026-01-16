@@ -156,7 +156,9 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
   const scrollToGallery = () => {
     playClickSound();
     const gallery = document.getElementById('gallery');
-    if (gallery) gallery.scrollIntoView({ behavior: 'smooth' });
+    if (gallery) {
+        gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const currentHeadline = headlines[headlineIndex];
