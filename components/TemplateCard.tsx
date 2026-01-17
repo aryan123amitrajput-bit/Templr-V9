@@ -248,7 +248,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
                         className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 cursor-pointer"
                         title="Like"
                      >
-                        <HeartIcon className={`w-5 h-5 transition-transform group-hover/btn:scale-110 ${isLiked ? 'fill-rose-500 text-rose-500' : 'text-white'}`} />
+                        <HeartIcon className={`w-5 h-5 transition-transform duration-200 ${likeBump ? 'scale-150' : 'group-hover/btn:scale-110'} ${isLiked ? 'fill-rose-500 text-rose-500' : 'text-white'}`} />
                      </button>
                      <button 
                         onClick={handleViewButton}
