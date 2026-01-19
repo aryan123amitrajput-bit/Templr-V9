@@ -4,7 +4,7 @@ import { ScrollReveal } from './ScrollReveal';
 
 const WhyTemplr: React.FC = () => {
   // The specific visual requested
-  const HERO_IMAGE_URL = "https://cdn.discordapp.com/attachments/1052511663842136094/1460185175420833792/file_000000009eb871fabb9e910558a6a4fe.png?ex=6965feea&is=6964ad6a&hm=f98255ccc7107abc22dbc47683734195f0863febb59188ec2830e3a272520c01&";
+  const HERO_IMAGE_URL = "https://cdn.discordapp.com/attachments/1424289543758282862/1462822707258458152/file_000000009eb871fabb9e910558a6a4fe.png?ex=696f974f&is=696e45cf&hm=f1e30dbbe1c1836f8663fb14591a92421201495eddcbf062c1d66c436e02af22&";
 
   return (
     <section id="features" className="py-32 bg-black relative overflow-hidden">

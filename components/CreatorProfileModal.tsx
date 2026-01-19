@@ -11,7 +11,7 @@ interface CreatorProfileModalProps {
   onClose: () => void;
   creatorName: string | null;
   templates: Template[];
-  onView: (templateId: string) => void;
+  onView: (template: Template) => void;
   onLike: (templateId: string) => void;
   likedIds: Set<string>; // Added prop
 }
@@ -215,7 +215,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     {...template}
                                     isLiked={likedIds.has(template.id)}
                                     onMessageCreator={() => {}} // No chat inside profile
-                                    onView={() => onView(template.id)}
+                                    onView={() => onView(template)}
                                     onLike={() => onLike(template.id)}
                                     // Disable recursion
                                     onCreatorClick={() => {}}

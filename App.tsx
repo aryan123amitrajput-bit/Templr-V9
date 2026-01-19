@@ -169,18 +169,16 @@ const App: React.FC = () => {
       setUploadModalOpen(true);
   };
 
-  const handleViewClick = (templateId: string) => {
-    const templateToShow = templates.find(t => t.id === templateId) || { id: templateId } as Template; 
-    
-    if (templateToShow.title) {
+  const handleViewClick = (template: Template) => {
+    if (template.title) {
         playOpenModalSound();
-        if (!viewedTemplateIds.has(templateId)) {
-            api.updateTemplate(templateId, { views: (templateToShow.views || 0) + 1 });
-            const newSet = new Set(viewedTemplateIds).add(templateId);
+        if (!viewedTemplateIds.has(template.id)) {
+            api.updateTemplate(template.id, { views: (template.views || 0) + 1 });
+            const newSet = new Set(viewedTemplateIds).add(template.id);
             setViewedTemplateIds(newSet);
             localStorage.setItem('templr_viewed_ids', JSON.stringify(Array.from(newSet)));
         }
-        setViewingTemplate(templateToShow);
+        setViewingTemplate(template);
         setViewerOpen(true);
     }
   };

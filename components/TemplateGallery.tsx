@@ -13,7 +13,7 @@ const filters = ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 
 interface TemplateGalleryProps {
   templates: Template[]; 
   onMessageCreator: (creatorName: string) => void;
-  onView: (templateId: string) => void;
+  onView: (template: Template) => void;
   onLike: (templateId: string) => void;
   onCreatorClick?: (creatorName: string) => void;
   isLoading: boolean;
@@ -316,7 +316,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                                 {...template} 
                                 isLiked={likedIds.has(template.id)}
                                 onMessageCreator={onMessageCreator}
-                                onView={() => onView(template.id)}
+                                onView={() => onView(template)}
                                 onLike={() => handleLocalLike(template.id)}
                                 onCreatorClick={onCreatorClick}
                             />
