@@ -183,7 +183,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
       </div>
 
       {/* --- MAIN CONTENT (Z-10) --- */}
-      <div className="relative z-10 flex flex-col items-center text-center max-w-7xl mx-auto px-6 mt-[10vh] w-full">
+      <div className="relative z-10 flex flex-col items-center text-center max-w-7xl mx-auto px-6 -mt-[10vh] w-full">
         
         {/* Release Pill */}
         <motion.div 
@@ -304,7 +304,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             {/* Secondary Button: Submit Work - SHINY BUTTON INTEGRATION */}
             <ShinyButton 
                 onClick={() => { playClickSound(); onUploadClick(); }}
-                className="h-14 min-w-[220px] font-bold uppercase tracking-[0.2em] text-white"
+                className="min-w-[220px] font-bold uppercase tracking-[0.2em] text-white"
             >
                 <UploadIcon className="w-4 h-4" />
                 <span>Submit Work</span>
