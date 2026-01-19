@@ -3,10 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import { Template as MockTemplate, templates as MockTemplates } from './db';
 
 // ==========================================
-//   TEMPLR PRODUCTION ENGINE v9.32 (REAL SAAS)
+//   TEMPLR PRODUCTION ENGINE v9.36
 // ==========================================
 
-// User provided credentials
 const PROVIDED_URL = 'https://risynxckpsgqgprnaccr.supabase.co';
 const PROVIDED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpc3lueGNrcHNncWdwcm5hY2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNjY4MTQsImV4cCI6MjA3Nzg0MjgxNH0.Ta6cfgjZf7AMLoMzIpIIsGxgAefQvTRTSVsrpROVoak';
 
@@ -44,7 +43,6 @@ export const supabase = createClient(
     { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
 );
 
-// --- TYPES ---
 export interface NewTemplateData {
   title: string;
   imageUrl: string; 
@@ -80,12 +78,12 @@ export type Template = MockTemplate;
 
 export interface CreatorStats {
     name: string;
-    email: string; // Used for ID
+    email: string;
     totalViews: number;
     totalLikes: number;
     templateCount: number;
     avatarUrl: string;
-    role: string; // Inferred
+    role: string;
 }
 
 const mapTemplate = (data: any): Template => {
@@ -106,7 +104,7 @@ const mapTemplate = (data: any): Template => {
         author: data.author_name || 'Anonymous', 
         authorAvatar: data.author_avatar,
         imageUrl: data.image_url,
-        bannerUrl: data.banner_url,
+        bannerUrl: data.banner_url || data.image_url,
         galleryImages: data.gallery_images || [],
         videoUrl: data.video_url,
         likes: data.likes || 0,
@@ -128,9 +126,6 @@ const mapTemplate = (data: any): Template => {
     };
 };
 
-// --- REAL DATA METHODS ---
-
-// 1. Server-Side Pagination & Search
 export const getPublicTemplates = async (
     page: number = 0, 
     limit: number = 6, 
@@ -139,7 +134,6 @@ export const getPublicTemplates = async (
     sortBy: 'newest' | 'popular' | 'likes' = 'newest'
 ): Promise<{ data: Template[], hasMore: boolean }> => {
     
-    // If not configured, return mocks for demo purposes (page 0 only)
     if (!isApiConfigured) {
         if (page === 0) return { data: MockTemplates, hasMore: false };
         return { data: [], hasMore: false };
@@ -150,25 +144,20 @@ export const getPublicTemplates = async (
         .select('*')
         .eq('status', 'approved');
 
-    // Search
     if (searchQuery) {
         query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
     }
 
-    // Category
     if (category !== 'All') {
         if (category === 'Popular') {
-            // "Popular" isn't a DB category, it's a sort/filter state
-            // handled by sort below, but if user explicitly selected filter, we can enforce view count
             query = query.gt('views', 100); 
         } else if (category === 'Newest') {
-             // Just a sort order
+             // Handled by default sort
         } else {
             query = query.eq('category', category);
         }
     }
 
-    // Sorting
     if (sortBy === 'popular') {
         query = query.order('views', { ascending: false });
     } else if (sortBy === 'likes') {
@@ -177,9 +166,8 @@ export const getPublicTemplates = async (
         query = query.order('created_at', { ascending: false });
     }
 
-    // Pagination
     const from = page * limit;
-    const to = from + limit; // Fetch one extra to check hasMore? No, standard range.
+    const to = from + limit;
     
     const { data, error } = await query.range(from, to - 1);
 
@@ -188,7 +176,6 @@ export const getPublicTemplates = async (
         return { data: [], hasMore: false };
     }
 
-    // Simple hasMore check: if we got full limit, assume there might be more
     const hasMore = data.length === limit;
 
     return { 
@@ -197,12 +184,9 @@ export const getPublicTemplates = async (
     };
 };
 
-// 2. Real Featured Creators (Aggregated & Randomized)
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     if (!isApiConfigured) return [];
 
-    // Fetch top 30 creators by views to allow for randomization
-    // We fetch templates and aggregate
     const { data, error } = await supabase
         .from('templates')
         .select('author_name, author_email, author_avatar, views, likes')
@@ -224,7 +208,6 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             role: 'Creator'
         };
 
-        // Prefer real avatar if present
         if (t.author_avatar) {
             current.avatarUrl = t.author_avatar;
         }
@@ -237,9 +220,8 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
 
     const allCreators = Array.from(statsMap.values())
         .sort((a, b) => b.totalViews - a.totalViews)
-        .slice(0, 20); // Top 20 pool
+        .slice(0, 20);
 
-    // Random shuffle (Fisher-Yates)
     for (let i = allCreators.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
@@ -264,7 +246,6 @@ export const listenForUserTemplates = async (userEmail: string, callback: (templ
     };
 
     fetchUserTemplates();
-    // Simple polling for dashboard to ensure freshness without complex realtime setup
     const interval = setInterval(fetchUserTemplates, 5000);
     return { unsubscribe: () => clearInterval(interval) };
 };
@@ -275,7 +256,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
     const dbPayload: any = {
         title: templateData.title,
         image_url: templateData.imageUrl,
-        banner_url: templateData.bannerUrl,
+        banner_url: templateData.bannerUrl || templateData.imageUrl,
         category: templateData.category,
         price: templateData.price,
         author_name: user.user_metadata?.full_name || user.email.split('@')[0],
@@ -285,7 +266,6 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         file_type: templateData.fileType || 'link',
         file_size: templateData.fileSize || 0,
         status: templateData.initialStatus || 'approved',
-        // Try to include optional fields, but if DB schema is old, we'll strip them in catch block
         tags: templateData.tags || [],
         description: templateData.description,
         video_url: templateData.videoUrl,
@@ -294,33 +274,34 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         file_url: templateData.fileUrl || templateData.externalLink
     };
 
-    // --- ROBUST AUTO-RETRY WRAPPER ---
-    // If the insert fails because a column (like 'tags' or 'author_avatar') 
-    // doesn't exist in the DB, we automatically strip those fields and retry.
     try {
         const { error } = await supabase.from('templates').insert(dbPayload);
         if (error) throw error;
     } catch (error: any) {
         const msg = error.message?.toLowerCase() || '';
+        console.error("Database insert failed:", msg);
         
-        // Detect "column not found" errors
+        // Surgical schema compatibility
         if (msg.includes('column') && (msg.includes('not find') || msg.includes('does not exist'))) {
-            console.warn("Database schema missing columns. Retrying with minimal payload...", msg);
+            const legacyPayload = { ...dbPayload };
             
-            // Create a safe payload by removing ALL optional/new fields that might cause schema errors
-            // This ensures the upload succeeds even on an older DB schema
-            const safePayload = { ...dbPayload };
-            delete safePayload.tags;
-            delete safePayload.author_avatar;
-            delete safePayload.source_code;
-            delete safePayload.video_url;
-            delete safePayload.gallery_images;
-            // keep description, file_url if possible, but if strict, we might need to be even more aggressive.
-            
-            const { error: retryError } = await supabase.from('templates').insert(safePayload);
-            if (retryError) throw new Error("Upload failed. Please run the SQL Setup script in the 'Connect Backend' menu to fix database columns.");
+            // Only delete columns that the DB explicitly complained about
+            if (msg.includes('video_url')) delete legacyPayload.video_url;
+            if (msg.includes('tags')) delete legacyPayload.tags;
+            if (msg.includes('author_avatar')) delete legacyPayload.author_avatar;
+            if (msg.includes('source_code')) delete legacyPayload.source_code;
+            if (msg.includes('gallery_images')) delete legacyPayload.gallery_images;
+
+            // If we deleted nothing but there's still an error, it's a generic column error
+            if (JSON.stringify(dbPayload) === JSON.stringify(legacyPayload)) {
+                 // Try a broad strip if retry logic fails
+                 delete legacyPayload.video_url;
+                 delete legacyPayload.tags;
+            }
+
+            const { error: retryError } = await supabase.from('templates').insert(legacyPayload);
+            if (retryError) throw new Error("Database schema mismatch. Run the SQL Fix Script in 'Connect Backend' guide.");
         } else {
-            // Throw genuine errors (auth, RLS, etc)
             throw new Error(error.message);
         }
     }
@@ -337,7 +318,6 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.bannerUrl) dbPayload.banner_url = data.bannerUrl;
     if (data.videoUrl) dbPayload.video_url = data.videoUrl;
     if (data.sourceCode) dbPayload.source_code = data.sourceCode;
-    
     if (data.fileUrl) dbPayload.file_url = data.fileUrl;
 
     const { error } = await supabase
@@ -350,14 +330,11 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
 };
 
 export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
-  // 1. Update Auth User Metadata
   const { data, error } = await supabase.auth.updateUser({
     data: updates
   });
   if (error) throw new Error(error.message);
 
-  // 2. Sync changes to the 'templates' table so the public profile updates
-  // Note: RLS 'Owner Update' policy allows this because auth.email matches author_email
   if (data.user?.email) {
       try {
           const syncUpdates: any = {};
@@ -369,7 +346,7 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
             .update(syncUpdates)
             .eq('author_email', data.user.email);
       } catch (e) {
-          console.warn("Profile sync warning (DB might be missing columns):", e);
+          console.warn("Profile sync warning:", e);
       }
   }
 
@@ -410,7 +387,7 @@ export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Se
             }
         } : null;
         callback(session ? 'SIGNED_IN' : 'SIGNED_OUT', mappedSession);
-    }).data.subscription;
+    });
     return { data: { subscription: { unsubscribe: () => {} } } };
 };
 
@@ -456,18 +433,13 @@ export const seedDatabase = async (user: Session['user']): Promise<void> => {
         file_size: 1024 * 1024 * 5
     }));
     
-    // Safety check for seeding too
     try {
         const { error } = await supabase.from('templates').insert(payloads);
         if (error) throw error;
     } catch(e: any) {
-        if (e.message?.includes('author_avatar') || e.message?.includes('tags')) {
-             console.warn("Retrying seed with minimal payload");
-             const cleanPayloads = payloads.map(({ author_avatar, tags, source_code, ...rest }: any) => rest);
-             const { error: retryError } = await supabase.from('templates').insert(cleanPayloads);
-             if (retryError) throw new Error(retryError.message);
-        } else {
-            throw new Error(e.message);
-        }
+        console.warn("Seed error, trying minimal payload");
+        const cleanPayloads = payloads.map(({ author_avatar, tags, source_code, video_url, ...rest }: any) => rest);
+        const { error: retryError } = await supabase.from('templates').insert(cleanPayloads);
+        if (retryError) throw new Error(retryError.message);
     }
 };

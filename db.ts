@@ -49,6 +49,7 @@ export const templates: Template[] = [
     author: 'NexusDesigns', 
     imageUrl: codePreviewColor('%234f46e5'), 
     bannerUrl: imgCyber, 
+    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-futuristic-holographic-interface-903-large.mp4',
     likes: 1340, 
     views: 25000, 
     isLiked: false, 

@@ -23,6 +23,18 @@ interface UploadModalProps {
 const CATEGORY_OPTIONS = ['Portfolio', 'SaaS', 'E-commerce', 'Blog', 'Dashboard', 'Mobile', 'Landing Page', 'Admin', 'Social', 'Crypto'];
 const MAX_VIDEO_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
 
+// Reliable fallback for background when video is processing or fails
+const DEFAULT_VIDEO_THUMB = 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=2670&auto=format&fit=crop';
+
+const formatBytes = (bytes: number, decimals = 2) => {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
 const SectionLabel = ({ children, required, optional }: { children?: React.ReactNode, required?: boolean, optional?: boolean }) => (
   <label className="block text-sm font-medium text-zinc-300 mb-1.5 flex items-center gap-2">
     {children} 
@@ -45,7 +57,6 @@ const StyledTextarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>
   />
 );
 
-// --- TAG INPUT ---
 const TagInput = ({ value, onChange, placeholder, maxTags = 5 }: { value: string[], onChange: (tags: string[]) => void, placeholder: string, maxTags?: number }) => {
     const [input, setInput] = useState('');
     
@@ -82,33 +93,27 @@ const TagInput = ({ value, onChange, placeholder, maxTags = 5 }: { value: string
     );
 };
 
-// --- PREVIEW UPLOADER ---
-const PreviewUploader = ({ file, onSelect, error, type, initialUrl }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string }) => {
+const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean }) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {
-            if (type === 'video' && selectedFile.size > MAX_VIDEO_SIZE_BYTES) {
-                // Should notify parent logic ideally
-                onSelect(selectedFile); 
-            } else {
-                onSelect(selectedFile);
-            }
+            onSelect(selectedFile);
         }
     };
 
-    // Show preview logic: File Blob > Initial URL > Placeholder
     const hasContent = !!file || !!initialUrl;
     const previewSrc = file ? URL.createObjectURL(file) : initialUrl;
 
     return (
         <div 
-            onClick={() => inputRef.current?.click()}
+            onClick={() => !isUploading && !file && !initialUrl && inputRef.current?.click()}
             className={`
                 group relative w-full aspect-video bg-[#121214] rounded-2xl border-2 border-dashed 
                 ${error ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#18181b]'} 
                 flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all duration-300
+                ${isUploading ? 'cursor-not-allowed' : ''}
             `}
         >
             <input 
@@ -117,25 +122,51 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl }: { file: Fi
                 accept={type === 'image' ? "image/*" : "video/mp4,video/webm"} 
                 className="hidden" 
                 onChange={handleFileChange} 
+                disabled={isUploading}
             />
             
             {hasContent ? (
-                <>
+                <div className="relative w-full h-full flex items-center justify-center bg-black">
                     {type === 'image' ? (
-                        <img src={previewSrc} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+                        <img 
+                            key={previewSrc}
+                            src={previewSrc} 
+                            alt="Preview" 
+                            className="w-full h-full object-contain" 
+                        />
                     ) : (
-                        <video src={previewSrc} className="absolute inset-0 w-full h-full object-cover" muted loop autoPlay />
+                        <video 
+                            key={previewSrc}
+                            src={previewSrc} 
+                            className="w-full h-full object-contain" 
+                            loop 
+                            controls={!isUploading}
+                            playsInline
+                        />
                     )}
                     
-                    {/* Hover Overlay */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-sm">
-                        <span className="px-5 py-2.5 bg-white/10 backdrop-blur rounded-full text-xs font-bold text-white border border-white/20 shadow-xl uppercase tracking-wider transform translate-y-2 group-hover:translate-y-0 transition-transform">
-                            Replace Media
-                        </span>
-                    </div>
-                </>
+                    {/* Overlay Loading State */}
+                    {isUploading && (
+                        <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center">
+                            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                            <p className="text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">Uploading Media...</p>
+                        </div>
+                    )}
+
+                    {/* Change Button (Only when not uploading) */}
+                    {!isUploading && (
+                        <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button 
+                                onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+                                className="px-4 py-2 bg-black/60 backdrop-blur border border-white/20 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest hover:bg-white/10 transition-colors shadow-lg"
+                             >
+                                Replace
+                             </button>
+                        </div>
+                    )}
+                </div>
             ) : (
-                <div className="text-center p-6 relative z-10">
+                <div className="text-center p-6 relative z-10" onClick={() => !isUploading && inputRef.current?.click()}>
                     <div className="w-16 h-16 rounded-full bg-zinc-900/80 flex items-center justify-center mx-auto mb-4 border border-zinc-800 text-zinc-500 group-hover:text-blue-400 group-hover:border-blue-500/30 group-hover:scale-110 transition-all duration-300 shadow-xl">
                         {type === 'image' ? <LayersIcon className="w-7 h-7" /> : <UploadIcon className="w-7 h-7" />}
                     </div>
@@ -148,11 +179,48 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl }: { file: Fi
                 </div>
             )}
             
-            {/* Scanline Effect (Decoration) */}
-            <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(0,0,0,0.4)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none opacity-20"></div>
+            {!hasContent && <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(0,0,0,0.4)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none opacity-20"></div>}
         </div>
     );
 };
+
+const FileCard = ({ file, onRemove, isUploading }: { file: File, onRemove: () => void, isUploading?: boolean }) => (
+    <div className="relative group flex items-center justify-between p-3 bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 transition-colors">
+        <div className="flex items-center gap-3 overflow-hidden">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${isUploading ? 'bg-blue-500/20 text-blue-400' : 'bg-zinc-800 text-zinc-400'}`}>
+                {isUploading ? (
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                    <ZipIcon className="w-5 h-5" />
+                )}
+            </div>
+            <div className="min-w-0">
+                <p className={`text-sm font-bold truncate ${isUploading ? 'text-blue-400' : 'text-zinc-200'}`}>{file.name}</p>
+                <p className="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
+                    {formatBytes(file.size)}
+                    {isUploading && <span className="text-blue-500 font-bold">• Uploading...</span>}
+                </p>
+            </div>
+        </div>
+        
+        {!isUploading && (
+            <button 
+                onClick={(e) => { e.stopPropagation(); onRemove(); }} 
+                className="p-2 hover:bg-white/10 rounded-full text-zinc-500 hover:text-red-400 transition-colors"
+                title="Remove File"
+            >
+                <XIcon className="w-4 h-4" />
+            </button>
+        )}
+        
+        {/* Progress Bar Animation (Simulated) */}
+        {isUploading && (
+            <div className="absolute bottom-0 left-0 w-full h-[2px] bg-blue-900/30">
+                <div className="h-full bg-blue-500 animate-[pulse_1s_ease-in-out_infinite] w-2/3"></div>
+            </div>
+        )}
+    </div>
+);
 
 const UploadModal: React.FC<UploadModalProps> = ({ 
     isOpen, 
@@ -174,7 +242,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [previewType, setPreviewType] = useState<'image' | 'video'>('image');
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   
-  // To handle preserving existing URLs if not changed
   const [existingImageUrl, setExistingImageUrl] = useState('');
   const [existingVideoUrl, setExistingVideoUrl] = useState('');
 
@@ -183,6 +250,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [sourceCode, setSourceCode] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(''); // "Uploading Video...", "Saving..."
   const [errors, setErrors] = useState<any>({});
   const zipInputRef = useRef<HTMLInputElement>(null);
 
@@ -194,32 +262,30 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setCategory(initialData.category);
               setTags(initialData.tags || []);
               setLink(initialData.fileUrl && !initialData.fileUrl.endsWith('.zip') ? initialData.fileUrl : '');
-              
               setExistingImageUrl(initialData.bannerUrl || '');
               setExistingVideoUrl(initialData.videoUrl || '');
-              
-              if (initialData.videoUrl) {
-                  setPreviewType('video');
-              } else {
-                  setPreviewType('image');
-              }
-              
-              // Code defaults
+              setPreviewType(initialData.videoUrl ? 'video' : 'image');
               setSourceCode(initialData.sourceCode || '');
               setCodeMode(initialData.sourceCode ? 'paste' : 'zip');
-              
               setVisibility(initialData.status === 'approved' ? 'public' : 'private');
           } else {
-              // Reset
               setTitle(''); setDescription(''); setCategory(''); setTags([]); 
               setLink(''); setVisibility('public'); 
               setPreviewType('image'); setPreviewFile(null); 
               setExistingImageUrl(''); setExistingVideoUrl('');
               setCodeMode('zip'); setZipFile(null); setSourceCode('');
           }
-          setErrors({}); setIsSubmitting(false);
+          setErrors({}); setIsSubmitting(false); setUploadStatus('');
       }
   }, [isOpen, isEditing, initialData]);
+
+  const togglePreviewType = (type: 'image' | 'video') => {
+      if (type !== previewType) {
+          setPreviewType(type);
+          setPreviewFile(null);
+          playClickSound();
+      }
+  };
 
   const handleSubmit = async () => {
       if (!isLoggedIn) return onLoginRequest();
@@ -228,7 +294,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (!title.trim() || title.trim().length < 3) newErrors.title = true;
       if (!category) newErrors.category = true;
       
-      // In Edit mode, we don't strictly need a *new* file if we have an existing URL
       if (!previewFile && !existingImageUrl && !existingVideoUrl) {
           newErrors.preview = true;
           onShowNotification("A preview is required.", 'error');
@@ -245,30 +310,34 @@ const UploadModal: React.FC<UploadModalProps> = ({
           let imageUrl = existingImageUrl;
           let videoUrl = existingVideoUrl;
 
-          // Upload new media if selected
           if (previewFile) {
+              // Changed text per user request: "Uploading Template" instead of specific media types
+              setUploadStatus('Uploading Template...');
+              
               if (previewType === 'video') {
                   videoUrl = await uploadFile(previewFile, `videos/${Date.now()}_${previewFile.name.replace(/\s+/g, '_')}`);
-                  // If switching to video, image is secondary or reset
-                  if (!imageUrl) imageUrl = 'https://images.unsplash.com/photo-1626544827763-d516dce335ca?q=80&w=2560&auto=format&fit=crop';
+                  // Ensure we have a valid background image if user only uploaded a video
+                  if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
                   imageUrl = await uploadFile(previewFile, `images/${Date.now()}_${previewFile.name.replace(/\s+/g, '_')}`);
-                  // If switching to image, maybe clear video url? Optional.
+                  videoUrl = ''; // User specifically switched to image
               }
           }
 
           let zipUrl = '';
           if (zipFile) {
+              setUploadStatus('Uploading Project Files...');
               zipUrl = await uploadFile(zipFile, `templates/${Date.now()}_${zipFile.name.replace(/\s+/g, '_')}`);
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
-              zipUrl = initialData.fileUrl; // Keep existing
+              zipUrl = initialData.fileUrl;
           }
 
+          setUploadStatus('Saving Asset...');
           await onAddTemplate({
               title,
               description,
               category,
-              tags: tags || [], // Ensure tags is always an array
+              tags: tags || [],
               externalLink: link,
               imageUrl,
               videoUrl,
@@ -278,7 +347,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
               fileUrl: zipUrl, 
               sourceCode: codeMode === 'paste' ? sourceCode : '',
               fileName: zipFile?.name || (isEditing ? initialData?.fileName : 'design-assets'),
-              // Fallback to 'image' if no download/link is provided
               fileType: zipUrl ? 'zip' : (sourceCode ? 'code' : (link ? 'link' : 'image')),
               fileSize: zipFile?.size || 0,
               initialStatus: visibility === 'public' ? 'approved' : 'draft'
@@ -291,6 +359,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
           setIsSubmitting(false);
           playNotificationSound();
           onShowNotification(e.message || "Operation failed", 'error');
+      } finally {
+          setIsSubmitting(false);
+          setUploadStatus('');
       }
   };
 
@@ -323,8 +394,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
                     <div className="flex items-center justify-between mb-3">
                         <SectionLabel required>Preview Media</SectionLabel>
                         <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
-                            <button onClick={() => { setPreviewType('image'); playClickSound(); }} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
-                            <button onClick={() => { setPreviewType('video'); playClickSound(); }} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
+                            <button onClick={() => !isSubmitting && togglePreviewType('image')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
+                            <button onClick={() => !isSubmitting && togglePreviewType('video')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
                         </div>
                     </div>
                     
@@ -334,23 +405,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         initialUrl={previewType === 'image' ? existingImageUrl : existingVideoUrl}
                         onSelect={(f) => { setPreviewFile(f); playClickSound(); }} 
                         error={errors.preview}
+                        isUploading={isSubmitting && !!previewFile}
                     />
                 </section>
 
                 <section className="space-y-5">
                     <div>
                         <SectionLabel required>Title</SectionLabel>
-                        <StyledInput value={title} onChange={e => setTitle(e.target.value)} error={errors.title} />
+                        <StyledInput value={title} onChange={e => setTitle(e.target.value)} error={errors.title} disabled={isSubmitting} />
                     </div>
                     <div>
                         <SectionLabel optional>Description</SectionLabel>
-                        <StyledTextarea rows={3} value={description} onChange={e => setDescription(e.target.value)} />
+                        <StyledTextarea rows={3} value={description} onChange={e => setDescription(e.target.value)} disabled={isSubmitting} />
                     </div>
                     <div className="grid grid-cols-2 gap-5">
                         <div>
                             <SectionLabel required>Category</SectionLabel>
                             <div className="relative">
-                                <select className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-100" value={category} onChange={e => setCategory(e.target.value)}>
+                                <select className="w-full bg-[#18181b] border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-100" value={category} onChange={e => setCategory(e.target.value)} disabled={isSubmitting}>
                                     <option value="" disabled>Select</option>
                                     {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
@@ -367,7 +439,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                     <SectionLabel optional>Live Demo Link</SectionLabel>
                     <div className="relative">
                         <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                        <StyledInput style={{ paddingLeft: '2.5rem' }} value={link} onChange={e => setLink(e.target.value)} />
+                        <StyledInput style={{ paddingLeft: '2.5rem' }} value={link} onChange={e => setLink(e.target.value)} disabled={isSubmitting} />
                     </div>
                 </section>
 
@@ -381,30 +453,35 @@ const UploadModal: React.FC<UploadModalProps> = ({
                     </div>
                     <div className="rounded-xl border border-zinc-800 overflow-hidden">
                         {codeMode === 'zip' ? (
-                            <div onClick={() => zipInputRef.current?.click()} className="h-32 bg-[#121214] flex flex-col items-center justify-center cursor-pointer hover:bg-[#18181b] transition-colors border border-dashed border-transparent hover:border-zinc-700 m-1 rounded-lg">
-                                <input ref={zipInputRef} type="file" accept=".zip" className="hidden" onChange={e => { setZipFile(e.target.files?.[0] || null); playClickSound(); }} />
+                            <>
                                 {zipFile ? (
-                                    <div className="flex items-center gap-2 text-white text-sm bg-blue-500/20 px-3 py-1 rounded-full border border-blue-500/30">
-                                        <ZipIcon className="w-4 h-4" /> {zipFile.name}
-                                    </div>
+                                    <FileCard 
+                                        file={zipFile} 
+                                        onRemove={() => { setZipFile(null); playClickSound(); }} 
+                                        isUploading={isSubmitting && !!zipFile}
+                                    />
                                 ) : (
-                                    <div className="text-center">
-                                        <UploadIcon className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
-                                        <p className="text-zinc-400 text-xs font-bold uppercase">Upload Zip File</p>
-                                        {isEditing && initialData?.fileUrl?.endsWith('.zip') && <p className="text-[10px] text-zinc-600 mt-1">(Overwrites existing file)</p>}
+                                    <div onClick={() => !isSubmitting && zipInputRef.current?.click()} className={`h-32 bg-[#121214] flex flex-col items-center justify-center cursor-pointer hover:bg-[#18181b] transition-colors border border-dashed border-transparent hover:border-zinc-700 m-1 rounded-lg ${isSubmitting ? 'cursor-not-allowed opacity-50' : ''}`}>
+                                        <input ref={zipInputRef} type="file" accept=".zip" className="hidden" onChange={e => { setZipFile(e.target.files?.[0] || null); playClickSound(); }} disabled={isSubmitting} />
+                                        <div className="text-center">
+                                            <UploadIcon className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+                                            <p className="text-zinc-400 text-xs font-bold uppercase">Upload Zip File</p>
+                                            {isEditing && initialData?.fileUrl?.endsWith('.zip') && <p className="text-[10px] text-zinc-600 mt-1">(Existing file will be kept if empty)</p>}
+                                        </div>
                                     </div>
                                 )}
-                            </div>
+                            </>
                         ) : (
-                            <textarea value={sourceCode} onChange={e => setSourceCode(e.target.value)} className="w-full h-32 bg-[#0c0c0e] p-4 font-mono text-xs text-zinc-300 outline-none resize-none" placeholder="Paste code here..." />
+                            <textarea value={sourceCode} onChange={e => setSourceCode(e.target.value)} className="w-full h-32 bg-[#0c0c0e] p-4 font-mono text-xs text-zinc-300 outline-none resize-none" placeholder="Paste code here..." disabled={isSubmitting} />
                         )}
                     </div>
                 </section>
             </div>
 
             <div className="p-6 border-t border-white/5 bg-[#09090b] flex justify-end gap-3">
-                <button onClick={handleSubmit} disabled={isSubmitting} className={`px-8 py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-zinc-200 transition-colors shadow-lg ${isSubmitting ? 'opacity-70 cursor-wait' : ''}`}>
-                    {isSubmitting ? 'Saving...' : (isEditing ? 'Update Asset' : 'Publish Asset')}
+                <button onClick={handleSubmit} disabled={isSubmitting} className={`px-8 py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 bg-white text-black hover:bg-zinc-200 transition-colors shadow-lg ${isSubmitting ? 'opacity-90 cursor-wait' : ''}`}>
+                    {isSubmitting && <div className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>}
+                    {uploadStatus || (isEditing ? 'Update Asset' : 'Publish Asset')}
                 </button>
             </div>
         </motion.div>

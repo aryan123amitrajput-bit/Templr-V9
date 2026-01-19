@@ -5,6 +5,7 @@ import { playClickSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
 import Galaxy from './Galaxy';
 import QuantumFlow from './QuantumFlow';
+import { ShinyButton } from './ui/shiny-button';
 
 interface HeroProps {
   onUploadClick: () => void;
@@ -27,7 +28,7 @@ const ParticleText: React.FC<{
       transition: { staggerChildren: 0.05 } 
     },
     visible: { 
-      opacity: 1,
+      opacity: 1, 
       transition: { 
         staggerChildren: 0.05,
         delayChildren: 0.1
@@ -300,56 +301,14 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                 </span>
             </motion.button>
 
-            {/* Secondary Button: Submit Work - 50% MORE UPPER GLOW */}
-            <motion.button 
+            {/* Secondary Button: Submit Work - SHINY BUTTON INTEGRATION */}
+            <ShinyButton 
                 onClick={() => { playClickSound(); onUploadClick(); }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className="group relative h-14 min-w-[200px] rounded-full"
+                className="h-14 min-w-[220px] font-bold uppercase tracking-[0.2em] text-white"
             >
-                {/* 1. Deep Atmosphere Glow (Blue/Purple Base) */}
-                <div className="absolute -inset-6 rounded-full bg-blue-600/30 blur-3xl opacity-30 group-hover:opacity-60 transition-opacity duration-500"></div>
-                
-                {/* 2. Intense Rim Flare (Cyan) - Concentrated at Top */}
-                <div className="absolute -top-3 -inset-x-2 h-12 rounded-full bg-cyan-400/50 blur-xl opacity-20 group-hover:opacity-80 transition-opacity duration-500"></div>
-
-                {/* Crystal Container */}
-                <div className="absolute inset-0 rounded-full overflow-hidden bg-slate-900/95 backdrop-blur-3xl border border-white/10 group-hover:border-cyan-200 shadow-[0_0_30px_-10px_rgba(34,211,238,0.5)] group-hover:shadow-[0_0_60px_-10px_rgba(34,211,238,0.8),inset_0_0_20px_rgba(34,211,238,0.3)] transition-all duration-500">
-                    
-                    {/* Base Dark Crystal */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-slate-700 via-black to-slate-950 z-0"></div>
-
-                    {/* Top Light Catch - Modified to be smooth (No border line) */}
-                    <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent z-10 opacity-100 group-hover:from-cyan-300/30 transition-all duration-500"></div>
-                    
-                    {/* Sharp Top Edge Highlight - BOOSTED 50% */}
-                    <div className="absolute top-0 left-4 right-4 h-[1.5px] bg-white/100 blur-[1.5px] group-hover:bg-cyan-100 group-hover:blur-[3px] group-hover:shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all z-20"></div>
-                    
-                    {/* NEW: Top-Center SPECULAR GLOW */}
-                    <div className="absolute top-[-2px] left-1/2 -translate-x-1/2 w-[40%] h-[3px] bg-white blur-[2px] opacity-80 group-hover:opacity-100 group-hover:w-[60%] transition-all z-30"></div>
-
-                    {/* Bottom Glow (Internal Light) */}
-                    <div className="absolute bottom-0 inset-x-0 h-[40%] bg-gradient-to-t from-blue-500/20 to-transparent z-10 opacity-60 group-hover:opacity-100 transition-opacity"></div>
-
-                    {/* Moving Sheen */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out z-20"></div>
-
-                    {/* Content */}
-                    <div className="relative z-40 flex items-center justify-center gap-3 h-full px-8">
-                        {/* Icon with Bloom */}
-                        <div className="relative">
-                            <div className="absolute inset-0 bg-cyan-400 blur-lg opacity-0 group-hover:opacity-70 transition-opacity"></div>
-                            <UploadIcon className="relative w-4 h-4 text-cyan-50 group-hover:text-white transition-colors drop-shadow-[0_0_8px_rgba(34,211,238,1)]" />
-                        </div>
-                        
-                        {/* Text with Bloom */}
-                        <span className="text-sm font-bold uppercase tracking-widest text-white text-shadow-md group-hover:text-shadow-[0_0_20px_rgba(34,211,238,1)] transition-all">
-                            Submit Work
-                        </span>
-                    </div>
-                </div>
-            </motion.button>
+                <UploadIcon className="w-4 h-4" />
+                <span>Submit Work</span>
+            </ShinyButton>
 
         </motion.div>
       </div>

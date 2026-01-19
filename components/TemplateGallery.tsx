@@ -43,15 +43,18 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
-  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
-  // Sync initial templates if provided (e.g. from App.tsx init)
+  // Sync initial templates if provided (e.g. from App.tsx init or refresh)
   useEffect(() => {
-      if (initialTemplates.length > 0 && isFirstLoad) {
+      // Always sync if initialTemplates changes to ensure new uploads appear
+      if (initialTemplates) {
           setData(initialTemplates);
-          setIsFirstLoad(false);
+          // If we receive a fresh batch (likely page 0), reset pagination state for consistency
+          if (initialTemplates.length <= 6) {
+              setPage(0);
+          }
       }
-  }, [initialTemplates, isFirstLoad]);
+  }, [initialTemplates]);
 
   // Debounce Search
   useEffect(() => {
@@ -93,8 +96,13 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
   // Trigger Fetch on Filter Changes
   useEffect(() => {
-      setPage(0);
-      fetchData(true);
+      // Only fetch if we are NOT using the initial data passed from props 
+      // OR if the user has changed filter/sort/search
+      // To simplify: if user interacts with filters, we take over fetching.
+      if (activeFilter !== 'All' || debouncedSearch !== '' || sortBy !== 'newest') {
+          setPage(0);
+          fetchData(true);
+      }
   }, [debouncedSearch, activeFilter, sortBy]);
 
   // Load More Handler
@@ -277,7 +285,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         </ScrollReveal>
 
         {/* Grid */}
-        {data.length === 0 && !isFetching ? (
+        {data.length === 0 && !isFetching && !initialLoading ? (
             <ScrollReveal>
                 <div className="min-h-[400px] flex flex-col items-center justify-center text-center border border-white/5 rounded-[2rem] bg-gradient-to-b from-white/[0.02] to-transparent p-12">
                     <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 text-slate-500 border border-white/5 shadow-inner">
@@ -296,7 +304,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         ) : (
             <div className="flex flex-col items-center">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 md:gap-12 w-full">
-                {isFetching && page === 0 ? (
+                {(isFetching && page === 0) || initialLoading ? (
                     // Initial Loading Skeletons
                     Array.from({ length: 6 }).map((_, index) => (
                         <div key={index} className="w-full aspect-[4/3] rounded-[24px] bg-[#050505] border border-white/5 animate-pulse"></div>

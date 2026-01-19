@@ -61,6 +61,20 @@ const App: React.FC = () => {
     } catch (e) { return new Set(); }
   });
 
+  // --- METHODS ---
+  const loadTemplates = async () => {
+      setIsLoading(true);
+      try {
+          // Fetch newest approved templates
+          const { data } = await api.getPublicTemplates(0, 6);
+          setTemplates(data);
+      } catch (e) {
+          console.error("Failed to load templates", e);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   // --- INITIALIZATION ---
   useEffect(() => {
     let mounted = true;
@@ -84,12 +98,7 @@ const App: React.FC = () => {
     };
 
     const initData = async () => {
-        setIsLoading(true);
-        const { data } = await api.getPublicTemplates(0, 6);
-        if (mounted) {
-            setTemplates(data);
-            setIsLoading(false);
-        }
+        if (mounted) await loadTemplates();
     };
 
     window.addEventListener('templr-data-update', (e: any) => {
@@ -150,6 +159,8 @@ const App: React.FC = () => {
     } else {
         await api.addTemplate(data, session?.user);
     }
+    // Refresh the list immediately so the user sees the new item
+    await loadTemplates();
   };
 
   const handleEditTemplate = (template: Template) => {
