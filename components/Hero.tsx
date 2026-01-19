@@ -320,8 +320,8 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                     {/* Base Dark Crystal */}
                     <div className="absolute inset-0 bg-gradient-to-b from-slate-700 via-black to-slate-950 z-0"></div>
 
-                    {/* Top Light Catch (The Facet) - BOOSTED 50% */}
-                    <div className="absolute top-0 inset-x-0 h-[60%] bg-gradient-to-b from-white/30 to-transparent z-10 border-b border-white/10 opacity-100 group-hover:from-cyan-300/50 transition-all duration-500"></div>
+                    {/* Top Light Catch - Modified to be smooth (No border line) */}
+                    <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent z-10 opacity-100 group-hover:from-cyan-300/30 transition-all duration-500"></div>
                     
                     {/* Sharp Top Edge Highlight - BOOSTED 50% */}
                     <div className="absolute top-0 left-4 right-4 h-[1.5px] bg-white/100 blur-[1.5px] group-hover:bg-cyan-100 group-hover:blur-[3px] group-hover:shadow-[0_0_15px_rgba(255,255,255,0.8)] transition-all z-20"></div>
