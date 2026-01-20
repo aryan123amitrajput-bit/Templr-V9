@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, ClipboardIcon, CheckCircleIcon, CpuIcon, LayersIcon, ShieldCheckIcon, RocketIcon, LightbulbIcon } from './Icons';
+import { XIcon, ClipboardIcon, CheckCircleIcon, CpuIcon, ShieldCheckIcon, RocketIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 import { supabase, seedDatabase, Session } from '../api';
 
@@ -222,16 +222,16 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
             </div>
 
             <div className="flex border-b border-white/5 bg-[#0a0a0a] overflow-x-auto no-scrollbar">
-                <button onClick={() => setActiveTab('db')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[120px] ${activeTab === 'db' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                <button onClick={() => setActiveTab('db')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'db' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     SQL (Run First)
                 </button>
-                <button onClick={() => setActiveTab('quick')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[120px] ${activeTab === 'quick' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                <button onClick={() => setActiveTab('quick')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'quick' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     Connect
                 </button>
-                <button onClick={() => setActiveTab('env')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[120px] ${activeTab === 'env' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                <button onClick={() => setActiveTab('env')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'env' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     .env
                 </button>
-                <button onClick={() => setActiveTab('seed')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[120px] ${activeTab === 'seed' ? 'border-emerald-500 text-white bg-emerald-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                <button onClick={() => setActiveTab('seed')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'seed' ? 'border-emerald-500 text-white bg-emerald-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     Seed Data
                 </button>
             </div>

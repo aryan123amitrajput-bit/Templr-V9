@@ -23,9 +23,7 @@ const getCreatorDetails = (name: string) => {
   return {
     role: seed % 2 === 0 ? 'UI/UX Architect' : 'Frontend Engineer',
     location: seed % 3 === 0 ? 'San Francisco, CA' : seed % 3 === 1 ? 'Tokyo, Japan' : 'Berlin, Germany',
-    bio: `Digital artisan crafting high-fidelity experiences. specialized in ${seed % 2 === 0 ? 'minimalist interfaces' : 'immersive 3D web'} and design systems.`,
-    followers: (seed * 1234) % 15000 + 1000,
-    following: (seed * 12) % 500
+    bio: `Digital artisan crafting high-fidelity experiences. specialized in ${seed % 2 === 0 ? 'minimalist interfaces' : 'immersive 3D web'} and design systems.`
   };
 };
 
@@ -52,9 +50,6 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
   const realAvatar = useMemo(() => {
       return creatorTemplates.find(t => t.authorAvatar)?.authorAvatar;
   }, [creatorTemplates]);
-
-  const totalViews = creatorTemplates.reduce((acc, t) => acc + t.views, 0);
-  const totalLikes = creatorTemplates.reduce((acc, t) => acc + t.likes, 0);
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -135,21 +130,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Social Stats */}
-                    <div className="flex gap-8 md:gap-12 pb-2">
-                        <div className="flex flex-col items-center md:items-end">
-                            <span className="text-2xl font-bold text-white font-mono">{details.followers.toLocaleString()}</span>
-                            <span className="text-[10px] uppercase tracking-widest text-slate-500">Followers</span>
-                        </div>
-                        <div className="flex flex-col items-center md:items-end">
-                            <span className="text-2xl font-bold text-white font-mono">{totalViews >= 1000 ? (totalViews/1000).toFixed(1) + 'k' : totalViews}</span>
-                            <span className="text-[10px] uppercase tracking-widest text-slate-500">Total Views</span>
-                        </div>
-                        <div className="flex flex-col items-center md:items-end">
-                            <span className="text-2xl font-bold text-white font-mono">{totalLikes}</span>
-                            <span className="text-[10px] uppercase tracking-widest text-slate-500">Likes</span>
-                        </div>
-                    </div>
+                    {/* Stats removed as requested */}
 
                 </div>
             </div>
@@ -184,11 +165,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="pt-8 border-t border-white/5">
-                        <button className="w-full py-3 bg-white text-black font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-slate-200 transition-colors">
-                            Follow Creator
-                        </button>
-                    </div>
+                    {/* Follow button removed as requested */}
                 </div>
 
                 {/* Main Grid (Templates) */}
