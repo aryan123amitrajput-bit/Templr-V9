@@ -69,6 +69,8 @@ export type Session = {
     user_metadata: {
         avatar_url?: string;
         full_name?: string;
+        usage_count?: number;
+        is_pro?: boolean;
     };
   };
 };
@@ -353,6 +355,22 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
   return data;
 };
 
+// NEW: Update Usage count in User Metadata
+export const updateUserUsage = async (count: number) => {
+  const { error } = await supabase.auth.updateUser({
+    data: { usage_count: count }
+  });
+  if (error) console.error("Failed to sync usage", error);
+};
+
+// NEW: Set Pro Status in User Metadata
+export const setProStatus = async (status: boolean) => {
+    const { error } = await supabase.auth.updateUser({
+        data: { is_pro: status }
+    });
+    if (error) console.error("Failed to set pro status", error);
+};
+
 export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
     try {
         const dbUpdates: any = {};
@@ -401,7 +419,7 @@ export const signUpWithEmail = async (email: string, pass: string, name: string)
     const { data, error } = await supabase.auth.signUp({
         email,
         password: pass,
-        options: { data: { full_name: name } }
+        options: { data: { full_name: name, usage_count: 0, is_pro: false } }
     });
     if (error) throw error;
     return data;

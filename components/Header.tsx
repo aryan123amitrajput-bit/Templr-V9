@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon } from './Icons';
+import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon } from './Icons';
 import { playClickSound } from '../audio';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
@@ -16,10 +16,22 @@ interface HeaderProps {
   soundEnabled: boolean;
   onToggleSound: (enabled: boolean) => void;
   onOpenSetup: () => void;
-  onOpenSettings?: () => void; // Optional for backward compatibility, but we'll implement it
+  onOpenSettings?: () => void;
+  isSubscribed?: boolean; // Added prop
 }
 
-const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, onSignOut, onDashboardClick, soundEnabled, onToggleSound, onOpenSetup, onOpenSettings }) => {
+const Header: React.FC<HeaderProps> = ({ 
+    session, 
+    onUploadClick, 
+    onLoginClick, 
+    onSignOut, 
+    onDashboardClick, 
+    soundEnabled, 
+    onToggleSound, 
+    onOpenSetup, 
+    onOpenSettings,
+    isSubscribed = false
+}) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +66,8 @@ const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, o
                     <div className="w-1 h-1 bg-black rounded-[1px]"></div>
                 </div>
                 <span className="font-display font-bold text-sm tracking-tight text-white transition-colors">Templr</span>
+                
+                {/* Status Indicator */}
                 {isApiConfigured ? (
                     <div className="hidden sm:flex items-center gap-1.5 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                          <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
@@ -87,6 +101,14 @@ const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, o
             {/* Actions */}
             <div className="flex items-center gap-3 pl-2">
                 
+                {/* PRO LABEL - Visible if Subscribed */}
+                {isSubscribed && (
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]">
+                        <CheckCircleIcon className="w-3 h-3 text-black" />
+                        <span className="text-[10px] font-bold uppercase text-black tracking-widest">PRO</span>
+                    </div>
+                )}
+
                 {/* Sound Toggle */}
                 <button 
                     onClick={() => { playClickSound(); onToggleSound(!soundEnabled); }}
@@ -113,7 +135,7 @@ const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, o
                             onClick={() => { playClickSound(); onUploadClick(); }}
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="group relative hidden sm:inline-flex items-center gap-2 px-6 py-2 rounded-full bg-zinc-900/50 border border-white/10 hover:border-white/30 transition-all duration-300 shadow-[0_0_0_0_rgba(255,255,255,0)] hover:shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)] overflow-hidden"
+                            className="group relative hidden sm:inline-flex items-center gap-2 px-6 py-2 rounded-full bg-zinc-900/50 border border-white/10 hover:border-white/30 transition-all duration-300 shadow-[0_0_0_0_rgba(255,255,255,0.0)] hover:shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)] overflow-hidden"
                         >
                             {/* Moving Sheen - Subtle White */}
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000 ease-in-out"></div>
@@ -164,7 +186,7 @@ const Header: React.FC<HeaderProps> = ({ session, onUploadClick, onLoginClick, o
                     </button>
                 )}
             </div>
-      </header>
+        </header>
     </div>
   );
 };

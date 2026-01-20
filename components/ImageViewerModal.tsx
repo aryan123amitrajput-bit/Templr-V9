@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, HeartIcon, EyeIcon, LockIcon, CheckCircleIcon, GlobeIcon, ArrowRightIcon, UploadIcon, ArrowLeftIcon, FileCodeIcon, LinkIcon, LayersIcon } from './Icons';
+import { XIcon, HeartIcon, EyeIcon, LockIcon, CheckCircleIcon, GlobeIcon, ArrowRightIcon, UploadIcon, ArrowLeftIcon, FileCodeIcon, LinkIcon, LayersIcon, RocketIcon } from './Icons';
 import { Template } from '../api';
 import { playClickSound, playSuccessSound } from '../audio';
 
@@ -9,9 +9,19 @@ interface ImageViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   template: Template | null;
+  onUsageAttempt: () => boolean; // Logic to check limits
+  usageCount: number;
+  isSubscribed: boolean;
 }
 
-const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, template }) => {
+const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    template, 
+    onUsageAttempt, 
+    usageCount, 
+    isSubscribed 
+}) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -30,6 +40,8 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
   }, [template]);
 
   const handleVisitLive = () => {
+      if (!onUsageAttempt()) return; // Block if limit reached
+
       if (template?.fileUrl && template.fileUrl !== '#') {
           playClickSound();
           let url = template.fileUrl;
@@ -42,6 +54,8 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
   };
 
   const handleDownload = () => {
+      if (!onUsageAttempt()) return; // Block if limit reached
+
       playClickSound();
       playSuccessSound();
       
@@ -68,30 +82,32 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
           URL.revokeObjectURL(url);
       }
   };
+
+  const handleCopyCode = () => {
+      if (!onUsageAttempt()) return; // Block if limit reached
+      if (template?.sourceCode) {
+          navigator.clipboard.writeText(template.sourceCode);
+          playSuccessSound();
+      }
+  };
   
   if (!template) return null;
 
   // --- STRICT WORKFLOW LOGIC ---
 
   // 1. HAS CODE?
-  // Code is available if:
-  // a) 'sourceCode' string is not empty
-  // OR
-  // b) fileType is 'zip' (implies download)
   const rawCode = template.sourceCode || '';
   const isZip = template.fileType === 'zip';
   const hasCode = (rawCode.trim().length > 0) || isZip;
 
   // 2. HAS LINK?
-  // Link is available if:
-  // a) fileUrl exists and is not empty
-  // b) fileUrl is NOT '#' (placeholder)
-  // c) It is NOT a zip file (if it's a zip, fileUrl is the download link, not preview)
   const rawUrl = template.fileUrl || '';
   const hasLink = !!rawUrl && rawUrl.trim() !== '' && rawUrl !== '#' && !isZip;
 
   const displayImage = template.bannerUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop';
   
+  const isLimitReached = !isSubscribed && usageCount >= 3;
+
   return (
     <AnimatePresence>
     {isOpen && (
@@ -153,7 +169,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
                                         <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500/50"></div><div className="w-3 h-3 rounded-full bg-yellow-500/50"></div><div className="w-3 h-3 rounded-full bg-green-500/50"></div></div>
                                         <span className="text-slate-500 text-xs font-mono">source_code_snapshot.tsx</span>
                                         <div className="ml-auto flex gap-2">
-                                            <button onClick={() => { navigator.clipboard.writeText(template.sourceCode); playSuccessSound(); }} className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 bg-white/5 px-2 py-1 rounded">Copy Code</button>
+                                            <button onClick={handleCopyCode} className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 bg-white/5 px-2 py-1 rounded">Copy Code</button>
                                         </div>
                                     </div>
                                     <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 custom-scrollbar whitespace-pre-wrap leading-relaxed bg-[#050505]">
@@ -228,7 +244,32 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
                     <div className="absolute bottom-0 left-0 right-0 p-6 bg-[#09090b]/90 backdrop-blur-xl border-t border-white/10 z-40">
                         <div className="flex justify-between items-end mb-4">
                             <div><p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Price</p><p className="text-3xl font-bold text-white tracking-tight">Free</p></div>
-                            <div className="text-right"><p className="text-[10px] text-slate-500 uppercase font-bold mb-1">License</p><p className="text-xs text-white">MIT / Open Source</p></div>
+                            
+                            {/* USAGE LIMIT INDICATOR */}
+                            {!isSubscribed && (
+                                <div className="flex flex-col items-end">
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Daily Limit</p>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex gap-1">
+                                            {[1, 2, 3].map(i => (
+                                                <div key={i} className={`w-1.5 h-6 rounded-full transition-colors ${i <= usageCount ? (isLimitReached ? 'bg-red-500' : 'bg-white') : 'bg-white/10'}`}></div>
+                                            ))}
+                                        </div>
+                                        <span className={`text-xs font-mono font-bold ${isLimitReached ? 'text-red-400' : 'text-white'}`}>
+                                            {Math.min(usageCount, 3)}/3
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {isSubscribed && (
+                                <div className="text-right">
+                                    <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/10 border border-yellow-500/20">
+                                        <RocketIcon className="w-3 h-3 text-yellow-500" />
+                                        <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest">Unlimited</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         
                         <div className="flex flex-col gap-3">
@@ -237,11 +278,13 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
                                 {hasLink && (
                                     <button 
                                         onClick={handleVisitLive}
-                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border
-                                        ${hasCode ? 'flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10' : 'w-full bg-white text-black hover:bg-slate-200'}`}
+                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
+                                        ${hasCode ? 'flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10' : 'w-full bg-white text-black hover:bg-slate-200'}
+                                        ${isLimitReached && 'opacity-80'}`}
                                     >
                                         <GlobeIcon className="w-4 h-4" />
-                                        <span>Live Preview</span>
+                                        <span>{isLimitReached ? 'Unlock Link' : 'Live Preview'}</span>
+                                        {isLimitReached && <LockIcon className="w-3 h-3 text-current ml-1" />}
                                     </button>
                                 )}
 
@@ -249,12 +292,22 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
                                 {hasCode && (
                                     <button 
                                         onClick={handleDownload} 
-                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border
+                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
                                         ${hasLink ? 'flex-1' : 'w-full'}
-                                        bg-white text-black hover:bg-slate-200`}
+                                        bg-white text-black hover:bg-slate-200
+                                        ${isLimitReached && 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'}`}
                                     >
-                                        <UploadIcon className="w-4 h-4 rotate-180" />
-                                        <span>Download Code</span>
+                                        {isLimitReached ? (
+                                            <>
+                                                <LockIcon className="w-4 h-4 text-yellow-500" />
+                                                <span>Unlock Code</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <UploadIcon className="w-4 h-4 rotate-180" />
+                                                <span>Download Code</span>
+                                            </>
+                                        )}
                                     </button>
                                 )}
                             </div>
@@ -274,14 +327,11 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ isOpen, onClose, te
                                 </div>
                             )}
 
-                            {/* State 2: LINK ONLY Helper */}
-                            {hasLink && !hasCode && (
-                                <p className="text-[10px] text-slate-500 font-medium text-center">Code not shared by creator</p>
-                            )}
-                            
-                            {/* State 3: CODE ONLY Helper */}
-                            {!hasLink && hasCode && (
-                                <p className="text-[10px] text-slate-500 font-medium text-center">No live preview available. Download to view locally.</p>
+                            {/* Limit Reached Helper Text */}
+                            {isLimitReached && (
+                                <p className="text-[10px] text-red-400 font-medium text-center uppercase tracking-wider animate-pulse">
+                                    Free limit reached. Upgrade to continue.
+                                </p>
                             )}
                         </div>
                     </div>

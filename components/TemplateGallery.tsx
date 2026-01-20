@@ -18,6 +18,7 @@ interface TemplateGalleryProps {
   onCreatorClick?: (creatorName: string) => void;
   isLoading: boolean;
   likedIds: Set<string>; // Added prop for sync
+  isLoggedIn: boolean; // Added auth check
 }
 
 type SortOption = 'newest' | 'popular' | 'likes';
@@ -29,7 +30,8 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     onLike, 
     onCreatorClick, 
     isLoading: initialLoading,
-    likedIds
+    likedIds,
+    isLoggedIn
 }) => {
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,6 +123,13 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
   // Optimistic Like Handler
   const handleLocalLike = (id: string) => {
+      // If not logged in, trigger parent onLike (which opens login modal)
+      // but DO NOT update local state, so the heart doesn't turn red.
+      if (!isLoggedIn) {
+          onLike(id);
+          return;
+      }
+
       // 1. Update Count Locally immediately
       setData(current => current.map(t => {
           if (t.id === id) {

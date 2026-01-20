@@ -13,6 +13,7 @@ import LoginModal from './components/LoginModal';
 import CreatorProfileModal from './components/CreatorProfileModal';
 import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
+import SubscriptionModal from './components/SubscriptionModal';
 import Notification, { NotificationType } from './components/Notification';
 import WhyTemplr from './components/WhyTemplr';
 import ContactFloat from './components/ContactFloat';
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   const [isViewerOpen, setViewerOpen] = useState(false);
   const [isSetupOpen, setSetupOpen] = useState(false);
   const [isProfileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [isSubscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   
   // Editing State
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
@@ -43,6 +45,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   
+  // --- SUBSCRIPTION STATE ---
+  const [isSubscribed, setIsSubscribed] = useState(false);
+
   // --- BOOT STATE ---
   const [showSplash, setShowSplash] = useState(true);
 
@@ -59,6 +64,14 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('templr_viewed_ids');
       return new Set(saved ? JSON.parse(saved) : []);
     } catch (e) { return new Set(); }
+  });
+
+  // Free Usage Limit State (0 to 3)
+  const [usageCount, setUsageCount] = useState<number>(() => {
+      try {
+          const saved = localStorage.getItem('templr_usage_count');
+          return saved ? parseInt(saved) : 0;
+      } catch (e) { return 0; }
   });
 
   // --- METHODS ---
@@ -117,8 +130,70 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // --- SYNC SESSION METADATA (USAGE & SUBSCRIPTION) ---
+  useEffect(() => {
+    if (session) {
+        // 1. Sync Pro Status from Cloud
+        if (session.user.user_metadata?.is_pro === true) {
+            setIsSubscribed(true);
+            localStorage.setItem('templr_pro_status', 'true');
+        } else {
+            // Check legacy local just in case, but prefer cloud
+            const localPro = localStorage.getItem('templr_pro_status');
+            if (localPro === 'true') setIsSubscribed(true);
+        }
+
+        // 2. Sync Usage Count from Cloud
+        const remoteUsage = session.user.user_metadata?.usage_count;
+        if (typeof remoteUsage === 'number') {
+            setUsageCount(remoteUsage);
+        }
+    } else {
+        // Fallback to local if no session (Guest mode)
+        try {
+            const savedUsage = localStorage.getItem('templr_usage_count');
+            if(savedUsage) setUsageCount(parseInt(savedUsage));
+            
+            const localPro = localStorage.getItem('templr_pro_status');
+            setIsSubscribed(localPro === 'true');
+        } catch (e) { }
+    }
+  }, [session]);
+
   // --- HANDLERS ---
   
+  // Usage Limiter Logic
+  const handleUsageAttempt = () => {
+      // If subscribed, bypass limit check
+      if (isSubscribed) return true;
+
+      if (usageCount >= 3) {
+          playOpenModalSound();
+          setSubscriptionModalOpen(true);
+          return false;
+      }
+
+      const newCount = usageCount + 1;
+      setUsageCount(newCount);
+
+      // Persist based on auth state
+      if (session) {
+          api.updateUserUsage(newCount);
+      } else {
+          localStorage.setItem('templr_usage_count', newCount.toString());
+      }
+      return true;
+  };
+
+  const handleUpgradeConfirm = () => {
+      setIsSubscribed(true);
+      // Persist
+      localStorage.setItem('templr_pro_status', 'true');
+      if (session) {
+          api.setProStatus(true);
+      }
+  };
+
   const handleToggleSound = (enabled: boolean) => {
       setSoundEnabledState(enabled);
       setSoundEnabled(enabled);
@@ -150,6 +225,10 @@ const App: React.FC = () => {
   const handleSignOut = async () => { 
       await api.signOut(); 
       setSession(null);
+      // Reset sensitive local state on sign out to prevent leakage
+      setUsageCount(0); // Optional: Reset or keep guest usage separate
+      setIsSubscribed(false);
+      localStorage.removeItem('templr_pro_status'); 
       showNotification("Signed out successfully", 'info');
   };
 
@@ -170,6 +249,14 @@ const App: React.FC = () => {
   };
 
   const handleViewClick = (template: Template) => {
+    // AUTH CHECK: Must be signed in to view details
+    if (!session) {
+        playOpenModalSound();
+        setLoginModalOpen(true);
+        showNotification("Please sign in to view details", 'info');
+        return;
+    }
+
     if (template.title) {
         playOpenModalSound();
         if (!viewedTemplateIds.has(template.id)) {
@@ -190,6 +277,14 @@ const App: React.FC = () => {
   };
 
   const handleLikeClick = (templateId: string) => {
+    // AUTH CHECK: Must be signed in to like
+    if (!session) {
+        playOpenModalSound();
+        setLoginModalOpen(true);
+        showNotification("Please sign in to like assets", 'info');
+        return;
+    }
+
     // 1. Update Persistent State
     const isCurrentlyLiked = likedTemplateIds.has(templateId);
     const newSet = new Set(likedTemplateIds);
@@ -252,6 +347,7 @@ const App: React.FC = () => {
         onToggleSound={handleToggleSound}
         onOpenSetup={handleOpenSetup}
         onOpenSettings={handleOpenSettings}
+        isSubscribed={isSubscribed}
       />
       
       <main>
@@ -265,6 +361,7 @@ const App: React.FC = () => {
           onView={handleViewClick}
           onCreatorClick={handleOpenCreator}
           likedIds={likedTemplateIds}
+          isLoggedIn={!!session}
         />
         
         <WhyTemplr />
@@ -291,7 +388,14 @@ const App: React.FC = () => {
         initialData={editingTemplate}
         isEditing={!!editingTemplate}
       />
-      <ImageViewerModal isOpen={isViewerOpen} onClose={handleCloseViewer} template={viewingTemplate} />
+      <ImageViewerModal 
+        isOpen={isViewerOpen} 
+        onClose={handleCloseViewer} 
+        template={viewingTemplate} 
+        onUsageAttempt={handleUsageAttempt}
+        usageCount={usageCount}
+        isSubscribed={isSubscribed}
+      />
       <CreatorProfileModal 
         isOpen={!!viewingCreator}
         onClose={handleCloseCreator}
@@ -321,6 +425,11 @@ const App: React.FC = () => {
         onShowNotification={showNotification}
       />
       <SetupGuideModal isOpen={isSetupOpen} onClose={handleCloseSetup} />
+      <SubscriptionModal 
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setSubscriptionModalOpen(false)}
+        onUpgradeConfirm={handleUpgradeConfirm}
+      />
       
       {notification && (
         <Notification 

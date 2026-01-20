@@ -178,10 +178,17 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
           }
       }
     } catch (err: any) {
-      console.error("Auth Error:", err);
+      const rawMsg = (err.message || "").toLowerCase();
+      
+      // Log for debugging but avoid console.error for expected user input mistakes
+      if (rawMsg.includes('invalid login credentials') || rawMsg.includes('invalid password')) {
+          console.warn("Auth: User attempted login with invalid credentials.");
+      } else {
+          console.error("Auth Error:", err);
+      }
+      
       playNotificationSound();
       
-      const rawMsg = (err.message || "").toLowerCase();
       // Default to the actual error message from backend for transparency
       let displayError = err.message || "An unexpected error occurred.";
 
