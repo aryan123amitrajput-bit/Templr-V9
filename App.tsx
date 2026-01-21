@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import TemplateGallery from './components/TemplateGallery';
@@ -438,6 +439,8 @@ const App: React.FC = () => {
           onClose={() => setNotification(null)}
         />
       )}
+      
+      <Analytics />
     </div>
   );
 };
