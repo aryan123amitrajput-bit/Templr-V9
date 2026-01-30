@@ -46,27 +46,54 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   onLike,
   onCreatorClick
 }) => {
-  const [likeBump, setLikeBump] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const isFirstRender = useRef(true);
   const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Lottie Ref
+  const playerRef = useRef<any>(null);
 
   const isZip = fileType === 'zip';
   const hasCode = (sourceCode && sourceCode.trim().length > 0) || isZip;
   const hasLink = fileUrl && fileUrl.trim() !== '' && fileUrl !== '#' && !isZip;
-  const isVisualOnly = !hasCode && !hasLink;
 
   useEffect(() => {
+    const player = playerRef.current;
+
+    // Handle initial state (Mount)
     if (isFirstRender.current) {
+        if (player) {
+            if (isLiked) {
+                // If liked, jump to end
+                setTimeout(() => {
+                    player.seek('100%');
+                }, 200);
+            } else {
+                // If not liked, ensure start
+                setTimeout(() => {
+                    player.seek('0%');
+                }, 200);
+            }
+        }
         isFirstRender.current = false;
         return;
     }
-    setLikeBump(true);
-    const timer = setTimeout(() => setLikeBump(false), 200);
-    return () => clearTimeout(timer);
-  }, [likes]);
+    
+    // Handle Updates (User Interaction)
+    if (player) {
+        if (isLiked) {
+            // Like: Play forward
+            player.setDirection(1);
+            player.play();
+        } else {
+            // Unlike: Play backward (unfill)
+            player.setDirection(-1);
+            player.play();
+        }
+    }
+  }, [isLiked]);
 
   useEffect(() => {
     if (!videoRef.current || !videoUrl || videoError) return;
@@ -193,8 +220,27 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-y-2 group-hover:translate-y-0 pointer-events-auto">
-                     <button onClick={handleLike} className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95">
-                        <HeartIcon className={`w-5 h-5 transition-transform duration-200 ${likeBump ? 'scale-150' : ''} ${isLiked ? 'fill-rose-500 text-rose-500' : 'text-white'}`} />
+                     <button 
+                        onClick={handleLike} 
+                        className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all hover:scale-105 active:scale-95 overflow-hidden"
+                     >
+                        {/* Lottie Animation Wrapper with Filter Logic */}
+                        <div 
+                            className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
+                                isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'
+                            }`}
+                        >
+                            {/* @ts-ignore */}
+                            <dotlottie-player
+                                ref={playerRef}
+                                src="https://lottie.host/c3e224ed-42e1-4283-96aa-2994ab046363/gMYruNTRma.lottie"
+                                background="transparent"
+                                speed="1"
+                                loop={false} 
+                                playMode="normal"
+                                style={{ width: '100%', height: '100%' }}
+                            ></dotlottie-player>
+                        </div>
                      </button>
                      <button onClick={handleViewButton} className="group/btn w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:bg-slate-200 hover:scale-105 active:scale-95 transition-all">
                          <ArrowRightIcon className="w-5 h-5 transition-transform group-hover/btn:translate-x-0.5" />

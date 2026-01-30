@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon } from './Icons';
+import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon, RocketIcon } from './Icons';
 import { playClickSound } from '../audio';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
@@ -17,7 +17,8 @@ interface HeaderProps {
   onToggleSound: (enabled: boolean) => void;
   onOpenSetup: () => void;
   onOpenSettings?: () => void;
-  isSubscribed?: boolean; // Added prop
+  isSubscribed?: boolean;
+  creditsLeft?: number; // New prop
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -30,7 +31,8 @@ const Header: React.FC<HeaderProps> = ({
     onToggleSound, 
     onOpenSetup, 
     onOpenSettings,
-    isSubscribed = false
+    isSubscribed = false,
+    creditsLeft
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -102,11 +104,18 @@ const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-3 pl-2">
                 
                 {/* PRO LABEL - Visible if Subscribed */}
-                {isSubscribed && (
+                {isSubscribed ? (
                     <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]">
                         <CheckCircleIcon className="w-3 h-3 text-black" />
                         <span className="text-[10px] font-bold uppercase text-black tracking-widest">PRO</span>
                     </div>
+                ) : (
+                    session && creditsLeft !== undefined && (
+                        <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border ${creditsLeft === 0 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                            <RocketIcon className="w-3 h-3" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">{creditsLeft} Credits</span>
+                        </div>
+                    )
                 )}
 
                 {/* Sound Toggle */}

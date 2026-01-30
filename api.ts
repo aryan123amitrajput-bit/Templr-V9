@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Template as MockTemplate, templates as MockTemplates } from './db';
 
 // ==========================================
-//   TEMPLR PRODUCTION ENGINE v9.36
+//   TEMPLR PRODUCTION ENGINE v9.37
 // ==========================================
 
 const PROVIDED_URL = 'https://risynxckpsgqgprnaccr.supabase.co';
@@ -141,110 +141,123 @@ export const getPublicTemplates = async (
         return { data: [], hasMore: false };
     }
 
-    let query = supabase
-        .from('templates')
-        .select('*')
-        .eq('status', 'approved');
+    try {
+        let query = supabase
+            .from('templates')
+            .select('*')
+            .eq('status', 'approved');
 
-    if (searchQuery) {
-        query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
-    }
-
-    if (category !== 'All') {
-        if (category === 'Popular') {
-            query = query.gt('views', 100); 
-        } else if (category === 'Newest') {
-             // Handled by default sort
-        } else {
-            query = query.eq('category', category);
+        if (searchQuery) {
+            query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
         }
+
+        if (category !== 'All') {
+            if (category === 'Popular') {
+                query = query.gt('views', 100); 
+            } else if (category === 'Newest') {
+                 // Handled by default sort
+            } else {
+                query = query.eq('category', category);
+            }
+        }
+
+        if (sortBy === 'popular') {
+            query = query.order('views', { ascending: false });
+        } else if (sortBy === 'likes') {
+            query = query.order('likes', { ascending: false });
+        } else {
+            query = query.order('created_at', { ascending: false });
+        }
+
+        const from = page * limit;
+        const to = from + limit;
+        
+        const { data, error } = await query.range(from, to - 1);
+
+        if (error) {
+            console.error("Fetch error:", error);
+            return { data: [], hasMore: false };
+        }
+
+        const hasMore = data.length === limit;
+
+        return { 
+            data: data.map(mapTemplate), 
+            hasMore 
+        };
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) {
+            throw new Error("Connection failed. Check your internet or Supabase status.");
+        }
+        throw e;
     }
-
-    if (sortBy === 'popular') {
-        query = query.order('views', { ascending: false });
-    } else if (sortBy === 'likes') {
-        query = query.order('likes', { ascending: false });
-    } else {
-        query = query.order('created_at', { ascending: false });
-    }
-
-    const from = page * limit;
-    const to = from + limit;
-    
-    const { data, error } = await query.range(from, to - 1);
-
-    if (error) {
-        console.error("Fetch error:", error);
-        return { data: [], hasMore: false };
-    }
-
-    const hasMore = data.length === limit;
-
-    return { 
-        data: data.map(mapTemplate), 
-        hasMore 
-    };
 };
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     if (!isApiConfigured) return [];
 
-    const { data, error } = await supabase
-        .from('templates')
-        .select('author_name, author_email, author_avatar, views, likes')
-        .eq('status', 'approved');
+    try {
+        const { data, error } = await supabase
+            .from('templates')
+            .select('author_name, author_email, author_avatar, views, likes')
+            .eq('status', 'approved');
 
-    if (error || !data) return [];
+        if (error || !data) return [];
 
-    const statsMap = new Map<string, CreatorStats>();
+        const statsMap = new Map<string, CreatorStats>();
 
-    data.forEach((t: any) => {
-        const email = t.author_email || 'anon';
-        const current = statsMap.get(email) || {
-            name: t.author_name || 'Anonymous',
-            email: email,
-            totalViews: 0,
-            totalLikes: 0,
-            templateCount: 0,
-            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'A')}&background=random`,
-            role: 'Creator'
-        };
+        data.forEach((t: any) => {
+            const email = t.author_email || 'anon';
+            const current = statsMap.get(email) || {
+                name: t.author_name || 'Anonymous',
+                email: email,
+                totalViews: 0,
+                totalLikes: 0,
+                templateCount: 0,
+                avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'A')}&background=random`,
+                role: 'Creator'
+            };
 
-        if (t.author_avatar) {
-            current.avatarUrl = t.author_avatar;
+            if (t.author_avatar) {
+                current.avatarUrl = t.author_avatar;
+            }
+
+            current.totalViews += (t.views || 0);
+            current.totalLikes += (t.likes || 0);
+            current.templateCount += 1;
+            statsMap.set(email, current);
+        });
+
+        const allCreators = Array.from(statsMap.values())
+            .sort((a, b) => b.totalViews - a.totalViews)
+            .slice(0, 20);
+
+        for (let i = allCreators.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
         }
 
-        current.totalViews += (t.views || 0);
-        current.totalLikes += (t.likes || 0);
-        current.templateCount += 1;
-        statsMap.set(email, current);
-    });
-
-    const allCreators = Array.from(statsMap.values())
-        .sort((a, b) => b.totalViews - a.totalViews)
-        .slice(0, 20);
-
-    for (let i = allCreators.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
+        return allCreators.slice(0, 4).map(c => ({
+            ...c,
+            role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
+        }));
+    } catch (e) {
+        return [];
     }
-
-    return allCreators.slice(0, 4).map(c => ({
-        ...c,
-        role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
-    }));
 };
 
 export const listenForUserTemplates = async (userEmail: string, callback: (templates: Template[]) => void) => {
     if (!userEmail) { callback([]); return { unsubscribe: () => {} }; }
 
     const fetchUserTemplates = async () => {
-        const { data } = await supabase
-            .from('templates')
-            .select('*')
-            .eq('author_email', userEmail)
-            .order('created_at', { ascending: false });
-        if (data) callback(data.map(mapTemplate));
+        try {
+            const { data } = await supabase
+                .from('templates')
+                .select('*')
+                .eq('author_email', userEmail)
+                .order('created_at', { ascending: false });
+            if (data) callback(data.map(mapTemplate));
+        } catch (e) {}
     };
 
     fetchUserTemplates();
@@ -281,28 +294,23 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         if (error) throw error;
     } catch (error: any) {
         const msg = error.message?.toLowerCase() || '';
-        console.error("Database insert failed:", msg);
+        if (msg.includes('fetch')) throw new Error("Connection error while saving template.");
         
-        // Surgical schema compatibility
         if (msg.includes('column') && (msg.includes('not find') || msg.includes('does not exist'))) {
             const legacyPayload = { ...dbPayload };
-            
-            // Only delete columns that the DB explicitly complained about
             if (msg.includes('video_url')) delete legacyPayload.video_url;
             if (msg.includes('tags')) delete legacyPayload.tags;
             if (msg.includes('author_avatar')) delete legacyPayload.author_avatar;
             if (msg.includes('source_code')) delete legacyPayload.source_code;
             if (msg.includes('gallery_images')) delete legacyPayload.gallery_images;
 
-            // If we deleted nothing but there's still an error, it's a generic column error
             if (JSON.stringify(dbPayload) === JSON.stringify(legacyPayload)) {
-                 // Try a broad strip if retry logic fails
                  delete legacyPayload.video_url;
                  delete legacyPayload.tags;
             }
 
             const { error: retryError } = await supabase.from('templates').insert(legacyPayload);
-            if (retryError) throw new Error("Database schema mismatch. Run the SQL Fix Script in 'Connect Backend' guide.");
+            if (retryError) throw new Error("Database schema mismatch. Contact support.");
         } else {
             throw new Error(error.message);
         }
@@ -322,53 +330,56 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.sourceCode) dbPayload.source_code = data.sourceCode;
     if (data.fileUrl) dbPayload.file_url = data.fileUrl;
 
-    const { error } = await supabase
-        .from('templates')
-        .update(dbPayload)
-        .eq('id', id)
-        .eq('author_email', userEmail);
-
-    if (error) throw new Error(error.message);
+    try {
+        const { error } = await supabase
+            .from('templates')
+            .update(dbPayload)
+            .eq('id', id)
+            .eq('author_email', userEmail);
+        if (error) throw new Error(error.message);
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) throw new Error("Connection failed while updating.");
+        throw e;
+    }
 };
 
 export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
-  const { data, error } = await supabase.auth.updateUser({
-    data: updates
-  });
-  if (error) throw new Error(error.message);
+  try {
+    const { data, error } = await supabase.auth.updateUser({ data: updates });
+    if (error) throw new Error(error.message);
 
-  if (data.user?.email) {
-      try {
-          const syncUpdates: any = {};
-          if (updates.full_name) syncUpdates.author_name = updates.full_name;
-          if (updates.avatar_url) syncUpdates.author_avatar = updates.avatar_url;
-          
-          await supabase
-            .from('templates')
-            .update(syncUpdates)
-            .eq('author_email', data.user.email);
-      } catch (e) {
-          console.warn("Profile sync warning:", e);
-      }
+    if (data.user?.email) {
+        try {
+            const syncUpdates: any = {};
+            if (updates.full_name) syncUpdates.author_name = updates.full_name;
+            if (updates.avatar_url) syncUpdates.author_avatar = updates.avatar_url;
+            await supabase.from('templates').update(syncUpdates).eq('author_email', data.user.email);
+        } catch (e) {}
+    }
+    return data;
+  } catch (e: any) {
+      if (e.message?.includes('fetch')) throw new Error("Connection error while updating profile.");
+      throw e;
   }
-
-  return data;
 };
 
-// NEW: Update Usage count in User Metadata
 export const updateUserUsage = async (count: number) => {
-  const { error } = await supabase.auth.updateUser({
-    data: { usage_count: count }
-  });
-  if (error) console.error("Failed to sync usage", error);
+  try {
+    const { error } = await supabase.auth.updateUser({ data: { usage_count: count } });
+    if (error) console.error("Sync usage error:", error);
+  } catch (e) {}
 };
 
-// NEW: Set Pro Status in User Metadata
 export const setProStatus = async (status: boolean) => {
-    const { error } = await supabase.auth.updateUser({
-        data: { is_pro: status }
-    });
-    if (error) console.error("Failed to set pro status", error);
+    try {
+        const { error } = await supabase.auth.updateUser({ data: { is_pro: status } });
+        if (error) throw error;
+    } catch (e: any) {
+        console.error("Pro Status update failed:", e);
+        if (e.message?.includes('fetch')) {
+            // Silently fail or retry locally - fetch errors are often temporary or blocked
+        }
+    }
 };
 
 export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
@@ -381,18 +392,28 @@ export const updateTemplate = async (templateId: string, updates: Partial<Templa
 };
 
 export const deleteTemplate = async (templateId: string): Promise<void> => {
-    const { error } = await supabase.from('templates').delete().eq('id', templateId);
-    if (error) throw new Error(error.message);
-    if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
+    try {
+        const { error } = await supabase.from('templates').delete().eq('id', templateId);
+        if (error) throw new Error(error.message);
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
+        }
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) throw new Error("Connection failed while deleting.");
+        throw e;
     }
 };
 
 export const uploadFile = async (file: File, path: string): Promise<string> => {
-    const { error } = await supabase.storage.from('assets').upload(path, file, { upsert: true });
-    if (error) throw new Error(error.message);
-    const { data } = supabase.storage.from('assets').getPublicUrl(path);
-    return data.publicUrl;
+    try {
+        const { error } = await supabase.storage.from('assets').upload(path, file, { upsert: true });
+        if (error) throw new Error(error.message);
+        const { data } = supabase.storage.from('assets').getPublicUrl(path);
+        return data.publicUrl;
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) throw new Error("Connection error while uploading.");
+        throw e;
+    }
 };
 
 export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Session | null) => void) => {
@@ -410,23 +431,35 @@ export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Se
 };
 
 export const signInWithEmail = async (email: string, pass: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) throw error;
-    return data;
+    try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (error) throw error;
+        return data;
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) throw new Error("Server connection failed. Try again in a minute.");
+        throw e;
+    }
 };
 
 export const signUpWithEmail = async (email: string, pass: string, name: string) => {
-    const { data, error } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: { data: { full_name: name, usage_count: 0, is_pro: false } }
-    });
-    if (error) throw error;
-    return data;
+    try {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password: pass,
+            options: { data: { full_name: name, usage_count: 0, is_pro: false } }
+        });
+        if (error) throw error;
+        return data;
+    } catch (e: any) {
+        if (e.message?.includes('fetch')) throw new Error("Server connection failed. Try again in a minute.");
+        throw e;
+    }
 };
 
 export const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+        await supabase.auth.signOut();
+    } catch (e) {}
 };
 
 export const seedDatabase = async (user: Session['user']): Promise<void> => {
@@ -455,7 +488,6 @@ export const seedDatabase = async (user: Session['user']): Promise<void> => {
         const { error } = await supabase.from('templates').insert(payloads);
         if (error) throw error;
     } catch(e: any) {
-        console.warn("Seed error, trying minimal payload");
         const cleanPayloads = payloads.map(({ author_avatar, tags, source_code, video_url, ...rest }: any) => rest);
         const { error: retryError } = await supabase.from('templates').insert(cleanPayloads);
         if (retryError) throw new Error(retryError.message);

@@ -15,12 +15,16 @@ import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
 import SubscriptionModal from './components/SubscriptionModal';
 import Notification, { NotificationType } from './components/Notification';
-import WhyTemplr from './components/WhyTemplr';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled } from './audio';
 import type { Session, Template, NewTemplateData } from './api';
 import { AnimatePresence, motion } from 'framer-motion';
+
+// FINAL NUCLEAR RESET KEY
+const LIMIT_MAX = 3;
+const USAGE_KEY = 'templr_usage_final_v1'; 
+const PRO_KEY = 'templr_pro_final_v1';
 
 const App: React.FC = () => {
   // --- UI STATE ---
@@ -32,9 +36,7 @@ const App: React.FC = () => {
   const [isProfileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [isSubscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   
-  // Editing State
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
-
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null);
   const [viewingCreator, setViewingCreator] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: NotificationType } | null>(null);
@@ -45,8 +47,8 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   
-  // --- SUBSCRIPTION STATE ---
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  // --- SUBSCRIPTION STATE: HARD DEFAULT TO FALSE ---
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
 
   // --- BOOT STATE ---
   const [showSplash, setShowSplash] = useState(true);
@@ -66,31 +68,49 @@ const App: React.FC = () => {
     } catch (e) { return new Set(); }
   });
 
-  // Free Usage Limit State (0 to 3)
   const [usageCount, setUsageCount] = useState<number>(() => {
       try {
-          const saved = localStorage.getItem('templr_usage_count');
-          return saved ? parseInt(saved) : 0;
+          const saved = localStorage.getItem(USAGE_KEY);
+          const val = saved ? parseInt(saved) : 0;
+          return Math.min(Math.max(val, 0), LIMIT_MAX); 
       } catch (e) { return 0; }
   });
 
-  // --- METHODS ---
   const loadTemplates = async () => {
-      setIsLoading(true);
-      try {
-          // Fetch newest approved templates
-          const { data } = await api.getPublicTemplates(0, 6);
-          setTemplates(data);
-      } catch (e) {
-          console.error("Failed to load templates", e);
-      } finally {
-          setIsLoading(false);
-      }
+    setIsLoading(true);
+    try {
+      const { data } = await api.getPublicTemplates(0, 50);
+      setTemplates(data);
+    } catch (e) {
+      console.error("Error loading templates:", e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // --- INITIALIZATION ---
+  useEffect(() => {
+      try {
+          localStorage.setItem(USAGE_KEY, usageCount.toString());
+      } catch(e) {}
+  }, [usageCount]);
+
+  // --- INITIALIZATION & FORCE RESET ---
   useEffect(() => {
     let mounted = true;
+
+    // SCORCHED EARTH: Remove every possible key that could grant unlimited status
+    try {
+        Object.keys(localStorage).forEach(key => {
+            if (key.includes('templr_pro') || key.includes('templr_usage') || key.includes('templr_limit')) {
+                if (key !== PRO_KEY && key !== USAGE_KEY) {
+                    localStorage.removeItem(key);
+                }
+            }
+        });
+        // Also check current pro key on fresh mount - ensure it's accurate
+        const currentPro = localStorage.getItem(PRO_KEY) === 'true';
+        if (mounted) setIsSubscribed(currentPro);
+    } catch(e) {}
 
     const splashTimer = setTimeout(() => {
         if (mounted) setShowSplash(false);
@@ -105,7 +125,6 @@ const App: React.FC = () => {
             });
             return data.subscription;
         } catch (e) {
-            console.warn("Auth init warning:", e);
             return null;
         }
     };
@@ -130,44 +149,37 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // --- SYNC SESSION METADATA (USAGE & SUBSCRIPTION) ---
   useEffect(() => {
     if (session) {
-        // 1. Sync Pro Status from Cloud
-        if (session.user.user_metadata?.is_pro === true) {
+        const cloudPro = session.user.user_metadata?.is_pro === true;
+        const localPro = localStorage.getItem(PRO_KEY) === 'true';
+        
+        if (cloudPro || localPro) {
             setIsSubscribed(true);
-            localStorage.setItem('templr_pro_status', 'true');
+            if (!localPro) localStorage.setItem(PRO_KEY, 'true');
         } else {
-            // Check legacy local just in case, but prefer cloud
-            const localPro = localStorage.getItem('templr_pro_status');
-            if (localPro === 'true') setIsSubscribed(true);
+            setIsSubscribed(false);
+            localStorage.removeItem(PRO_KEY);
         }
 
-        // 2. Sync Usage Count from Cloud
         const remoteUsage = session.user.user_metadata?.usage_count;
-        if (typeof remoteUsage === 'number') {
-            setUsageCount(remoteUsage);
-        }
+        const localUsage = parseInt(localStorage.getItem(USAGE_KEY) || '0');
+        const maxUsage = Math.max(
+            typeof remoteUsage === 'number' ? remoteUsage : 0, 
+            !isNaN(localUsage) ? localUsage : 0
+        );
+        const finalUsage = Math.min(maxUsage, LIMIT_MAX);
+        if (finalUsage !== usageCount) setUsageCount(finalUsage);
     } else {
-        // Fallback to local if no session (Guest mode)
-        try {
-            const savedUsage = localStorage.getItem('templr_usage_count');
-            if(savedUsage) setUsageCount(parseInt(savedUsage));
-            
-            const localPro = localStorage.getItem('templr_pro_status');
-            setIsSubscribed(localPro === 'true');
-        } catch (e) { }
+        const localPro = localStorage.getItem(PRO_KEY);
+        setIsSubscribed(localPro === 'true');
     }
   }, [session]);
 
-  // --- HANDLERS ---
-  
-  // Usage Limiter Logic
-  const handleUsageAttempt = () => {
-      // If subscribed, bypass limit check
+  const handleUsageAttempt = (): boolean => {
       if (isSubscribed) return true;
 
-      if (usageCount >= 3) {
+      if (usageCount >= LIMIT_MAX) {
           playOpenModalSound();
           setSubscriptionModalOpen(true);
           return false;
@@ -175,23 +187,25 @@ const App: React.FC = () => {
 
       const newCount = usageCount + 1;
       setUsageCount(newCount);
-
-      // Persist based on auth state
+      
       if (session) {
           api.updateUserUsage(newCount);
-      } else {
-          localStorage.setItem('templr_usage_count', newCount.toString());
       }
+      
+      if (newCount < LIMIT_MAX) {
+          showNotification(`Usage: ${newCount}/${LIMIT_MAX}`, 'info');
+      } else {
+           showNotification(`Free limit reached (3/3).`, 'info');
+      }
+
       return true;
   };
 
   const handleUpgradeConfirm = () => {
       setIsSubscribed(true);
-      // Persist
-      localStorage.setItem('templr_pro_status', 'true');
-      if (session) {
-          api.setProStatus(true);
-      }
+      localStorage.setItem(PRO_KEY, 'true');
+      if (session) api.setProStatus(true);
+      showNotification("Pro unlocked!", 'success');
   };
 
   const handleToggleSound = (enabled: boolean) => {
@@ -206,30 +220,23 @@ const App: React.FC = () => {
 
   const handleOpenUpload = () => { playOpenModalSound(); setUploadModalOpen(true); setEditingTemplate(null); };
   const handleCloseUpload = () => { playCloseModalSound(); setUploadModalOpen(false); setEditingTemplate(null); };
-  
   const handleOpenDashboard = () => { playOpenModalSound(); setDashboardOpen(true); };
   const handleCloseDashboard = () => { playCloseModalSound(); setDashboardOpen(false); };
-  
   const handleOpenLogin = () => { playOpenModalSound(); setLoginModalOpen(true); };
   const handleCloseLogin = () => { playCloseModalSound(); setLoginModalOpen(false); };
-
   const handleOpenSetup = () => { playOpenModalSound(); setSetupOpen(true); };
   const handleCloseSetup = () => { playCloseModalSound(); setSetupOpen(false); };
-
   const handleOpenSettings = () => { playOpenModalSound(); setProfileSettingsOpen(true); };
   const handleCloseSettings = () => { playCloseModalSound(); setProfileSettingsOpen(false); };
-
   const handleOpenCreator = (name: string) => { playOpenModalSound(); setViewingCreator(name); };
   const handleCloseCreator = () => { playCloseModalSound(); setViewingCreator(null); };
 
   const handleSignOut = async () => { 
       await api.signOut(); 
       setSession(null);
-      // Reset sensitive local state on sign out to prevent leakage
-      setUsageCount(0); // Optional: Reset or keep guest usage separate
       setIsSubscribed(false);
-      localStorage.removeItem('templr_pro_status'); 
-      showNotification("Signed out successfully", 'info');
+      localStorage.removeItem(PRO_KEY); 
+      showNotification("Signed out", 'info');
   };
 
   const handleAddOrUpdateTemplate = async (data: NewTemplateData) => {
@@ -238,7 +245,6 @@ const App: React.FC = () => {
     } else {
         await api.addTemplate(data, session?.user);
     }
-    // Refresh the list immediately so the user sees the new item
     await loadTemplates();
   };
 
@@ -249,14 +255,11 @@ const App: React.FC = () => {
   };
 
   const handleViewClick = (template: Template) => {
-    // AUTH CHECK: Must be signed in to view details
     if (!session) {
         playOpenModalSound();
         setLoginModalOpen(true);
-        showNotification("Please sign in to view details", 'info');
         return;
     }
-
     if (template.title) {
         playOpenModalSound();
         if (!viewedTemplateIds.has(template.id)) {
@@ -277,31 +280,25 @@ const App: React.FC = () => {
   };
 
   const handleLikeClick = (templateId: string) => {
-    // AUTH CHECK: Must be signed in to like
     if (!session) {
         playOpenModalSound();
         setLoginModalOpen(true);
-        showNotification("Please sign in to like assets", 'info');
         return;
     }
-
-    // 1. Update Persistent State
     const isCurrentlyLiked = likedTemplateIds.has(templateId);
     const newSet = new Set(likedTemplateIds);
     isCurrentlyLiked ? newSet.delete(templateId) : newSet.add(templateId);
     setLikedTemplateIds(newSet);
     localStorage.setItem('templr_liked_ids', JSON.stringify(Array.from(newSet)));
-
-    // 2. Update DB & Global Template State (for consistency)
     const template = templates.find(t => t.id === templateId);
     if (template) {
         const newLikes = Math.max(0, isCurrentlyLiked ? template.likes - 1 : template.likes + 1);
         api.updateTemplate(templateId, { likes: newLikes });
-        
-        // Optimistically update global state so if user navigates back/forth it's fresh
         setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, likes: newLikes } : t));
     }
   };
+
+  const creditsRemaining = Math.max(0, LIMIT_MAX - usageCount);
 
   return (
     <div className="min-h-screen bg-[#000000] text-white font-sans overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -348,6 +345,7 @@ const App: React.FC = () => {
         onOpenSetup={handleOpenSetup}
         onOpenSettings={handleOpenSettings}
         isSubscribed={isSubscribed}
+        creditsLeft={isSubscribed ? undefined : creditsRemaining} 
       />
       
       <main>
@@ -363,8 +361,6 @@ const App: React.FC = () => {
           likedIds={likedTemplateIds}
           isLoggedIn={!!session}
         />
-        
-        <WhyTemplr />
         
         <FeaturedCreators onCreatorClick={handleOpenCreator} />
         

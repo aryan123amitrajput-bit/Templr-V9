@@ -17,7 +17,9 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
 
   const handleUpgrade = () => {
     playClickSound();
-    // Simulate successful subscription logic
+    
+    // Simulate successful subscription logic for UX flow
+    // In a real app, this would happen after a successful payment callback
     if (onUpgradeConfirm) onUpgradeConfirm();
     
     // Redirect to payment

@@ -9,7 +9,7 @@ interface ImageViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   template: Template | null;
-  onUsageAttempt: () => boolean; // Logic to check limits
+  onUsageAttempt: () => boolean; 
   usageCount: number;
   isSubscribed: boolean;
 }
@@ -39,13 +39,19 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     }
   }, [template]);
 
+  // STRICT LIMIT CHECK
+  const isLimitReached = !isSubscribed && usageCount >= 3;
+
   const handleVisitLive = () => {
-      if (!onUsageAttempt()) return; // Block if limit reached
+      if (isLimitReached) {
+          onUsageAttempt(); // Trigger the upgrade modal
+          return;
+      }
+      if (!onUsageAttempt()) return; 
 
       if (template?.fileUrl && template.fileUrl !== '#') {
           playClickSound();
           let url = template.fileUrl;
-          // Auto-prepend https if missing to ensure it opens as a web link
           if (!url.startsWith('http://') && !url.startsWith('https://')) {
               url = 'https://' + url;
           }
@@ -54,12 +60,15 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   };
 
   const handleDownload = () => {
-      if (!onUsageAttempt()) return; // Block if limit reached
+      if (isLimitReached) {
+          onUsageAttempt();
+          return;
+      }
+      if (!onUsageAttempt()) return;
 
       playClickSound();
       playSuccessSound();
       
-      // 1. If it's a Zip file, download directly
       if (template?.fileType === 'zip' && template.fileUrl) {
           const link = document.createElement('a');
           link.href = template.fileUrl;
@@ -68,7 +77,6 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
           link.click();
           document.body.removeChild(link);
       } 
-      // 2. If it's Code Only, generate a file blob
       else if (template?.sourceCode) {
           const blob = new Blob([template.sourceCode], { type: 'text/plain' });
           const url = URL.createObjectURL(blob);
@@ -84,7 +92,12 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   };
 
   const handleCopyCode = () => {
-      if (!onUsageAttempt()) return; // Block if limit reached
+      if (isLimitReached) {
+          onUsageAttempt(); 
+          return;
+      }
+      if (!onUsageAttempt()) return;
+      
       if (template?.sourceCode) {
           navigator.clipboard.writeText(template.sourceCode);
           playSuccessSound();
@@ -93,21 +106,13 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   
   if (!template) return null;
 
-  // --- STRICT WORKFLOW LOGIC ---
-
-  // 1. HAS CODE?
   const rawCode = template.sourceCode || '';
   const isZip = template.fileType === 'zip';
   const hasCode = (rawCode.trim().length > 0) || isZip;
-
-  // 2. HAS LINK?
   const rawUrl = template.fileUrl || '';
   const hasLink = !!rawUrl && rawUrl.trim() !== '' && rawUrl !== '#' && !isZip;
-
   const displayImage = template.bannerUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop';
   
-  const isLimitReached = !isSubscribed && usageCount >= 3;
-
   return (
     <AnimatePresence>
     {isOpen && (
@@ -129,7 +134,6 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                 {/* --- LEFT: PREVIEW AREA --- */}
                 <div className="relative flex-1 h-[45vh] lg:h-full bg-[#020203] flex flex-col overflow-hidden">
                     
-                    {/* Mode Toggle - ONLY IF CODE EXISTS */}
                     {hasCode && (
                         <div className="absolute top-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
                             <div className="flex bg-black/80 backdrop-blur-md border border-white/10 rounded-full p-1 pointer-events-auto">
@@ -145,8 +149,6 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         <AnimatePresence mode="wait">
                             {activeTab === 'preview' ? (
                                 <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full h-full flex items-center justify-center">
-                                    
-                                    {/* Video or Image Logic */}
                                     {template.videoUrl ? (
                                         <div className="relative w-full h-full max-w-full max-h-full rounded-xl overflow-hidden shadow-2xl bg-black">
                                             <video 
@@ -169,11 +171,24 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                         <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500/50"></div><div className="w-3 h-3 rounded-full bg-yellow-500/50"></div><div className="w-3 h-3 rounded-full bg-green-500/50"></div></div>
                                         <span className="text-slate-500 text-xs font-mono">source_code_snapshot.tsx</span>
                                         <div className="ml-auto flex gap-2">
-                                            <button onClick={handleCopyCode} className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 bg-white/5 px-2 py-1 rounded">Copy Code</button>
+                                            <button 
+                                                onClick={handleCopyCode} 
+                                                disabled={isLimitReached}
+                                                className={`text-[10px] flex items-center gap-1 bg-white/5 px-2 py-1 rounded transition-colors ${isLimitReached ? 'text-zinc-600 cursor-not-allowed' : 'text-slate-400 hover:text-white'}`}
+                                            >
+                                                {isLimitReached ? 'Locked' : 'Copy Code'}
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 custom-scrollbar whitespace-pre-wrap leading-relaxed bg-[#050505]">
-                                        {template.sourceCode || "// No source code provided."}
+                                    <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 custom-scrollbar whitespace-pre-wrap leading-relaxed bg-[#050505] relative">
+                                        {isLimitReached ? (
+                                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050505]/95 backdrop-blur-sm">
+                                                <LockIcon className="w-8 h-8 text-white/20 mb-2" />
+                                                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Code Locked</p>
+                                            </div>
+                                        ) : (
+                                            template.sourceCode || "// No source code provided."
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
@@ -214,23 +229,32 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                             <p className="text-sm text-slate-300 leading-relaxed font-light">{template.description}</p>
                         </div>
 
-                        {/* External Links Section - NOW ALWAYS VISIBLE IF LINK EXISTS */}
                         {hasLink && (
                             <div>
                                 <h4 className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-white/5 pb-1">External Links</h4>
                                 <div className="space-y-2">
-                                     <button onClick={handleVisitLive} className="w-full flex items-center justify-between p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/40 transition-all group">
+                                     <button 
+                                        onClick={handleVisitLive}
+                                        disabled={isLimitReached} 
+                                        className={`
+                                            w-full flex items-center justify-between p-3 rounded-xl border transition-all group
+                                            ${isLimitReached 
+                                                ? 'bg-zinc-900 border-zinc-800 cursor-not-allowed opacity-60' 
+                                                : 'bg-blue-500/10 border-blue-500/20 hover:border-blue-500/40 cursor-pointer'}
+                                        `}
+                                     >
                                         <div className="flex items-center gap-3">
-                                            <GlobeIcon className="w-4 h-4 text-blue-400" />
-                                            <span className="text-sm font-medium text-slate-200 truncate max-w-[200px]">{rawUrl}</span>
+                                            {isLimitReached ? <LockIcon className="w-4 h-4 text-zinc-500" /> : <GlobeIcon className="w-4 h-4 text-blue-400" />}
+                                            <span className={`text-sm font-medium truncate max-w-[200px] ${isLimitReached ? 'text-zinc-500' : 'text-slate-200'}`}>
+                                                {isSubscribed ? rawUrl : (isLimitReached ? 'Link Locked' : 'Protected Link')}
+                                            </span>
                                         </div>
-                                        <ArrowRightIcon className="w-4 h-4 text-blue-500 group-hover:translate-x-1 transition-transform" />
+                                        <ArrowRightIcon className={`w-4 h-4 transition-transform ${isLimitReached ? 'text-zinc-600' : 'text-blue-500 group-hover:translate-x-1'}`} />
                                     </button>
                                 </div>
                             </div>
                         )}
                         
-                        {/* Tags */}
                         {template.tags && template.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {template.tags.map(tag => (
@@ -245,10 +269,9 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         <div className="flex justify-between items-end mb-4">
                             <div><p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Price</p><p className="text-3xl font-bold text-white tracking-tight">Free</p></div>
                             
-                            {/* USAGE LIMIT INDICATOR */}
                             {!isSubscribed && (
                                 <div className="flex flex-col items-end">
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Daily Limit</p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Actions Left</p>
                                     <div className="flex items-center gap-2">
                                         <div className="flex gap-1">
                                             {[1, 2, 3].map(i => (
@@ -261,77 +284,43 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                     </div>
                                 </div>
                             )}
-                            
-                            {isSubscribed && (
-                                <div className="text-right">
-                                    <div className="inline-flex items-center gap-1 px-2 py-1 rounded bg-yellow-500/10 border border-yellow-500/20">
-                                        <RocketIcon className="w-3 h-3 text-yellow-500" />
-                                        <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest">Unlimited</span>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                         
                         <div className="flex flex-col gap-3">
-                            <div className="flex gap-3">
-                                {/* LINK BUTTON */}
-                                {hasLink && (
-                                    <button 
-                                        onClick={handleVisitLive}
-                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
-                                        ${hasCode ? 'flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10' : 'w-full bg-white text-black hover:bg-slate-200'}
-                                        ${isLimitReached && 'opacity-80'}`}
-                                    >
-                                        <GlobeIcon className="w-4 h-4" />
-                                        <span>{isLimitReached ? 'Unlock Link' : 'Live Preview'}</span>
-                                        {isLimitReached && <LockIcon className="w-3 h-3 text-current ml-1" />}
-                                    </button>
-                                )}
+                            {/* HARD LOCK UI OVERRIDE */}
+                            {isLimitReached ? (
+                                <button 
+                                    onClick={onUsageAttempt}
+                                    className="h-14 w-full rounded-xl bg-gradient-to-r from-yellow-600 to-orange-600 font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 text-black shadow-lg shadow-yellow-500/20 animate-pulse"
+                                >
+                                    <LockIcon className="w-4 h-4" />
+                                    <span>Upgrade to Pro to Unlock</span>
+                                </button>
+                            ) : (
+                                <div className="flex gap-3">
+                                    {hasLink && (
+                                        <button 
+                                            onClick={handleVisitLive}
+                                            className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
+                                            ${hasCode ? 'flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10' : 'w-full bg-white text-black hover:bg-slate-200'}`}
+                                        >
+                                            <GlobeIcon className="w-4 h-4" />
+                                            <span>Live Preview</span>
+                                        </button>
+                                    )}
 
-                                {/* CODE BUTTON */}
-                                {hasCode && (
-                                    <button 
-                                        onClick={handleDownload} 
-                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
-                                        ${hasLink ? 'flex-1' : 'w-full'}
-                                        bg-white text-black hover:bg-slate-200
-                                        ${isLimitReached && 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700'}`}
-                                    >
-                                        {isLimitReached ? (
-                                            <>
-                                                <LockIcon className="w-4 h-4 text-yellow-500" />
-                                                <span>Unlock Code</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <UploadIcon className="w-4 h-4 rotate-180" />
-                                                <span>Download Code</span>
-                                            </>
-                                        )}
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* State 1: VISUALS ONLY (INFORMATIONAL LOCKED STATE) */}
-                            {!hasLink && !hasCode && (
-                                <div className="w-full p-6 rounded-2xl bg-[#0F0F11] border border-white/5 flex flex-col items-center justify-center text-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center">
-                                        <LockIcon className="w-5 h-5 text-slate-500" />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-white uppercase tracking-wide mb-1">Visual Reference Only</h4>
-                                        <p className="text-xs text-slate-500 leading-relaxed max-w-[250px]">
-                                            This creator has shared this design for inspiration. Source code and live preview are not available.
-                                        </p>
-                                    </div>
+                                    {hasCode && (
+                                        <button 
+                                            onClick={handleDownload} 
+                                            className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
+                                            ${hasLink ? 'flex-1' : 'w-full'}
+                                            bg-white text-black hover:bg-slate-200`}
+                                        >
+                                            <UploadIcon className="w-4 h-4 rotate-180" />
+                                            <span>Download Code</span>
+                                        </button>
+                                    )}
                                 </div>
-                            )}
-
-                            {/* Limit Reached Helper Text */}
-                            {isLimitReached && (
-                                <p className="text-[10px] text-red-400 font-medium text-center uppercase tracking-wider animate-pulse">
-                                    Free limit reached. Upgrade to continue.
-                                </p>
                             )}
                         </div>
                     </div>
