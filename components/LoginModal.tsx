@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { XIcon, LockIcon, RocketIcon, ShieldCheckIcon, LightbulbIcon } from './Icons';
+import { XIcon, LockIcon, RocketIcon, ShieldCheckIcon, LightbulbIcon, CheckCircleIcon, CpuIcon } from './Icons';
 import { playClickSound, playSuccessSound, playTypingSound, playNotificationSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isApiConfigured } from '../api';
@@ -143,7 +143,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
           await onLogin(email, password);
           setSuccess(true);
           playSuccessSound();
-          setTimeout(onClose, 1500);
+          setTimeout(onClose, 2500); // Extended for cinematic feel
       } else {
           const data = await onSignup(email, password, name);
           if (data && (data.session || data.user)) {
@@ -154,7 +154,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
               }
               setSuccess(true);
               playSuccessSound();
-              setTimeout(onClose, 2000);
+              setTimeout(onClose, 2500);
           }
       }
     } catch (err: any) {
@@ -186,7 +186,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
       </button>
 
       <div className="relative z-10 w-full max-w-[420px] mx-auto animate-slide-up transform-gpu" onClick={(e) => e.stopPropagation()}>
-        <div className="relative bg-[#080a11] border border-white/10 rounded-[40px] shadow-2xl p-8 md:p-10 flex flex-col items-center">
+        <div className="relative bg-[#080a11] border border-white/10 rounded-[40px] shadow-2xl p-8 md:p-10 flex flex-col items-center overflow-hidden">
             {!success ? (
                 <>
                     <LockAnimated />
@@ -214,19 +214,75 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
                         </AnimatePresence>
                         
                         <button type="submit" disabled={isLoading} className={`w-full h-14 rounded-xl font-bold uppercase text-xs tracking-widest transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] flex items-center justify-center gap-3 bg-white hover:bg-slate-200 text-black ${isLoading ? 'opacity-80 cursor-wait' : ''}`}>
-                            {isLoading && <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin"></div>}
+                            {isLoading && <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>}
                             <span>{isLoading ? (mode === 'signin' ? 'Signing in...' : 'Registering...') : (mode === 'signin' ? 'Sign In' : 'Create Account')}</span>
                         </button>
                     </form>
                 </>
             ) : (
-                <div className="py-12 flex flex-col items-center animate-fade-in">
-                    <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-6 border border-green-500/20 shadow-[0_0_40px_-10px_rgba(34,197,94,0.5)]">
-                        <RocketIcon className="w-10 h-10 text-green-400 animate-bounce" />
+                <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                    className="py-12 flex flex-col items-center text-center w-full relative"
+                >
+                    {/* Futuristic Scanning Effect */}
+                    <div className="relative w-24 h-24 mb-10 group">
+                        <div className="absolute inset-0 bg-blue-500/30 blur-3xl rounded-full animate-pulse"></div>
+                        <div className="absolute -inset-4 border border-blue-500/10 rounded-full animate-[spin_8s_linear_infinite]"></div>
+                        
+                        {/* The Success Icon */}
+                        <div className="relative z-10 w-full h-full bg-slate-900 rounded-full border border-blue-500/30 flex items-center justify-center shadow-[0_0_50px_-10px_rgba(59,130,246,0.6)] overflow-hidden">
+                            <CheckCircleIcon className="w-10 h-10 text-blue-400" />
+                            {/* Scanning Line */}
+                            <motion.div 
+                                initial={{ top: "-10%" }}
+                                animate={{ top: "110%" }}
+                                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                className="absolute left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_8px_rgba(34,211,238,0.8)] z-20"
+                            />
+                        </div>
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-2">Welcome 🎉</h3>
-                    <p className="text-slate-400 text-sm text-center">Your account is ready.</p>
-                </div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                    >
+                        <h3 className="text-3xl font-black text-white mb-2 tracking-tighter uppercase italic">Access Granted</h3>
+                        <p className="text-slate-500 text-xs font-mono font-bold uppercase tracking-[0.3em] mb-8">Neural Authorization Successful</p>
+                    </motion.div>
+
+                    {/* Data Readout Bar */}
+                    <div className="w-full max-w-[240px] px-4 space-y-4">
+                        <div className="flex justify-between items-center text-[9px] font-mono font-bold text-blue-400/60 uppercase tracking-widest">
+                            <span>Syncing Environment</span>
+                            <span className="text-white">100%</span>
+                        </div>
+                        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                            <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: "100%" }}
+                                transition={{ duration: 1, ease: "circOut" }}
+                                className="h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                            />
+                        </div>
+                        
+                        {/* Terminal Style Data */}
+                        <div className="grid grid-cols-2 gap-2">
+                             <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex flex-col items-center">
+                                 <span className="text-[8px] text-slate-600 font-bold uppercase">Node</span>
+                                 <span className="text-[10px] text-slate-300 font-mono">AMS-01</span>
+                             </div>
+                             <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex flex-col items-center">
+                                 <span className="text-[8px] text-slate-600 font-bold uppercase">Status</span>
+                                 <span className="text-[10px] text-emerald-400 font-mono">Secure</span>
+                             </div>
+                        </div>
+                    </div>
+
+                    {/* Background Ambience */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(59,130,246,0.05)_0%,_transparent_70%)] pointer-events-none"></div>
+                </motion.div>
             )}
         </div>
       </div>

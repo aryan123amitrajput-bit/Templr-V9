@@ -7,10 +7,10 @@ import { playClickSound } from '../audio';
 interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpgradeConfirm?: () => void; // Added prop to notify parent
+  onUpgradeConfirm?: () => void; 
 }
 
-const PAYMENT_URL = "https://checkout.dodopayments.com/buy/pdt_0NWByBDnOsfzn0w7BV8B2?quantity=1&redirect_url=https://templr-v9.vercel.app%2F";
+const PAYMENT_URL = "https://checkout.dodopayments.com/buy/pdt_0NXcWUrrXKYkJIO2mR8D9?quantity=1&redirect_url=https://Templr-v9.vercel.app";
 
 const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, onUpgradeConfirm }) => {
   if (!isOpen) return null;
@@ -18,24 +18,24 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   const handleUpgrade = () => {
     playClickSound();
     
-    // Simulate successful subscription logic for UX flow
-    // In a real app, this would happen after a successful payment callback
-    if (onUpgradeConfirm) onUpgradeConfirm();
-    
-    // Redirect to payment
+    // REDIRECT ONLY: Do not confirm upgrade yet. 
+    // Pro status should only be granted after a successful payment verification.
     window.location.href = PAYMENT_URL;
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+      <div 
+        className="fixed inset-0 flex items-center justify-center p-4"
+        style={{ zIndex: 2147483647 }} // Absolute maximum Z-Index
+      >
         
         {/* Backdrop */}
         <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-[#000]/90 backdrop-blur-xl"
+            className="absolute inset-0 bg-[#000]/95 backdrop-blur-xl"
             onClick={onClose}
         />
 
@@ -44,7 +44,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-md bg-[#050505] border border-yellow-500/20 rounded-3xl overflow-hidden shadow-[0_0_100px_-20px_rgba(234,179,8,0.3)]"
+            className="relative w-full max-w-md bg-[#050505] border border-yellow-500/20 rounded-3xl overflow-hidden shadow-[0_0_100px_-20px_rgba(234,179,8,0.3)] z-50"
             onClick={(e) => e.stopPropagation()}
         >
             {/* Premium Gold Glow */}
@@ -108,7 +108,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                 </button>
                 
                 <p className="mt-4 text-[10px] text-slate-500">
-                    Secure payment via Dodo Payments. Cancel anytime.
+                    Secure payment via Dodo Payments.
                 </p>
             </div>
         </motion.div>

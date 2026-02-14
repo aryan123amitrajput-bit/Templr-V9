@@ -17,14 +17,15 @@ import SubscriptionModal from './components/SubscriptionModal';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
-import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled } from './audio';
+import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound } from './audio';
 import type { Session, Template, NewTemplateData } from './api';
 import { AnimatePresence, motion } from 'framer-motion';
 
-// FINAL NUCLEAR RESET KEY
+// NUCLEAR KEY ROTATION - V11 STRICT
+// Double-lock enforcement: UI Guard + Storage Guard.
 const LIMIT_MAX = 3;
-const USAGE_KEY = 'templr_usage_final_v1'; 
-const PRO_KEY = 'templr_pro_final_v1';
+const USAGE_KEY = 'templr_usage_v11_strict'; 
+const PRO_KEY = 'templr_pro_v11_strict';
 
 const App: React.FC = () => {
   // --- UI STATE ---
@@ -47,7 +48,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   
-  // --- SUBSCRIPTION STATE: HARD DEFAULT TO FALSE ---
+  // --- SUBSCRIPTION STATE ---
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
 
   // --- BOOT STATE ---
@@ -72,14 +73,14 @@ const App: React.FC = () => {
       try {
           const saved = localStorage.getItem(USAGE_KEY);
           const val = saved ? parseInt(saved) : 0;
-          return Math.min(Math.max(val, 0), LIMIT_MAX); 
+          return isNaN(val) ? 0 : val;
       } catch (e) { return 0; }
   });
 
   const loadTemplates = async () => {
     setIsLoading(true);
     try {
-      const { data } = await api.getPublicTemplates(0, 50);
+      const { data } = await api.getPublicTemplates(0, 3);
       setTemplates(data);
     } catch (e) {
       console.error("Error loading templates:", e);
@@ -88,26 +89,18 @@ const App: React.FC = () => {
     }
   };
 
+  // Sync state to storage
   useEffect(() => {
       try {
           localStorage.setItem(USAGE_KEY, usageCount.toString());
       } catch(e) {}
   }, [usageCount]);
 
-  // --- INITIALIZATION & FORCE RESET ---
+  // --- INITIALIZATION ---
   useEffect(() => {
     let mounted = true;
 
-    // SCORCHED EARTH: Remove every possible key that could grant unlimited status
     try {
-        Object.keys(localStorage).forEach(key => {
-            if (key.includes('templr_pro') || key.includes('templr_usage') || key.includes('templr_limit')) {
-                if (key !== PRO_KEY && key !== USAGE_KEY) {
-                    localStorage.removeItem(key);
-                }
-            }
-        });
-        // Also check current pro key on fresh mount - ensure it's accurate
         const currentPro = localStorage.getItem(PRO_KEY) === 'true';
         if (mounted) setIsSubscribed(currentPro);
     } catch(e) {}
@@ -149,6 +142,7 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Session Sync Logic
   useEffect(() => {
     if (session) {
         const cloudPro = session.user.user_metadata?.is_pro === true;
@@ -168,8 +162,9 @@ const App: React.FC = () => {
             typeof remoteUsage === 'number' ? remoteUsage : 0, 
             !isNaN(localUsage) ? localUsage : 0
         );
-        const finalUsage = Math.min(maxUsage, LIMIT_MAX);
-        if (finalUsage !== usageCount) setUsageCount(finalUsage);
+        if (maxUsage > usageCount) {
+            setUsageCount(maxUsage);
+        }
     } else {
         const localPro = localStorage.getItem(PRO_KEY);
         setIsSubscribed(localPro === 'true');
@@ -177,28 +172,39 @@ const App: React.FC = () => {
   }, [session]);
 
   const handleUsageAttempt = (): boolean => {
+      // 1. Pro Users bypass everything
       if (isSubscribed) return true;
 
-      if (usageCount >= LIMIT_MAX) {
-          playOpenModalSound();
-          setSubscriptionModalOpen(true);
-          return false;
-      }
+      try {
+          // 2. Read latest value directly from storage (Critical for high-speed clicking)
+          const stored = parseInt(localStorage.getItem(USAGE_KEY) || '0');
+          const current = isNaN(stored) ? 0 : stored;
+          
+          // 3. Strict Check
+          // Count 0, 1, 2 = OK. 
+          // Count 3 = STOP.
+          if (current >= LIMIT_MAX) {
+              playNotificationSound();
+              // Force opening logic
+              setSubscriptionModalOpen(true);
+              return false;
+          }
 
-      const newCount = usageCount + 1;
-      setUsageCount(newCount);
-      
-      if (session) {
-          api.updateUserUsage(newCount);
+          // 4. Increment & Save
+          const newCount = current + 1;
+          localStorage.setItem(USAGE_KEY, newCount.toString());
+          setUsageCount(newCount); 
+          
+          // 5. Sync to Cloud if logged in
+          if (session) {
+              api.updateUserUsage(newCount);
+          }
+          
+          return true;
+      } catch (e) {
+          console.error(e);
+          return true;
       }
-      
-      if (newCount < LIMIT_MAX) {
-          showNotification(`Usage: ${newCount}/${LIMIT_MAX}`, 'info');
-      } else {
-           showNotification(`Free limit reached (3/3).`, 'info');
-      }
-
-      return true;
   };
 
   const handleUpgradeConfirm = () => {
@@ -255,11 +261,14 @@ const App: React.FC = () => {
   };
 
   const handleViewClick = (template: Template) => {
+    // LOGIN GATE: "When click arrow button without sign in, we can't sign in and go to sign in page instead"
+    // Requirement: Redirect anonymous users to Login immediately upon clicking View.
     if (!session) {
         playOpenModalSound();
         setLoginModalOpen(true);
         return;
     }
+
     if (template.title) {
         playOpenModalSound();
         if (!viewedTemplateIds.has(template.id)) {
@@ -318,7 +327,7 @@ const App: React.FC = () => {
                  </div>
                  <div className="flex flex-col items-center gap-2">
                      <p className="text-slate-500 text-[10px] font-mono font-bold uppercase tracking-[0.3em]">
-                        Templr v9.3
+                        Templr v11.0
                      </p>
                      <div className="w-32 h-[2px] bg-white/10 rounded-full overflow-hidden">
                         <motion.div 
@@ -421,6 +430,11 @@ const App: React.FC = () => {
         onShowNotification={showNotification}
       />
       <SetupGuideModal isOpen={isSetupOpen} onClose={handleCloseSetup} />
+      
+      {/* 
+          SUBSCRIPTION MODAL 
+          Must be absolutely last to be on top. 
+      */}
       <SubscriptionModal 
         isOpen={isSubscriptionModalOpen}
         onClose={() => setSubscriptionModalOpen(false)}

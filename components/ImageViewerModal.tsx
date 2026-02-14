@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, HeartIcon, EyeIcon, LockIcon, CheckCircleIcon, GlobeIcon, ArrowRightIcon, UploadIcon, ArrowLeftIcon, FileCodeIcon, LinkIcon, LayersIcon, RocketIcon } from './Icons';
 import { Template } from '../api';
-import { playClickSound, playSuccessSound } from '../audio';
+import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 
 interface ImageViewerModalProps {
   isOpen: boolean;
@@ -41,13 +41,24 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
 
   // STRICT LIMIT CHECK
   const isLimitReached = !isSubscribed && usageCount >= 3;
+  const actionsLeft = Math.max(0, 3 - usageCount);
 
-  const handleVisitLive = () => {
+  const handleVisitLive = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+
+      // UI GUARD: First Line of Defense
+      // If the UI already knows we are at limit, block immediately.
       if (isLimitReached) {
-          onUsageAttempt(); // Trigger the upgrade modal
+          playNotificationSound();
+          onUsageAttempt(); // Triggers the modal open via parent logic
           return;
       }
-      if (!onUsageAttempt()) return; 
+
+      // STORAGE GUARD: Second Line of Defense
+      // Checks strict local storage state
+      const canProceed = onUsageAttempt();
+      if (!canProceed) return; 
 
       if (template?.fileUrl && template.fileUrl !== '#') {
           playClickSound();
@@ -59,12 +70,18 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       }
   };
 
-  const handleDownload = () => {
+  const handleDownload = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+
       if (isLimitReached) {
+          playNotificationSound();
           onUsageAttempt();
           return;
       }
-      if (!onUsageAttempt()) return;
+
+      const canProceed = onUsageAttempt();
+      if (!canProceed) return;
 
       playClickSound();
       playSuccessSound();
@@ -91,11 +108,16 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       }
   };
 
-  const handleCopyCode = () => {
+  const handleCopyCode = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      
       if (isLimitReached) {
-          onUsageAttempt(); 
+          playNotificationSound();
+          onUsageAttempt();
           return;
       }
+
       if (!onUsageAttempt()) return;
       
       if (template?.sourceCode) {
@@ -124,6 +146,22 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                 <ArrowLeftIcon className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                 <span className="text-sm font-medium">Back</span>
             </motion.button>
+
+            {/* --- VISIBLE HEADER BADGE (REDUNDANCY) --- */}
+            {!isSubscribed && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="fixed top-6 right-6 z-[120] px-4 py-2 bg-black/80 border border-cyan-500/30 rounded-full flex items-center gap-3 shadow-[0_0_20px_rgba(6,182,212,0.2)]"
+                >
+                    <div className="flex gap-1">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className={`w-1 h-3 rounded-full ${i <= actionsLeft ? 'bg-cyan-400' : 'bg-slate-700'}`}></div>
+                        ))}
+                    </div>
+                    <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">{actionsLeft}/3 FREE</span>
+                </motion.div>
+            )}
 
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 40 }}
@@ -173,18 +211,23 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                         <div className="ml-auto flex gap-2">
                                             <button 
                                                 onClick={handleCopyCode} 
-                                                disabled={isLimitReached}
-                                                className={`text-[10px] flex items-center gap-1 bg-white/5 px-2 py-1 rounded transition-colors ${isLimitReached ? 'text-zinc-600 cursor-not-allowed' : 'text-slate-400 hover:text-white'}`}
+                                                className={`text-[10px] flex items-center gap-1 bg-white/5 px-2 py-1 rounded transition-colors ${isLimitReached ? 'text-zinc-600 hover:text-zinc-500' : 'text-slate-400 hover:text-white'}`}
                                             >
-                                                {isLimitReached ? 'Locked' : 'Copy Code'}
+                                                {isLimitReached ? <LockIcon className="w-3 h-3" /> : null}
+                                                {isLimitReached ? 'Unlock to Copy' : 'Copy Code'}
                                             </button>
                                         </div>
                                     </div>
                                     <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 custom-scrollbar whitespace-pre-wrap leading-relaxed bg-[#050505] relative">
                                         {isLimitReached ? (
                                             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050505]/95 backdrop-blur-sm">
-                                                <LockIcon className="w-8 h-8 text-white/20 mb-2" />
-                                                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Code Locked</p>
+                                                <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-3">
+                                                    <LockIcon className="w-6 h-6 text-slate-500" />
+                                                </div>
+                                                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest mb-4">Source Code Locked</p>
+                                                <button onClick={() => onUsageAttempt()} className="px-6 py-2 bg-white text-black text-xs font-bold uppercase rounded-full hover:bg-slate-200 transition-colors">
+                                                    Unlock with Pro
+                                                </button>
                                             </div>
                                         ) : (
                                             template.sourceCode || "// No source code provided."
@@ -210,7 +253,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 space-y-8 pb-32">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 space-y-8 pb-40">
                         <div className="grid grid-cols-2 gap-3">
                             <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 text-center">
                                 <HeartIcon className="w-5 h-5 text-rose-500 mx-auto mb-1" />
@@ -235,21 +278,20 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                 <div className="space-y-2">
                                      <button 
                                         onClick={handleVisitLive}
-                                        disabled={isLimitReached} 
                                         className={`
-                                            w-full flex items-center justify-between p-3 rounded-xl border transition-all group
+                                            w-full flex items-center justify-between p-3 rounded-xl border transition-all group relative overflow-hidden
                                             ${isLimitReached 
-                                                ? 'bg-zinc-900 border-zinc-800 cursor-not-allowed opacity-60' 
+                                                ? 'bg-zinc-900/50 border-zinc-800 opacity-80 hover:bg-zinc-900 hover:border-zinc-700 cursor-not-allowed' 
                                                 : 'bg-blue-500/10 border-blue-500/20 hover:border-blue-500/40 cursor-pointer'}
                                         `}
                                      >
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 relative z-10">
                                             {isLimitReached ? <LockIcon className="w-4 h-4 text-zinc-500" /> : <GlobeIcon className="w-4 h-4 text-blue-400" />}
                                             <span className={`text-sm font-medium truncate max-w-[200px] ${isLimitReached ? 'text-zinc-500' : 'text-slate-200'}`}>
-                                                {isSubscribed ? rawUrl : (isLimitReached ? 'Link Locked' : 'Protected Link')}
+                                                {isSubscribed ? rawUrl : (isLimitReached ? 'Link Locked (Upgrade)' : 'Protected Link')}
                                             </span>
                                         </div>
-                                        <ArrowRightIcon className={`w-4 h-4 transition-transform ${isLimitReached ? 'text-zinc-600' : 'text-blue-500 group-hover:translate-x-1'}`} />
+                                        <ArrowRightIcon className={`w-4 h-4 transition-transform relative z-10 ${isLimitReached ? 'text-zinc-600' : 'text-blue-500 group-hover:translate-x-1'}`} />
                                     </button>
                                 </div>
                             </div>
@@ -265,21 +307,32 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                     </div>
 
                     {/* --- ACTION BAR --- */}
-                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-[#09090b]/90 backdrop-blur-xl border-t border-white/10 z-40">
+                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-[#09090b] border-t border-white/10 z-40 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]">
                         <div className="flex justify-between items-end mb-4">
                             <div><p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Price</p><p className="text-3xl font-bold text-white tracking-tight">Free</p></div>
                             
                             {!isSubscribed && (
                                 <div className="flex flex-col items-end">
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Actions Left</p>
-                                    <div className="flex items-center gap-2">
-                                        <div className="flex gap-1">
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold mb-2">Actions Left</p>
+                                    
+                                    {/* --- 3 GIANT BARS --- */}
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex gap-1.5">
                                             {[1, 2, 3].map(i => (
-                                                <div key={i} className={`w-1.5 h-6 rounded-full transition-colors ${i <= usageCount ? (isLimitReached ? 'bg-red-500' : 'bg-white') : 'bg-white/10'}`}></div>
+                                                <div 
+                                                    key={i} 
+                                                    className={`
+                                                        w-2.5 h-8 rounded-sm transition-all duration-300
+                                                        ${i <= actionsLeft 
+                                                            ? 'bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]' 
+                                                            : 'bg-white/5 border border-white/5'
+                                                        }
+                                                    `}
+                                                />
                                             ))}
                                         </div>
-                                        <span className={`text-xs font-mono font-bold ${isLimitReached ? 'text-red-400' : 'text-white'}`}>
-                                            {Math.min(usageCount, 3)}/3
+                                        <span className={`text-lg font-mono font-bold tracking-tight ${isLimitReached ? 'text-red-500' : 'text-cyan-400'}`}>
+                                            {actionsLeft}/3
                                         </span>
                                     </div>
                                 </div>
@@ -287,41 +340,40 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         </div>
                         
                         <div className="flex flex-col gap-3">
-                            {/* HARD LOCK UI OVERRIDE */}
-                            {isLimitReached ? (
-                                <button 
-                                    onClick={onUsageAttempt}
-                                    className="h-14 w-full rounded-xl bg-gradient-to-r from-yellow-600 to-orange-600 font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 text-black shadow-lg shadow-yellow-500/20 animate-pulse"
-                                >
-                                    <LockIcon className="w-4 h-4" />
-                                    <span>Upgrade to Pro to Unlock</span>
-                                </button>
-                            ) : (
-                                <div className="flex gap-3">
-                                    {hasLink && (
-                                        <button 
-                                            onClick={handleVisitLive}
-                                            className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
-                                            ${hasCode ? 'flex-1 bg-white/5 border-white/10 text-white hover:bg-white/10' : 'w-full bg-white text-black hover:bg-slate-200'}`}
-                                        >
-                                            <GlobeIcon className="w-4 h-4" />
-                                            <span>Live Preview</span>
-                                        </button>
-                                    )}
+                            <div className="flex gap-3">
+                                {hasLink && (
+                                    <button 
+                                        onClick={handleVisitLive}
+                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group relative overflow-hidden
+                                        ${hasCode ? 'flex-1' : 'w-full'}
+                                        ${isLimitReached 
+                                            ? 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white hover:bg-zinc-800' 
+                                            : 'bg-white text-black hover:bg-slate-200 border-transparent'}`}
+                                    >
+                                        {isLimitReached ? <LockIcon className="w-4 h-4" /> : <GlobeIcon className="w-4 h-4" />}
+                                        <span className="flex flex-col leading-none items-start">
+                                            <span>{isLimitReached ? 'Unlock Link' : `Live Preview (${actionsLeft})`}</span>
+                                        </span>
+                                        {isLimitReached && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>}
+                                    </button>
+                                )}
 
-                                    {hasCode && (
-                                        <button 
-                                            onClick={handleDownload} 
-                                            className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group
-                                            ${hasLink ? 'flex-1' : 'w-full'}
-                                            bg-white text-black hover:bg-slate-200`}
-                                        >
-                                            <UploadIcon className="w-4 h-4 rotate-180" />
-                                            <span>Download Code</span>
-                                        </button>
-                                    )}
-                                </div>
-                            )}
+                                {hasCode && (
+                                    <button 
+                                        onClick={handleDownload} 
+                                        className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group relative overflow-hidden
+                                        ${hasLink ? 'flex-1' : 'w-full'}
+                                        ${isLimitReached 
+                                            ? 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white hover:bg-zinc-800' 
+                                            : 'bg-white text-black hover:bg-slate-200 border-transparent'}`}
+                                    >
+                                        {isLimitReached ? <LockIcon className="w-4 h-4" /> : <UploadIcon className="w-4 h-4 rotate-180" />}
+                                        <span className="flex flex-col leading-none items-start">
+                                            <span>{isLimitReached ? 'Unlock File' : `Download (${actionsLeft})`}</span>
+                                        </span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

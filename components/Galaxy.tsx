@@ -211,7 +211,12 @@ const Galaxy: React.FC<GalaxyProps> = ({
     };
 
     const resizeObserver = new ResizeObserver(() => {
-        handleResize();
+        // Prevent "ResizeObserver loop completed with undelivered notifications"
+        // by wrapping layout updates in rAF
+        window.requestAnimationFrame(() => {
+            if (!container) return;
+            handleResize();
+        });
     });
     resizeObserver.observe(container);
 

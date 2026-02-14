@@ -46,9 +46,8 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
 
-  // Sync initial templates if provided (e.g. from App.tsx init or refresh)
+  // Sync initial templates if provided
   useEffect(() => {
-      // Always sync if initialTemplates changes to ensure new uploads appear
       if (initialTemplates) {
           setData(initialTemplates);
           // If we receive a fresh batch (likely page 0), reset pagination state for consistency
@@ -77,7 +76,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       try {
           const { data: newTemplates, hasMore: more } = await getPublicTemplates(
               currentPage, 
-              6, // Limit
+              3, // Limit to 3 items per load
               debouncedSearch, 
               activeFilter, 
               sortBy
@@ -98,9 +97,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
   // Trigger Fetch on Filter Changes
   useEffect(() => {
-      // Only fetch if we are NOT using the initial data passed from props 
-      // OR if the user has changed filter/sort/search
-      // To simplify: if user interacts with filters, we take over fetching.
       if (activeFilter !== 'All' || debouncedSearch !== '' || sortBy !== 'newest') {
           setPage(0);
           fetchData(true);
@@ -121,29 +117,33 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     setActiveFilter(filter);
   };
 
-  // Optimistic Like Handler
-  const handleLocalLike = (id: string) => {
-      // If not logged in, trigger parent onLike (which opens login modal)
-      // but DO NOT update local state, so the heart doesn't turn red.
+  // --- STABLE HANDLERS FOR MEMOIZATION ---
+  
+  const handleLocalLike = useCallback((id: string) => {
       if (!isLoggedIn) {
           onLike(id);
           return;
       }
 
-      // 1. Update Count Locally immediately
+      // Optimistic update
       setData(current => current.map(t => {
           if (t.id === id) {
-              const isLiked = likedIds.has(id);
-              return {
-                  ...t,
-                  likes: Math.max(0, isLiked ? t.likes - 1 : t.likes + 1)
-              };
+              return t; 
           }
           return t;
       }));
-      // 2. Propagate to App
+      
       onLike(id);
-  };
+  }, [isLoggedIn, onLike]); // Minimized deps
+
+  const handleView = useCallback((id: string) => {
+      const t = data.find(item => item.id === id);
+      if (t) onView(t);
+  }, [data, onView]);
+
+  const handleCreatorClick = useCallback((name: string) => {
+      if(onCreatorClick) onCreatorClick(name);
+  }, [onCreatorClick]);
 
   return (
     <section id="gallery" className="py-32 relative z-10 bg-black">
@@ -315,21 +315,34 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 md:gap-12 w-full">
                 {(isFetching && page === 0) || initialLoading ? (
                     // Initial Loading Skeletons
-                    Array.from({ length: 6 }).map((_, index) => (
+                    Array.from({ length: 3 }).map((_, index) => (
                         <div key={index} className="w-full aspect-[4/3] rounded-[24px] bg-[#050505] border border-white/5 animate-pulse"></div>
                     ))
                 ) : (
                     data.map((template, index) => (
-                        <ScrollReveal key={template.id} staggerIndex={index % 3}>
-                            <TemplateCard 
-                                {...template} 
-                                isLiked={likedIds.has(template.id)}
-                                onMessageCreator={onMessageCreator}
-                                onView={() => onView(template)}
-                                onLike={() => handleLocalLike(template.id)}
-                                onCreatorClick={onCreatorClick}
-                            />
-                        </ScrollReveal>
+                        <TemplateCard 
+                            key={template.id} 
+                            id={template.id}
+                            title={template.title}
+                            author={template.author}
+                            authorAvatar={template.authorAvatar}
+                            imageUrl={template.imageUrl}
+                            bannerUrl={template.bannerUrl}
+                            likes={template.likes}
+                            views={template.views}
+                            category={template.category}
+                            price={template.price}
+                            fileUrl={template.fileUrl}
+                            sourceCode={template.sourceCode}
+                            fileType={template.fileType}
+                            videoUrl={template.videoUrl}
+                            index={index}
+                            isLiked={likedIds.has(template.id)}
+                            onMessageCreator={onMessageCreator}
+                            onView={handleView}
+                            onLike={handleLocalLike}
+                            onCreatorClick={handleCreatorClick}
+                        />
                     ))
                 )}
                 </div>

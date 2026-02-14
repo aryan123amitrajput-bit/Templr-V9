@@ -32,14 +32,15 @@ export interface Template {
 const codePreviewColor = (color: string) => `data:text/html;charset=utf-8,<html><body style="margin:0;overflow:hidden;background:%23000;"><div style="width:100%;height:100%;background:linear-gradient(45deg, ${color}, transparent);opacity:0.5;animation:p 4s ease infinite;"></div><style>@keyframes p{0%{opacity:0.3}50%{opacity:0.7}100%{opacity:0.3}}</style></body></html>`;
 
 // --- IMAGES ---
-const imgCyber = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop";
-const imgSaaS = "https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2426&auto=format&fit=crop";
-const imgMobile = "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?q=80&w=2670&auto=format&fit=crop";
-const imgArt = "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2670&auto=format&fit=crop";
-const imgDash = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2670&auto=format&fit=crop";
-const imgCrypto = "https://images.unsplash.com/photo-1621504450162-e152930d674f?q=80&w=2670&auto=format&fit=crop";
-const imgDark = "https://images.unsplash.com/photo-1635830625698-3b9bd74671ca?q=80&w=2670&auto=format&fit=crop";
-const imgMinimal = "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?q=80&w=2555&auto=format&fit=crop";
+// Optimized with width=800 for thumbnail usage to improve load speed
+const imgCyber = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop";
+const imgSaaS = "https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=800&auto=format&fit=crop";
+const imgMobile = "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?q=80&w=800&auto=format&fit=crop";
+const imgArt = "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=800&auto=format&fit=crop";
+const imgDash = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=800&auto=format&fit=crop";
+const imgCrypto = "https://images.unsplash.com/photo-1621504450162-e152930d674f?q=80&w=800&auto=format&fit=crop";
+const imgDark = "https://images.unsplash.com/photo-1635830625698-3b9bd74671ca?q=80&w=800&auto=format&fit=crop";
+const imgMinimal = "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?q=80&w=800&auto=format&fit=crop";
 
 export const templates: Template[] = [
   // 1. STATE: BOTH (Link + Code)
@@ -233,7 +234,7 @@ export const templates: Template[] = [
     title: 'Luxe Fashion Store', 
     author: 'TrendSetter', 
     imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=2670&auto=format&fit=crop", 
+    bannerUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=800&auto=format&fit=crop", 
     likes: 1200, 
     views: 22000, 
     isLiked: false, 
@@ -256,7 +257,7 @@ export const templates: Template[] = [
     title: 'Isometric City', 
     author: 'PolyPush', 
     imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=2670&auto=format&fit=crop", 
+    bannerUrl: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=800&auto=format&fit=crop", 
     likes: 670, 
     views: 8900, 
     isLiked: false, 
@@ -279,7 +280,7 @@ export const templates: Template[] = [
     title: 'Minimalist Ghost Theme', 
     author: 'WriteSpace', 
     imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1499750310159-52f0f83ad713?q=80&w=2515&auto=format&fit=crop", 
+    bannerUrl: "https://images.unsplash.com/photo-1499750310159-52f0f83ad713?q=80&w=800&auto=format&fit=crop", 
     likes: 890, 
     views: 14500, 
     isLiked: false, 
@@ -302,7 +303,7 @@ export const templates: Template[] = [
     title: 'Sorting Visualizer', 
     author: 'AlgoExpert', 
     imageUrl: codePreviewColor('%238b5cf6'), 
-    bannerUrl: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=2670&auto=format&fit=crop", 
+    bannerUrl: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=800&auto=format&fit=crop", 
     likes: 4100, 
     views: 32000, 
     isLiked: false, 
