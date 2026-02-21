@@ -68,7 +68,7 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
               ))
           ) : (
               creators.map((creator, index) => (
-                <ScrollReveal key={creator.email} staggerIndex={index}>
+                <ScrollReveal key={creator.name} staggerIndex={index}>
                     <div 
                         onClick={() => handleCardClick(creator.name)}
                         className="group relative h-[420px] rounded-[32px] cursor-pointer transition-transform duration-500 hover:-translate-y-2"

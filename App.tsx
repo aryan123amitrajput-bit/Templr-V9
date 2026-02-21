@@ -55,6 +55,12 @@ const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
 
   // --- PERSISTENT STATE ---
+  // NUCLEAR KEY ROTATION - V12 STRICT
+  // Double-lock enforcement: UI Guard + Storage Guard.
+  const LIMIT_MAX = 3;
+  const USAGE_KEY = 'templr_usage_v12_strict'; 
+  const PRO_KEY = 'templr_pro_v12_strict';
+
   const [likedTemplateIds, setLikedTemplateIds] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('templr_liked_ids');
@@ -69,13 +75,7 @@ const App: React.FC = () => {
     } catch (e) { return new Set(); }
   });
 
-  const [usageCount, setUsageCount] = useState<number>(() => {
-      try {
-          const saved = localStorage.getItem(USAGE_KEY);
-          const val = saved ? parseInt(saved) : 0;
-          return isNaN(val) ? 0 : val;
-      } catch (e) { return 0; }
-  });
+  const [usageCount, setUsageCount] = useState<number>(0);
 
   const loadTemplates = async () => {
     setIsLoading(true);
@@ -145,14 +145,16 @@ const App: React.FC = () => {
   // Session Sync Logic
   useEffect(() => {
     if (session) {
+        // STRICT SOURCE OF TRUTH: If logged in, the Cloud Session is the ONLY truth.
+        // We ignore localStorage 'true' if the cloud says 'false'.
+        // This prevents stale Pro state from persisting across accounts.
         const cloudPro = session.user.user_metadata?.is_pro === true;
-        const localPro = localStorage.getItem(PRO_KEY) === 'true';
         
-        if (cloudPro || localPro) {
-            setIsSubscribed(true);
-            if (!localPro) localStorage.setItem(PRO_KEY, 'true');
+        setIsSubscribed(cloudPro);
+        
+        if (cloudPro) {
+            localStorage.setItem(PRO_KEY, 'true');
         } else {
-            setIsSubscribed(false);
             localStorage.removeItem(PRO_KEY);
         }
 
@@ -166,6 +168,7 @@ const App: React.FC = () => {
             setUsageCount(maxUsage);
         }
     } else {
+        // If logged out, we trust local storage (for anonymous pro users, if any)
         const localPro = localStorage.getItem(PRO_KEY);
         setIsSubscribed(localPro === 'true');
     }
@@ -398,6 +401,7 @@ const App: React.FC = () => {
         onClose={handleCloseViewer} 
         template={viewingTemplate} 
         onUsageAttempt={handleUsageAttempt}
+        onOpenSubscription={() => setSubscriptionModalOpen(true)}
         usageCount={usageCount}
         isSubscribed={isSubscribed}
       />

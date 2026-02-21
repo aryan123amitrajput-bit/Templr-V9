@@ -10,6 +10,7 @@ interface ImageViewerModalProps {
   onClose: () => void;
   template: Template | null;
   onUsageAttempt: () => boolean; 
+  onOpenSubscription: () => void;
   usageCount: number;
   isSubscribed: boolean;
 }
@@ -19,6 +20,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     onClose, 
     template, 
     onUsageAttempt, 
+    onOpenSubscription,
     usageCount, 
     isSubscribed 
 }) => {
@@ -40,23 +42,21 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   }, [template]);
 
   // STRICT LIMIT CHECK
-  const isLimitReached = !isSubscribed && usageCount >= 3;
   const actionsLeft = Math.max(0, 3 - usageCount);
+  const isLimitReached = !isSubscribed && (usageCount >= 3 || actionsLeft === 0);
 
   const handleVisitLive = (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
 
       // UI GUARD: First Line of Defense
-      // If the UI already knows we are at limit, block immediately.
       if (isLimitReached) {
           playNotificationSound();
-          onUsageAttempt(); // Triggers the modal open via parent logic
+          onOpenSubscription();
           return;
       }
 
       // STORAGE GUARD: Second Line of Defense
-      // Checks strict local storage state
       const canProceed = onUsageAttempt();
       if (!canProceed) return; 
 
@@ -76,7 +76,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
 
       if (isLimitReached) {
           playNotificationSound();
-          onUsageAttempt();
+          onOpenSubscription();
           return;
       }
 
@@ -114,7 +114,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
       
       if (isLimitReached) {
           playNotificationSound();
-          onUsageAttempt();
+          onOpenSubscription();
           return;
       }
 
@@ -148,7 +148,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
             </motion.button>
 
             {/* --- VISIBLE HEADER BADGE (REDUNDANCY) --- */}
-            {!isSubscribed && (
+            {!isSubscribed ? (
                 <motion.div 
                     initial={{ opacity: 0, y: -20 }} 
                     animate={{ opacity: 1, y: 0 }}
@@ -160,6 +160,15 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         ))}
                     </div>
                     <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">{actionsLeft}/3 FREE</span>
+                </motion.div>
+            ) : (
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="fixed top-6 right-6 z-[120] px-4 py-2 bg-black/80 border border-yellow-500/30 rounded-full flex items-center gap-2 shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+                >
+                    <RocketIcon className="w-4 h-4 text-yellow-500" />
+                    <span className="text-xs font-bold text-yellow-500 uppercase tracking-wider">UNLIMITED</span>
                 </motion.div>
             )}
 
@@ -225,7 +234,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                                     <LockIcon className="w-6 h-6 text-slate-500" />
                                                 </div>
                                                 <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest mb-4">Source Code Locked</p>
-                                                <button onClick={() => onUsageAttempt()} className="px-6 py-2 bg-white text-black text-xs font-bold uppercase rounded-full hover:bg-slate-200 transition-colors">
+                                                <button onClick={() => onOpenSubscription()} className="px-6 py-2 bg-white text-black text-xs font-bold uppercase rounded-full hover:bg-slate-200 transition-colors">
                                                     Unlock with Pro
                                                 </button>
                                             </div>
@@ -352,7 +361,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                     >
                                         {isLimitReached ? <LockIcon className="w-4 h-4" /> : <GlobeIcon className="w-4 h-4" />}
                                         <span className="flex flex-col leading-none items-start">
-                                            <span>{isLimitReached ? 'Unlock Link' : `Live Preview (${actionsLeft})`}</span>
+                                            <span>Live Preview {isSubscribed ? '' : `(${actionsLeft})`}</span>
                                         </span>
                                         {isLimitReached && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>}
                                     </button>
@@ -369,7 +378,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                     >
                                         {isLimitReached ? <LockIcon className="w-4 h-4" /> : <UploadIcon className="w-4 h-4 rotate-180" />}
                                         <span className="flex flex-col leading-none items-start">
-                                            <span>{isLimitReached ? 'Unlock File' : `Download (${actionsLeft})`}</span>
+                                            <span>Download {isSubscribed ? '' : `(${actionsLeft})`}</span>
                                         </span>
                                     </button>
                                 )}

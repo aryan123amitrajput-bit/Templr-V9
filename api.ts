@@ -40,7 +40,15 @@ export const isApiConfigured = config.url && config.url !== 'https://placeholder
 export const supabase = createClient(
     config.url,
     config.key, 
-    { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
+    { 
+        auth: { 
+            persistSession: true, 
+            autoRefreshToken: true, 
+            detectSessionInUrl: true,
+            storageKey: 'templr_auth_token',
+            multiTab: false
+        } 
+    }
 );
 
 export interface NewTemplateData {
@@ -175,7 +183,8 @@ export const getPublicTemplates = async (
         const { data, error } = await query.range(from, to - 1);
 
         if (error) {
-            console.error("Fetch error:", error);
+            console.warn("Supabase error, falling back to mocks:", error);
+            if (page === 0) return { data: MockTemplates, hasMore: false };
             return { data: [], hasMore: false };
         }
 
@@ -186,15 +195,42 @@ export const getPublicTemplates = async (
             hasMore 
         };
     } catch (e: any) {
-        if (e.message?.includes('fetch')) {
-            throw new Error("Connection failed. Check your internet or Supabase status.");
-        }
-        throw e;
+        console.warn("API connection failed, falling back to mocks:", e);
+        if (page === 0) return { data: MockTemplates, hasMore: false };
+        return { data: [], hasMore: false };
     }
 };
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
-    if (!isApiConfigured) return [];
+    const generateMockCreators = (): CreatorStats[] => {
+        const statsMap = new Map<string, CreatorStats>();
+        MockTemplates.forEach(t => {
+            const name = t.author;
+            const current = statsMap.get(name) || {
+                name: name,
+                email: 'mock@example.com',
+                totalViews: 0,
+                totalLikes: 0,
+                templateCount: 0,
+                avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                role: 'Creator'
+            };
+            current.totalViews += t.views;
+            current.totalLikes += t.likes;
+            current.templateCount += 1;
+            statsMap.set(name, current);
+        });
+        
+        return Array.from(statsMap.values())
+            .sort((a, b) => b.totalViews - a.totalViews)
+            .slice(0, 4)
+            .map(c => ({
+                ...c,
+                role: c.totalViews > 10000 ? 'Top Seller' : 'Rising Star'
+            }));
+    };
+
+    if (!isApiConfigured) return generateMockCreators();
 
     try {
         const { data, error } = await supabase
@@ -202,7 +238,10 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             .select('author_name, author_email, author_avatar, views, likes')
             .eq('status', 'approved');
 
-        if (error || !data) return [];
+        if (error || !data) {
+             console.warn("Supabase error (creators), falling back to mocks:", error);
+             return generateMockCreators();
+        }
 
         const statsMap = new Map<string, CreatorStats>();
 
@@ -242,7 +281,8 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
         }));
     } catch (e) {
-        return [];
+        console.warn("API connection failed (creators), falling back to mocks:", e);
+        return generateMockCreators();
     }
 };
 
