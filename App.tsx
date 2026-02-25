@@ -17,7 +17,6 @@ import SubscriptionModal from './components/SubscriptionModal';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
-import { activeApiUrl } from './api';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
 import type { Session, Template, NewTemplateData } from './api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -47,7 +46,6 @@ const App: React.FC = () => {
   // --- DATA STATE ---
   const [templates, setTemplates] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [apiError, setApiError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   
   // --- SUBSCRIPTION STATE ---
@@ -82,16 +80,11 @@ const App: React.FC = () => {
 
   const loadTemplates = async () => {
     setIsLoading(true);
-    setApiError(null);
     try {
-      const { data, error } = await api.getPublicTemplates(0, 6);
-      if (error) {
-          setApiError(error);
-      }
+      const { data } = await api.getPublicTemplates(0, 6);
       setTemplates(data);
-    } catch (e: any) {
+    } catch (e) {
       console.error("Error loading templates:", e);
-      setApiError(e.message || "Unknown error");
     } finally {
       setIsLoading(false);
     }
@@ -391,47 +384,6 @@ const App: React.FC = () => {
       <main>
         <Hero onUploadClick={handleOpenUpload} />
         
-        {apiError && (
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center">
-                    <h3 className="text-red-400 font-bold mb-2">Connection Blocked</h3>
-                    <p className="text-red-300/80 text-sm mb-4">
-                        {apiError.includes('fetch') 
-                            ? "Your browser or network is blocking the connection to Supabase." 
-                            : apiError}
-                    </p>
-                    <div className="text-xs text-zinc-500 font-mono mb-4 space-y-1">
-                        <p>Target: {activeApiUrl}</p>
-                        <p>Status: {apiError}</p>
-                    </div>
-                    
-                    <div className="bg-black/30 rounded-lg p-4 mb-4 text-left max-w-md mx-auto">
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Troubleshooting:</p>
-                        <ul className="list-disc list-inside text-xs text-slate-400 space-y-1">
-                            <li>Disable AdBlock / uBlock Origin for this page</li>
-                            <li>Turn off VPN if active</li>
-                            <li>Check if your corporate firewall blocks *.supabase.co</li>
-                        </ul>
-                    </div>
-
-                    <div className="flex justify-center gap-4">
-                        <button 
-                            onClick={() => window.location.reload()}
-                            className="bg-red-500/20 hover:bg-red-500/30 text-red-200 px-4 py-2 rounded-lg text-sm transition-colors"
-                        >
-                            Retry Connection
-                        </button>
-                        <button 
-                            onClick={handleOpenSetup}
-                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition-colors"
-                        >
-                            Open Diagnostics
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-
         <TemplateGallery 
           templates={templates}
           isLoading={isLoading}
