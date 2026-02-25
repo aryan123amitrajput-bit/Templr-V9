@@ -6,19 +6,12 @@ import { Template as MockTemplate, templates as MockTemplates } from './db';
 //   TEMPLR PRODUCTION ENGINE v9.37
 // ==========================================
 
-export const PROVIDED_URL = typeof window !== 'undefined' ? `${window.location.origin}/supabase` : 'https://risynxckpsgqgprnaccr.supabase.co';
-export const PROVIDED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpc3lueGNrcHNncWdwcm5hY2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNjY4MTQsImV4cCI6MjA3Nzg0MjgxNH0.Ta6cfgjZf7AMLoMzIpIIsGxgAefQvTRTSVsrpROVoak';
+const PROVIDED_URL = 'https://risynxckpsgqgprnaccr.supabase.co';
+const PROVIDED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpc3lueGNrcHNncWdwcm5hY2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNjY4MTQsImV4cCI6MjA3Nzg0MjgxNH0.Ta6cfgjZf7AMLoMzIpIIsGxgAefQvTRTSVsrpROVoak';
 
 const getSupabaseConfig = () => {
     let url = '';
     let key = '';
-    
-    // 1. Try Hardcoded (Priority for this user request)
-    if (PROVIDED_URL && PROVIDED_KEY) {
-        return { url: PROVIDED_URL, key: PROVIDED_KEY };
-    }
-
-    // 2. Try Local Storage
     try {
         if (typeof window !== 'undefined') {
             url = localStorage.getItem('templr_project_url') || '';
@@ -26,7 +19,6 @@ const getSupabaseConfig = () => {
         }
     } catch(e) {}
 
-    // 3. Try Env Vars
     if (!url || !key) {
         try {
             if (typeof process !== 'undefined' && process.env) {
@@ -43,23 +35,7 @@ const getSupabaseConfig = () => {
 };
 
 const config = getSupabaseConfig();
-export const activeApiUrl = config.url;
 export const isApiConfigured = config.url && config.url !== 'https://placeholder.supabase.co';
-
-export const testConnection = async (url: string, key: string): Promise<{ success: boolean; message: string }> => {
-    try {
-        const testClient = createClient(url, key);
-        // Try a very simple public query
-        const { error } = await testClient.from('templates').select('count', { count: 'exact', head: true });
-        
-        if (error) {
-            return { success: false, message: error.message };
-        }
-        return { success: true, message: "Connection successful!" };
-    } catch (e: any) {
-        return { success: false, message: e.message || "Network error" };
-    }
-};
 
 export const supabase = createClient(
     config.url,
@@ -119,22 +95,6 @@ export interface CreatorStats {
     role: string;
 }
 
-const fixUrl = (url?: string): string => {
-    if (!url) return '';
-    if (typeof window !== 'undefined' && url.includes('risynxckpsgqgprnaccr.supabase.co')) {
-        return url.replace('https://risynxckpsgqgprnaccr.supabase.co', `${window.location.origin}/supabase`);
-    }
-    return url;
-};
-
-const unfixUrl = (url?: string): string => {
-    if (!url) return '';
-    if (typeof window !== 'undefined' && url.includes(`${window.location.origin}/supabase`)) {
-        return url.replace(`${window.location.origin}/supabase`, 'https://risynxckpsgqgprnaccr.supabase.co');
-    }
-    return url;
-};
-
 const mapTemplate = (data: any): Template => {
     let inferredType = data.file_type || 'link';
     const hasSource = data.source_code && data.source_code.trim().length > 0;
@@ -151,11 +111,11 @@ const mapTemplate = (data: any): Template => {
         id: data.id,
         title: data.title,
         author: data.author_name || 'Anonymous', 
-        authorAvatar: fixUrl(data.author_avatar),
-        imageUrl: fixUrl(data.image_url),
-        bannerUrl: fixUrl(data.banner_url || data.image_url),
-        galleryImages: (data.gallery_images || []).map(fixUrl),
-        videoUrl: fixUrl(data.video_url),
+        authorAvatar: data.author_avatar,
+        imageUrl: data.image_url,
+        bannerUrl: data.banner_url || data.image_url,
+        galleryImages: data.gallery_images || [],
+        videoUrl: data.video_url,
         likes: data.likes || 0,
         views: data.views || 0,
         isLiked: false, 
@@ -181,10 +141,11 @@ export const getPublicTemplates = async (
     searchQuery: string = '', 
     category: string = 'All',
     sortBy: 'newest' | 'popular' | 'likes' = 'newest'
-): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
+): Promise<{ data: Template[], hasMore: boolean }> => {
     
     if (!isApiConfigured) {
-        return { data: [], hasMore: false, error: "API not configured" };
+        if (page === 0) return { data: MockTemplates, hasMore: false };
+        return { data: [], hasMore: false };
     }
 
     try {
@@ -221,8 +182,9 @@ export const getPublicTemplates = async (
         const { data, error } = await query.range(from, to - 1);
 
         if (error) {
-            console.error("Supabase error:", error);
-            return { data: [], hasMore: false, error: error.message };
+            console.warn("Supabase error, falling back to mocks:", error);
+            if (page === 0) return { data: MockTemplates, hasMore: false };
+            return { data: [], hasMore: false };
         }
 
         const hasMore = data.length === limit;
@@ -232,13 +194,42 @@ export const getPublicTemplates = async (
             hasMore 
         };
     } catch (e: any) {
-        console.error("API connection failed:", e);
-        return { data: [], hasMore: false, error: e.message || "Connection failed" };
+        console.warn("API connection failed, falling back to mocks:", e);
+        if (page === 0) return { data: MockTemplates, hasMore: false };
+        return { data: [], hasMore: false };
     }
 };
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
-    if (!isApiConfigured) return [];
+    const generateMockCreators = (): CreatorStats[] => {
+        const statsMap = new Map<string, CreatorStats>();
+        MockTemplates.forEach(t => {
+            const name = t.author;
+            const current = statsMap.get(name) || {
+                name: name,
+                email: 'mock@example.com',
+                totalViews: 0,
+                totalLikes: 0,
+                templateCount: 0,
+                avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                role: 'Creator'
+            };
+            current.totalViews += t.views;
+            current.totalLikes += t.likes;
+            current.templateCount += 1;
+            statsMap.set(name, current);
+        });
+        
+        return Array.from(statsMap.values())
+            .sort((a, b) => b.totalViews - a.totalViews)
+            .slice(0, 4)
+            .map(c => ({
+                ...c,
+                role: c.totalViews > 10000 ? 'Top Seller' : 'Rising Star'
+            }));
+    };
+
+    if (!isApiConfigured) return generateMockCreators();
 
     try {
         const { data, error } = await supabase
@@ -247,8 +238,8 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             .eq('status', 'approved');
 
         if (error || !data) {
-             console.error("Supabase error (creators):", error);
-             return [];
+             console.warn("Supabase error (creators), falling back to mocks:", error);
+             return generateMockCreators();
         }
 
         const statsMap = new Map<string, CreatorStats>();
@@ -266,7 +257,7 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             };
 
             if (t.author_avatar) {
-                current.avatarUrl = fixUrl(t.author_avatar);
+                current.avatarUrl = t.author_avatar;
             }
 
             current.totalViews += (t.views || 0);
@@ -289,18 +280,13 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
         }));
     } catch (e) {
-        console.error("API connection failed (creators):", e);
-        return [];
+        console.warn("API connection failed (creators), falling back to mocks:", e);
+        return generateMockCreators();
     }
 };
 
 export const listenForUserTemplates = async (userEmail: string, callback: (templates: Template[]) => void) => {
     if (!userEmail) { callback([]); return { unsubscribe: () => {} }; }
-
-    if (!isApiConfigured) {
-        callback([]);
-        return { unsubscribe: () => {} };
-    }
 
     const fetchUserTemplates = async () => {
         try {
@@ -320,27 +306,26 @@ export const listenForUserTemplates = async (userEmail: string, callback: (templ
 
 export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<void> => {
     if (!user || !user.email) throw new Error("Authentication required.");
-    if (!isApiConfigured) return;
 
     const dbPayload: any = {
         title: templateData.title,
-        image_url: unfixUrl(templateData.imageUrl),
-        banner_url: unfixUrl(templateData.bannerUrl || templateData.imageUrl),
+        image_url: templateData.imageUrl,
+        banner_url: templateData.bannerUrl || templateData.imageUrl,
         category: templateData.category,
         price: templateData.price,
         author_name: user.user_metadata?.full_name || user.email.split('@')[0],
         author_email: user.email,
-        author_avatar: unfixUrl(user.user_metadata?.avatar_url),
+        author_avatar: user.user_metadata?.avatar_url,
         file_name: templateData.fileName || 'Project Files',
         file_type: templateData.fileType || 'link',
         file_size: templateData.fileSize || 0,
         status: templateData.initialStatus || 'approved',
         tags: templateData.tags || [],
         description: templateData.description,
-        video_url: unfixUrl(templateData.videoUrl),
-        gallery_images: (templateData.galleryImages || []).map(unfixUrl),
+        video_url: templateData.videoUrl,
+        gallery_images: templateData.galleryImages,
         source_code: templateData.sourceCode,
-        file_url: unfixUrl(templateData.fileUrl || templateData.externalLink)
+        file_url: templateData.fileUrl || templateData.externalLink
     };
 
     try {
@@ -372,18 +357,17 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
 };
 
 export const updateTemplateData = async (id: string, data: Partial<NewTemplateData>, userEmail: string): Promise<void> => {
-    if (!isApiConfigured) return;
     const dbPayload: any = {};
     if (data.title) dbPayload.title = data.title;
     if (data.description) dbPayload.description = data.description;
     if (data.category) dbPayload.category = data.category;
     if (data.tags) dbPayload.tags = data.tags;
-    if (data.externalLink) dbPayload.file_url = unfixUrl(data.externalLink);
-    if (data.imageUrl) dbPayload.image_url = unfixUrl(data.imageUrl);
-    if (data.bannerUrl) dbPayload.banner_url = unfixUrl(data.bannerUrl);
-    if (data.videoUrl) dbPayload.video_url = unfixUrl(data.videoUrl);
+    if (data.externalLink) dbPayload.file_url = data.externalLink;
+    if (data.imageUrl) dbPayload.image_url = data.imageUrl;
+    if (data.bannerUrl) dbPayload.banner_url = data.bannerUrl;
+    if (data.videoUrl) dbPayload.video_url = data.videoUrl;
     if (data.sourceCode) dbPayload.source_code = data.sourceCode;
-    if (data.fileUrl) dbPayload.file_url = unfixUrl(data.fileUrl);
+    if (data.fileUrl) dbPayload.file_url = data.fileUrl;
 
     try {
         const { error } = await supabase
@@ -399,24 +383,15 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
 };
 
 export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
-  if (!isApiConfigured) {
-      return { user: { email: 'mock@example.com', user_metadata: updates } };
-  }
-  
-  const dbUpdates = { ...updates };
-  if (dbUpdates.avatar_url) {
-      dbUpdates.avatar_url = unfixUrl(dbUpdates.avatar_url);
-  }
-
   try {
-    const { data, error } = await supabase.auth.updateUser({ data: dbUpdates });
+    const { data, error } = await supabase.auth.updateUser({ data: updates });
     if (error) throw new Error(error.message);
 
     if (data.user?.email) {
         try {
             const syncUpdates: any = {};
-            if (dbUpdates.full_name) syncUpdates.author_name = dbUpdates.full_name;
-            if (dbUpdates.avatar_url) syncUpdates.author_avatar = dbUpdates.avatar_url;
+            if (updates.full_name) syncUpdates.author_name = updates.full_name;
+            if (updates.avatar_url) syncUpdates.author_avatar = updates.avatar_url;
             await supabase.from('templates').update(syncUpdates).eq('author_email', data.user.email);
         } catch (e) {}
     }
@@ -428,7 +403,6 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
 };
 
 export const updateUserUsage = async (count: number) => {
-  if (!isApiConfigured) return;
   try {
     const { error } = await supabase.auth.updateUser({ data: { usage_count: count } });
     if (error) console.error("Sync usage error:", error);
@@ -436,7 +410,6 @@ export const updateUserUsage = async (count: number) => {
 };
 
 export const setProStatus = async (status: boolean) => {
-    if (!isApiConfigured) return;
     try {
         const { error } = await supabase.auth.updateUser({ data: { is_pro: status } });
         if (error) throw error;
@@ -449,7 +422,6 @@ export const setProStatus = async (status: boolean) => {
 };
 
 export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
-    if (!isApiConfigured) return;
     try {
         const dbUpdates: any = {};
         if (updates.views !== undefined) dbUpdates.views = updates.views;
@@ -459,7 +431,6 @@ export const updateTemplate = async (templateId: string, updates: Partial<Templa
 };
 
 export const deleteTemplate = async (templateId: string): Promise<void> => {
-    if (!isApiConfigured) return;
     try {
         const { error } = await supabase.from('templates').delete().eq('id', templateId);
         if (error) throw new Error(error.message);
@@ -473,65 +444,24 @@ export const deleteTemplate = async (templateId: string): Promise<void> => {
 };
 
 export const uploadFile = async (file: File, path: string): Promise<string> => {
-    if (!isApiConfigured) {
-        return URL.createObjectURL(file);
-    }
     try {
         const { error } = await supabase.storage.from('assets').upload(path, file, { upsert: true });
         if (error) throw new Error(error.message);
         const { data } = supabase.storage.from('assets').getPublicUrl(path);
-        return fixUrl(data.publicUrl);
+        return data.publicUrl;
     } catch (e: any) {
         if (e.message?.includes('fetch')) throw new Error("Connection error while uploading.");
         throw e;
     }
 };
 
-export const getSession = async (): Promise<Session | null> => {
-    if (!isApiConfigured) {
-        return null; 
-    }
-    try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error || !data.session) return null;
-        return {
-            user: {
-                id: data.session.user.id,
-                email: data.session.user.email,
-                user_metadata: {
-                    full_name: data.session.user.user_metadata.full_name,
-                    avatar_url: fixUrl(data.session.user.user_metadata.avatar_url),
-                    usage_count: data.session.user.user_metadata.usage_count,
-                    is_pro: data.session.user.user_metadata.is_pro
-                }
-            }
-        };
-    } catch (e) {
-        return null;
-    }
-};
-
 export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Session | null) => void) => {
-    if (!isApiConfigured) {
-        if (typeof window !== 'undefined') {
-            const listener = (e: any) => {
-                const { event, session } = e.detail;
-                callback(event, session);
-            };
-            window.addEventListener('mock-auth-change', listener);
-            return { unsubscribe: () => window.removeEventListener('mock-auth-change', listener) };
-        }
-        return { unsubscribe: () => {} };
-    }
     const { data } = supabase.auth.onAuthStateChange((event, session: any) => {
         const mappedSession = session ? {
             user: {
                 id: session.user.id,
                 email: session.user.email,
-                user_metadata: {
-                    ...session.user.user_metadata,
-                    avatar_url: fixUrl(session.user.user_metadata?.avatar_url)
-                }
+                user_metadata: session.user.user_metadata
             }
         } : null;
         callback(session ? 'SIGNED_IN' : 'SIGNED_OUT', mappedSession);
@@ -573,21 +503,20 @@ export const signOut = async () => {
 
 export const seedDatabase = async (user: Session['user']): Promise<void> => {
     if (!user.email) throw new Error("No user email");
-    if (!isApiConfigured) return;
     const payloads = MockTemplates.map(t => ({
         title: t.title,
         author_name: t.author,
         author_email: user.email, 
-        author_avatar: unfixUrl(user.user_metadata?.avatar_url),
-        image_url: unfixUrl(t.imageUrl),
-        banner_url: unfixUrl(t.bannerUrl),
+        author_avatar: user.user_metadata?.avatar_url,
+        image_url: t.imageUrl,
+        banner_url: t.bannerUrl,
         category: t.category,
         description: t.description,
         price: t.price,
         tags: t.tags || [],
         file_type: t.fileType,
         source_code: t.sourceCode,
-        file_url: unfixUrl(t.fileUrl),
+        file_url: t.fileUrl,
         status: 'approved',
         likes: t.likes,
         views: t.views,
