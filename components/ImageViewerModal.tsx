@@ -25,6 +25,8 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     isSubscribed 
 }) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
+  const [imageError, setImageError] = useState(false);
+  const [signedImage, setSignedImage] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -38,8 +40,16 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   useEffect(() => {
     if (template) {
         setActiveTab('preview');
+        setImageError(false);
     }
   }, [template]);
+
+  const displayImage = template?.bannerUrl || template?.imageUrl;
+
+  useEffect(() => {
+      setImageError(false);
+      setSignedImage(null);
+  }, [displayImage]);
 
   // STRICT LIMIT CHECK
   const actionsLeft = Math.max(0, 3 - usageCount);
@@ -133,7 +143,53 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   const hasCode = (rawCode.trim().length > 0) || isZip;
   const rawUrl = template.fileUrl || '';
   const hasLink = !!rawUrl && rawUrl.trim() !== '' && rawUrl !== '#' && !isZip;
-  const displayImage = template.bannerUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop';
+
+  const handleImageError = async () => {
+      if (signedImage) {
+          setImageError(true);
+          return;
+      }
+
+      if (displayImage && displayImage.includes('/storage/v1/object/public/')) {
+          try {
+              const pathParts = displayImage.split('/storage/v1/object/public/')[1].split('/');
+              const bucket = pathParts[0];
+              const path = pathParts.slice(1).join('/');
+              if (bucket && path) {
+                  const api = await import('../api');
+                  const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
+                  if (data?.signedUrl) {
+                      console.log("Using signed URL fallback for modal:", template.title);
+                      setSignedImage(data.signedUrl);
+                      return;
+                  } else {
+                      // Try download as last resort
+                      const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
+                      if (blobData) {
+                          // Fix for "application/octet-stream" issues on old uploads
+                          let mimeType = blobData.type;
+                          if (!mimeType || mimeType === 'application/octet-stream') {
+                              const ext = path.split('.').pop()?.toLowerCase();
+                              if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+                              else if (ext === 'png') mimeType = 'image/png';
+                              else if (ext === 'webp') mimeType = 'image/webp';
+                              else if (ext === 'gif') mimeType = 'image/gif';
+                          }
+                          
+                          const correctedBlob = blobData.slice(0, blobData.size, mimeType);
+                          const objectUrl = URL.createObjectURL(correctedBlob);
+                          setSignedImage(objectUrl);
+                          return;
+                      }
+                  }
+              }
+          } catch (e) {
+              console.warn("Signed URL fallback failed:", e);
+          }
+      }
+      
+      setImageError(true);
+  };
   
   return (
     <AnimatePresence>
@@ -206,10 +262,23 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                                 muted 
                                                 loop 
                                                 controlsList="nodownload"
+                                                poster={signedImage || displayImage || undefined}
                                             />
                                         </div>
                                     ) : (
-                                        <img src={displayImage || null} alt={template.title} className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" />
+                                        (signedImage || displayImage) && !imageError ? (
+                                            <img 
+                                                src={signedImage || displayImage} 
+                                                alt={template.title} 
+                                                onError={handleImageError}
+                                                className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center text-slate-600">
+                                                <LayersIcon className="w-16 h-16 mb-4 opacity-20" />
+                                                <p className="text-sm font-medium opacity-40">Preview Image Unavailable</p>
+                                            </div>
+                                        )
                                     )}
                                 </motion.div>
                             ) : (

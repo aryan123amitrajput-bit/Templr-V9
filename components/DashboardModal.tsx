@@ -90,6 +90,47 @@ const CapacityProjection = ({ usedBytes, templateCount }: { usedBytes: number, t
 };
 
 const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void, onEdit?: () => void }> = ({ template, onDelete, onEdit }) => {
+    const [imageError, setImageError] = useState(false);
+    const [signedBanner, setSignedBanner] = useState<string | null>(null);
+    
+    useEffect(() => {
+        setImageError(false);
+        setSignedBanner(null);
+    }, [template.bannerUrl]);
+
+    const handleImageError = async () => {
+        if (signedBanner) {
+            setImageError(true);
+            return;
+        }
+
+        if (template.bannerUrl && template.bannerUrl.includes('/storage/v1/object/public/')) {
+            try {
+                const pathParts = template.bannerUrl.split('/storage/v1/object/public/')[1].split('/');
+                const bucket = pathParts[0];
+                const path = pathParts.slice(1).join('/');
+                if (bucket && path) {
+                    const api = await import('../api');
+                    const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
+                    if (data?.signedUrl) {
+                        setSignedBanner(data.signedUrl);
+                        return;
+                    } else {
+                        const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
+                        if (blobData) {
+                            const objectUrl = URL.createObjectURL(blobData);
+                            setSignedBanner(objectUrl);
+                            return;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Signed URL fallback failed:", e);
+            }
+        }
+        
+        setImageError(true);
+    };
     
     const getStatusStyle = (status: string) => {
         switch (status) {
@@ -118,8 +159,16 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
         >
             <div className="flex p-4 gap-4">
                 {/* Thumbnail */}
-                <div className="w-24 h-24 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0 relative">
-                    <img src={template.bannerUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                <div className="w-24 h-24 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0 relative flex items-center justify-center">
+                    {!imageError ? (
+                        <img 
+                            src={signedBanner || template.bannerUrl} 
+                            onError={handleImageError}
+                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                        />
+                    ) : (
+                        <LayersIcon className="w-8 h-8 text-white/10" />
+                    )}
                     {template.status === 'approved' && (
                         <div className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]"></div>
                     )}

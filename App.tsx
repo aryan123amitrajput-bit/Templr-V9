@@ -78,13 +78,29 @@ const App: React.FC = () => {
 
   const [usageCount, setUsageCount] = useState<number>(0);
 
-  const loadTemplates = async () => {
+  const loadTemplates = async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      const { data } = await api.getPublicTemplates(0, 6);
+      const { data, error } = await api.getPublicTemplates(0, 6);
+      const msg = error?.toLowerCase() || '';
+      if (error && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) && retryCount < 2) {
+          console.warn(`Initial load failed, retrying... (${retryCount + 1})`);
+          setTimeout(() => loadTemplates(retryCount + 1), 1500);
+          return;
+      }
       setTemplates(data);
-    } catch (e) {
-      console.error("Error loading templates:", e);
+    } catch (e: any) {
+      const msg = e.message?.toLowerCase() || '';
+      if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+          console.warn(`Initial load failed, retrying... (${retryCount + 1})`);
+          setTimeout(() => loadTemplates(retryCount + 1), 1500);
+      } else {
+          if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+              console.warn("Error loading templates:", e.message);
+          } else {
+              console.error("Error loading templates:", e);
+          }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +147,11 @@ const App: React.FC = () => {
         if (e.detail?.type === 'delete') {
             setTemplates(prev => prev.filter(t => t.id !== e.detail.id));
         }
+    });
+
+    window.addEventListener('templr-open-upload', () => {
+        setUploadModalOpen(true);
+        setEditingTemplate(null);
     });
 
     const authSubPromise = initAuth();
@@ -448,8 +469,15 @@ const App: React.FC = () => {
       <LoginModal 
         isOpen={isLoginModalOpen}
         onClose={handleCloseLogin}
-        onLogin={async (e, p) => { await api.signInWithEmail(e, p); }}
-        onSignup={async (e, p, n) => { return await api.signUpWithEmail(e, p, n); }}
+        onLogin={async (e, p) => { 
+            const data = await api.signInWithEmail(e, p); 
+            if (data.session) setSession(data.session);
+        }}
+        onSignup={async (e, p, n) => { 
+            const data = await api.signUpWithEmail(e, p, n); 
+            if (data.session) setSession(data.session);
+            return data;
+        }}
         onOpenSetup={handleOpenSetup}
       />
       <ProfileSettingsModal 

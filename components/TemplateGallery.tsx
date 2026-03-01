@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import TemplateCard from './TemplateCard';
-import { Template, getPublicTemplates } from '../api';
+import { Template, getPublicTemplates, isApiConfigured } from '../api';
 import { playClickSound } from '../audio';
 import { SearchIcon, NoResultsIcon, XIcon, FilterIcon, SortIcon, ArrowRightIcon } from './Icons';
 import { ScrollReveal } from './ScrollReveal';
@@ -53,6 +53,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   // Sync initial templates if provided
   useEffect(() => {
       if (initialTemplates) {
+          console.log(`[Gallery] Received ${initialTemplates.length} templates from parent`);
           setData(initialTemplates);
           // If we receive a fresh batch (likely page 0), reset pagination state for consistency
           if (initialTemplates.length <= 6) {
@@ -73,12 +74,12 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   }, [searchQuery]);
 
   // Fetch Logic
-  const fetchData = useCallback(async (reset = false) => {
+  const fetchData = useCallback(async (reset = false, retryCount = 0) => {
       setIsFetching(true);
       const currentPage = reset ? 0 : page;
       
       try {
-          const { data: newTemplates, hasMore: more } = await getPublicTemplates(
+          const { data: newTemplates, hasMore: more, error } = await getPublicTemplates(
               currentPage, 
               6, // Limit to 6 items per load
               debouncedSearch, 
@@ -86,14 +87,36 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
               sortBy
           );
 
+          const msg = error?.toLowerCase() || '';
+          if (error && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) && retryCount < 2) {
+              console.warn(`Gallery fetch failed, retrying... (${retryCount + 1})`);
+              setTimeout(() => fetchData(reset, retryCount + 1), 1000);
+              return;
+          }
+
           if (reset) {
               setData(newTemplates);
           } else {
-              setData(prev => [...prev, ...newTemplates]);
+              setData(prev => {
+                  // Filter out duplicates
+                  const existingIds = new Set(prev.map(t => t.id));
+                  const uniqueNew = newTemplates.filter(t => !existingIds.has(t.id));
+                  return [...prev, ...uniqueNew];
+              });
           }
           setHasMore(more);
-      } catch (e) {
-          console.error("Gallery Fetch Error", e);
+      } catch (e: any) {
+          const msg = e.message?.toLowerCase() || '';
+          if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+              console.warn(`Gallery fetch exception, retrying... (${retryCount + 1})`);
+              setTimeout(() => fetchData(reset, retryCount + 1), 1000);
+          } else {
+              if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+                  console.warn("Gallery Fetch Error:", e.message);
+              } else {
+                  console.error("Gallery Fetch Error", e);
+              }
+          }
       } finally {
           setIsFetching(false);
       }
@@ -308,14 +331,49 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                     <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 text-slate-500 border border-white/5 shadow-inner">
                         <NoResultsIcon className="w-8 h-8 opacity-50" />
                     </div>
-                    <h4 className="text-xl font-bold text-white mb-2 tracking-tight">No results found</h4>
-                    <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">We couldn't find any templates matching "{searchQuery}".</p>
-                    <button 
-                        onClick={() => { setSearchQuery(''); setActiveFilter('All'); playClickSound(); }}
-                        className="px-8 py-3 bg-white text-black text-xs font-bold uppercase tracking-widest rounded-full hover:bg-slate-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                    >
-                        Clear Filters
-                    </button>
+                    
+                    {!isApiConfigured ? (
+                        <>
+                            <h4 className="text-xl font-bold text-white mb-2 tracking-tight">Database Not Connected</h4>
+                            <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">
+                                Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.
+                            </p>
+                        </>
+                    ) : (searchQuery || activeFilter !== 'All') ? (
+                        <>
+                            <h4 className="text-xl font-bold text-white mb-2 tracking-tight">No results found</h4>
+                            <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">
+                                We couldn't find any templates matching "{searchQuery}" with filter "{activeFilter}".
+                            </p>
+                            <button 
+                                onClick={() => { setSearchQuery(''); setActiveFilter('All'); playClickSound(); }}
+                                className="px-8 py-3 bg-white text-black text-xs font-bold uppercase tracking-widest rounded-full hover:bg-slate-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                            >
+                                Clear Filters
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <h4 className="text-xl font-bold text-white mb-2 tracking-tight">No templates yet</h4>
+                            <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">
+                                Be the first to upload a template to the community!
+                            </p>
+                            {isLoggedIn && (
+                                <button 
+                                    onClick={() => { 
+                                        const uploadBtn = document.querySelector('[data-upload-trigger="true"]') as HTMLElement;
+                                        if(uploadBtn) uploadBtn.click();
+                                        // Fallback if trigger not found
+                                        const event = new CustomEvent('templr-open-upload');
+                                        window.dispatchEvent(event);
+                                    }}
+                                    className="px-8 py-3 bg-blue-600 text-white text-xs font-bold uppercase tracking-widest rounded-full hover:bg-blue-500 transition-colors shadow-[0_0_20px_rgba(37,99,235,0.3)]"
+                                >
+                                    Upload Template
+                                </button>
+                            )}
+                        </>
+                    )}
                 </div>
             </ScrollReveal>
         ) : (
@@ -365,29 +423,19 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         viewport={{ once: true }}
                         className="mt-20"
                     >
-                        <button 
-                            onClick={handleLoadMore}
-                            disabled={isFetching}
-                            className={`
-                                group relative px-10 py-4 rounded-full text-sm font-bold uppercase tracking-widest transition-all border 
-                                flex items-center gap-3 overflow-hidden min-w-[240px] justify-center
-                                ${isFetching 
-                                    ? 'bg-white/10 border-white/10 text-slate-500 cursor-wait' 
-                                    : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border-white/5 hover:border-white/20 shadow-xl'}
-                            `}
-                        >
-                            {isFetching ? (
-                                <>
-                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                    <span>Syncing Assets...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span>Load More Assets</span>
-                                    <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                </>
-                            )}
-                        </button>
+                        <div className={`button-container ${isFetching ? 'is-loading' : ''}`}>
+                            <div className="glow-effect"></div>
+                            <button 
+                                className="obsidian-btn"
+                                onClick={handleLoadMore}
+                                disabled={isFetching}
+                            >
+                                <span className="btn-text">
+                                    {isFetching ? 'Loading...' : 'Load More'}
+                                </span>
+                                <div className="obsidian-spinner"></div>
+                            </button>
+                        </div>
                     </motion.div>
                 )}
             </div>

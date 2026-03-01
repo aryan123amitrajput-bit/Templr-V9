@@ -1,45 +1,50 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { Template as MockTemplate, templates as MockTemplates } from './db';
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v9.37
+//   CRITICAL: DO NOT REMOVE OR CHANGE THESE
 // ==========================================
 
-export const PROVIDED_URL = typeof window !== 'undefined' ? `${window.location.origin}/supabase` : 'https://risynxckpsgqgprnaccr.supabase.co';
-export const PROVIDED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpc3lueGNrcHNncWdwcm5hY2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNjY4MTQsImV4cCI6MjA3Nzg0MjgxNH0.Ta6cfgjZf7AMLoMzIpIIsGxgAefQvTRTSVsrpROVoak';
+export const PROVIDED_URL = ''; // CLEARED PER USER REQUEST
+export const PROVIDED_KEY = ''; // CLEARED PER USER REQUEST
 
 const getSupabaseConfig = () => {
     let url = '';
     let key = '';
     
-    // 1. Try Hardcoded (Priority for this user request)
-    if (PROVIDED_URL && PROVIDED_KEY) {
-        return { url: PROVIDED_URL, key: PROVIDED_KEY };
-    }
-
-    // 2. Try Local Storage
+    // Prioritize Env Vars
     try {
-        if (typeof window !== 'undefined') {
-            url = localStorage.getItem('templr_project_url') || '';
-            key = localStorage.getItem('templr_anon_key') || '';
+        if (import.meta.env) {
+            url = import.meta.env.VITE_SUPABASE_URL || '';
+            key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+            
+            if (url) console.log("[Config] Found VITE_SUPABASE_URL in env");
+            if (key) console.log("[Config] Found VITE_SUPABASE_ANON_KEY in env");
         }
-    } catch(e) {}
+    } catch (e) {}
 
-    // 3. Try Env Vars
+    // Fallback to Local Storage
     if (!url || !key) {
         try {
-            if (typeof process !== 'undefined' && process.env) {
-                url = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-                key = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+            if (typeof window !== 'undefined') {
+                url = localStorage.getItem('templr_project_url') || '';
+                key = localStorage.getItem('templr_anon_key') || '';
+                if (url) console.log("[Config] Found credentials in LocalStorage");
             }
-        } catch (e) {}
+        } catch(e) {}
     }
 
-    if (!url || url.includes('placeholder')) url = PROVIDED_URL;
-    if (!key || key.includes('placeholder')) key = PROVIDED_KEY;
+    console.log(`[Config] Final URL: ${url ? url.substring(0, 15) + '...' : 'NONE'}`);
 
-    return { url, key };
+    let finalUrl = url;
+    if (finalUrl && finalUrl.endsWith('/')) {
+        finalUrl = finalUrl.slice(0, -1);
+    }
+    return { 
+        url: finalUrl, 
+        key: key 
+    };
 };
 
 const config = getSupabaseConfig();
@@ -49,7 +54,7 @@ export const isApiConfigured = config.url && config.url !== 'https://placeholder
 export const testConnection = async (url: string, key: string): Promise<{ success: boolean; message: string }> => {
     try {
         const testClient = createClient(url, key);
-        // Try a very simple public query
+        // Try a very simple public query with timeout
         const { error } = await testClient.from('templates').select('count', { count: 'exact', head: true });
         
         if (error) {
@@ -61,16 +66,54 @@ export const testConnection = async (url: string, key: string): Promise<{ succes
     }
 };
 
+// Robust fetch wrapper with retries for the Supabase client
+const retryingFetch = async (url: any, options: any) => {
+    const MAX_RETRIES = 2;
+    let lastError;
+    
+    console.log(`[Fetch] Request to: ${url.toString().substring(0, 50)}...`);
+
+    for (let i = 0; i < MAX_RETRIES; i++) {
+        try {
+            // Check for network connectivity first if possible
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                throw new Error("Offline");
+            }
+            
+            const response = await fetch(url, options);
+            
+            // If 5xx error, treat as retryable
+            if (response.status >= 500 && response.status < 600) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            
+            return response;
+        } catch (e: any) {
+            lastError = e;
+            const msg = e.message;
+            
+            if (i < MAX_RETRIES - 1) {
+                const delay = 1000 * Math.pow(2, i); // 1s, 2s
+                console.warn(`[Network] Fetch failed (${msg}), retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    }
+    throw lastError;
+};
+
 export const supabase = createClient(
-    config.url,
-    config.key, 
+    config.url || 'https://placeholder.supabase.co',
+    config.key || 'placeholder-key',
     { 
         auth: { 
             persistSession: true, 
             autoRefreshToken: true, 
-            detectSessionInUrl: true,
-            storageKey: 'templr_auth_token'
-        } 
+            detectSessionInUrl: true
+        },
+        global: {
+            fetch: retryingFetch
+        }
     }
 );
 
@@ -99,6 +142,7 @@ export type Session = {
     email?: string;
     user_metadata: {
         avatar_url?: string;
+        banner_url?: string;
         full_name?: string;
         usage_count?: number;
         is_pro?: boolean;
@@ -107,7 +151,36 @@ export type Session = {
 };
 
 export type AuthChangeEvent = 'SIGNED_IN' | 'SIGNED_OUT';
-export type Template = MockTemplate;
+
+export interface Template {
+  id: string;
+  title: string;
+  author: string;
+  authorAvatar?: string;
+  authorBanner?: string;
+  imageUrl: string;
+  bannerUrl: string; 
+  likes: number;
+  views: number;
+  isLiked: boolean;
+  category: string;
+  tags?: string[];
+  description: string;
+  price: string; 
+  sourceCode: string;
+  
+  fileUrl?: string;
+  fileName?: string; 
+  fileType?: string;
+  fileSize?: number;
+  status: 'approved' | 'pending_review' | 'rejected' | 'draft';
+  sales: number;
+  earnings: number;
+
+  galleryImages?: string[];
+  videoUrl?: string;
+  createdAt?: number;
+}
 
 export interface CreatorStats {
     name: string;
@@ -119,60 +192,104 @@ export interface CreatorStats {
     role: string;
 }
 
-const fixUrl = (url?: string): string => {
+export const fixUrl = (url?: string | string[]): string => {
     if (!url) return '';
-    if (typeof window !== 'undefined' && url.includes('risynxckpsgqgprnaccr.supabase.co')) {
-        return url.replace('https://risynxckpsgqgprnaccr.supabase.co', `${window.location.origin}/supabase`);
+    
+    // Handle case where DB returns an array or JSON stringified array
+    if (Array.isArray(url)) {
+        if (url.length === 0) return '';
+        url = url[0];
+    } else if (typeof url === 'string' && url.trim().startsWith('[') && url.trim().endsWith(']')) {
+        try {
+            const parsed = JSON.parse(url);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                url = parsed[0];
+            }
+        } catch (e) {
+            // Ignore parse error
+        }
     }
-    return url;
+
+    if (typeof url !== 'string') return '';
+    let trimmedUrl = url.trim();
+    
+    // Strip leading/trailing quotes if they exist
+    if ((trimmedUrl.startsWith('"') && trimmedUrl.endsWith('"')) || (trimmedUrl.startsWith("'") && trimmedUrl.endsWith("'"))) {
+        trimmedUrl = trimmedUrl.slice(1, -1).trim();
+    }
+    
+    return trimmedUrl;
 };
 
-const unfixUrl = (url?: string): string => {
-    if (!url) return '';
-    if (typeof window !== 'undefined' && url.includes(`${window.location.origin}/supabase`)) {
-        return url.replace(`${window.location.origin}/supabase`, 'https://risynxckpsgqgprnaccr.supabase.co');
-    }
-    return url;
-};
+export const unfixUrl = (url?: string): string => url || '';
 
 const mapTemplate = (data: any): Template => {
-    let inferredType = data.file_type || 'link';
-    const hasSource = data.source_code && data.source_code.trim().length > 0;
-    const hasLink = data.file_url && data.file_url.trim().length > 0 && data.file_url !== '#';
-    const hasZip = data.file_url && (data.file_url.endsWith('.zip') || data.file_url.endsWith('.rar'));
+    try {
+        let inferredType = data.file_type || 'link';
+        const hasSource = data.source_code && data.source_code.trim().length > 0;
+        const hasLink = data.file_url && data.file_url.trim().length > 0 && data.file_url !== '#';
+        const hasZip = data.file_url && (data.file_url.endsWith('.zip') || data.file_url.endsWith('.rar'));
 
-    if (hasZip) inferredType = 'zip';
-    else if (hasSource && !hasLink) inferredType = 'code';
-    else if (!hasSource && hasLink) inferredType = 'link';
-    else if (hasSource && hasLink) inferredType = 'code';
-    else if (!hasSource && !hasLink) inferredType = 'image';
+        if (hasZip) inferredType = 'zip';
+        else if (hasSource && !hasLink) inferredType = 'code';
+        else if (!hasSource && hasLink) inferredType = 'link';
+        else if (hasSource && hasLink) inferredType = 'code';
+        else if (!hasSource && !hasLink) inferredType = 'image';
 
-    return {
-        id: data.id,
-        title: data.title,
-        author: data.author_name || 'Anonymous', 
-        authorAvatar: fixUrl(data.author_avatar),
-        imageUrl: fixUrl(data.image_url),
-        bannerUrl: fixUrl(data.banner_url || data.image_url),
-        galleryImages: (data.gallery_images || []).map(fixUrl),
-        videoUrl: fixUrl(data.video_url),
-        likes: data.likes || 0,
-        views: data.views || 0,
-        isLiked: false, 
-        category: data.category,
-        tags: data.tags || [],
-        description: data.description,
-        price: data.price,
-        fileUrl: data.file_url,
-        fileName: data.file_name,
-        fileType: inferredType,
-        fileSize: data.file_size,
-        sourceCode: data.source_code || '', 
-        status: data.status || 'pending_review',
-        sales: data.sales || 0,
-        earnings: data.earnings || 0,
-        createdAt: new Date(data.created_at).getTime()
-    };
+        // Robustly check multiple possible column names for images (snake_case and camelCase)
+        const rawImage = data.preview_media || data.image_url || data.imageUrl || data.image || data.thumbnail || data.thumbnail_url || data.thumbnailUrl || data.preview_url || data.previewUrl || data.preview_image || data.previewImage || data.preview || data.cover_image || data.coverImage || data.cover || data.photo || data.picture || data.screenshot || data.screenshot_url || data.screenshotUrl || data.media || data.media_url || data.mediaUrl || (data.images && data.images[0]) || (data.gallery_images && data.gallery_images[0]) || (data.galleryImages && data.galleryImages[0]);
+        const rawBanner = data.banner_url || data.bannerUrl || data.banner || rawImage;
+        const rawAvatar = data.author_avatar || data.authorAvatar || data.avatar_url || data.avatarUrl || data.avatar || data.profile_pic || data.profilePic || data.profile_image || data.profileImage;
+        const rawAuthorBanner = data.author_banner || data.authorBanner || data.profile_banner || data.profileBanner;
+        const rawVideo = data.video_url || data.videoUrl || data.video || data.preview_video || data.previewVideo;
+
+        return {
+            id: data.id?.toString() || Math.random().toString(),
+            title: data.title || data.name || 'Untitled',
+            author: data.author_name || data.authorName || data.author || 'Anonymous', 
+            authorAvatar: fixUrl(rawAvatar),
+            authorBanner: fixUrl(rawAuthorBanner),
+            imageUrl: fixUrl(rawImage),
+            bannerUrl: fixUrl(rawBanner),
+            galleryImages: (data.gallery_images || data.galleryImages || data.images || []).map(fixUrl),
+            videoUrl: fixUrl(rawVideo),
+            likes: data.likes || 0,
+            views: data.views || 0,
+            isLiked: false, 
+            category: data.category || 'Uncategorized',
+            tags: data.tags || [],
+            description: data.description || '',
+            price: data.price || 'Free',
+            fileUrl: data.file_url,
+            fileName: data.file_name,
+            fileType: inferredType,
+            fileSize: data.file_size,
+            sourceCode: data.source_code || '', 
+            status: data.status || 'pending_review',
+            sales: data.sales || 0,
+            earnings: data.earnings || 0,
+            createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now()
+        };
+    } catch (e) {
+        console.error("Error mapping template:", e, data);
+        return {
+            id: 'error-' + Math.random(),
+            title: 'Error Loading Template',
+            author: 'System',
+            imageUrl: '',
+            bannerUrl: '',
+            likes: 0,
+            views: 0,
+            isLiked: false,
+            category: 'Error',
+            description: 'Failed to parse template data',
+            price: 'Free',
+            sourceCode: '',
+            status: 'rejected',
+            sales: 0,
+            earnings: 0
+        };
+    }
 };
 
 export const getPublicTemplates = async (
@@ -183,134 +300,180 @@ export const getPublicTemplates = async (
     sortBy: 'newest' | 'popular' | 'likes' = 'newest'
 ): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
     
-    if (!isApiConfigured) {
-        return { data: [], hasMore: false, error: "API not configured" };
-    }
+    const attempt = async (retryCount = 0): Promise<any> => {
+        try {
+            const from = page * limit;
+            const to = from + limit - 1;
 
-    try {
-        let query = supabase
-            .from('templates')
-            .select('*')
-            .eq('status', 'approved');
+            console.log(`[Fetch] Starting fetch. Page: ${page}, Limit: ${limit}, URL: ${activeApiUrl}`);
 
-        if (searchQuery) {
-            query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%`);
-        }
+            // 1. Start Query
+            let query = supabase
+                .from('templates')
+                .select('*', { count: 'exact' });
 
-        if (category !== 'All') {
-            if (category === 'Popular') {
-                query = query.gt('views', 100); 
-            } else if (category === 'Newest') {
-                 // Handled by default sort
-            } else {
+            // 2. Apply Filters
+            if (category && category !== 'All') {
                 query = query.eq('category', category);
             }
+
+            if (searchQuery) {
+                query = query.ilike('title', `%${searchQuery}%`);
+            }
+
+            // 3. Apply Sorting
+            if (sortBy === 'popular') {
+                query = query.order('views', { ascending: false });
+            } else if (sortBy === 'likes') {
+                query = query.order('likes', { ascending: false });
+            } else {
+                query = query.order('created_at', { ascending: false });
+            }
+
+            // 4. Apply Pagination (Range) LAST
+            query = query.range(from, to);
+
+            const { data, error, count } = await query;
+
+            if (error) {
+                console.error("[Fetch] Supabase Error Details:", JSON.stringify(error, null, 2));
+                throw error;
+            }
+            
+            console.log(`[Fetch] Success. Rows: ${data?.length || 0}, Total Count: ${count}`);
+            
+            if (!data || data.length === 0) {
+                // Double check if DB is empty or just this query
+                if (page === 0 && category === 'All' && !searchQuery) {
+                    console.warn("[Fetch] No templates found in DB.");
+                }
+            }
+
+            return { 
+                data: (data || []).map(mapTemplate), 
+                hasMore: (count || 0) > to + 1
+            };
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            
+            if (msg.includes('timeout') || msg.includes('timed out')) {
+                console.warn("[Fetch] Timeout Exception:", e.message);
+            } else {
+                console.error("[Fetch] Exception:", e);
+            }
+
+            if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
+                const delay = 2000 * Math.pow(1.5, retryCount);
+                console.warn(`Public templates fetch failed, retrying... (${retryCount + 1}) in ${delay}ms`);
+                await new Promise(r => setTimeout(r, delay));
+                return attempt(retryCount + 1);
+            }
+            
+            return { data: [], hasMore: false, error: e.message || "Connection failed" };
         }
+    };
 
-        if (sortBy === 'popular') {
-            query = query.order('views', { ascending: false });
-        } else if (sortBy === 'likes') {
-            query = query.order('likes', { ascending: false });
-        } else {
-            query = query.order('created_at', { ascending: false });
-        }
-
-        const from = page * limit;
-        const to = from + limit;
-        
-        const { data, error } = await query.range(from, to - 1);
-
-        if (error) {
-            console.error("Supabase error:", error);
-            return { data: [], hasMore: false, error: error.message };
-        }
-
-        const hasMore = data.length === limit;
-
-        return { 
-            data: data.map(mapTemplate), 
-            hasMore 
-        };
-    } catch (e: any) {
-        console.error("API connection failed:", e);
-        return { data: [], hasMore: false, error: e.message || "Connection failed" };
-    }
+    return attempt();
 };
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
-    if (!isApiConfigured) return [];
+    const attempt = async (retryCount = 0): Promise<CreatorStats[]> => {
+        try {
+            const { data, error } = await supabase.from('templates').select('author_name, author_email, author_avatar, views, likes');
 
-    try {
-        const { data, error } = await supabase
-            .from('templates')
-            .select('author_name, author_email, author_avatar, views, likes')
-            .eq('status', 'approved');
+            if (error) throw error;
+            
+            let sourceData = data || [];
+            
+            const statsMap = new Map<string, CreatorStats>();
 
-        if (error || !data) {
-             console.error("Supabase error (creators):", error);
-             return [];
-        }
+            sourceData.forEach((t: any) => {
+                const email = t.author_email || t.authorEmail || t.email || 'anon';
+                const name = t.author_name || t.authorName || t.author || 'Anonymous';
+                const rawAvatar = t.author_avatar || t.authorAvatar || t.avatar_url || t.avatarUrl || t.avatar;
 
-        const statsMap = new Map<string, CreatorStats>();
+                const current = statsMap.get(email) || {
+                    name: name,
+                    email: email,
+                    totalViews: 0,
+                    totalLikes: 0,
+                    templateCount: 0,
+                    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                    role: 'Creator'
+                };
 
-        data.forEach((t: any) => {
-            const email = t.author_email || 'anon';
-            const current = statsMap.get(email) || {
-                name: t.author_name || 'Anonymous',
-                email: email,
-                totalViews: 0,
-                totalLikes: 0,
-                templateCount: 0,
-                avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'A')}&background=random`,
-                role: 'Creator'
-            };
+                if (rawAvatar) {
+                    current.avatarUrl = fixUrl(rawAvatar);
+                }
 
-            if (t.author_avatar) {
-                current.avatarUrl = fixUrl(t.author_avatar);
+                current.totalViews += (t.views || 0);
+                current.totalLikes += (t.likes || 0);
+                current.templateCount += 1;
+                statsMap.set(email, current);
+            });
+
+            const allCreators = Array.from(statsMap.values())
+                .sort((a, b) => b.totalViews - a.totalViews)
+                .slice(0, 20);
+
+            for (let i = allCreators.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
             }
 
-            current.totalViews += (t.views || 0);
-            current.totalLikes += (t.likes || 0);
-            current.templateCount += 1;
-            statsMap.set(email, current);
-        });
-
-        const allCreators = Array.from(statsMap.values())
-            .sort((a, b) => b.totalViews - a.totalViews)
-            .slice(0, 20);
-
-        for (let i = allCreators.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
+            return allCreators.slice(0, 4).map(c => ({
+                ...c,
+                role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
+            }));
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
+                const delay = 2000 * Math.pow(1.5, retryCount);
+                console.warn(`Featured creators fetch failed, retrying... (${retryCount + 1}) in ${delay}ms`);
+                await new Promise(r => setTimeout(r, delay));
+                return attempt(retryCount + 1);
+            }
+            if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+                console.warn("API connection failed (creators):", e.message);
+            } else {
+                console.error("API connection failed (creators):", e);
+            }
+            
+            return [];
         }
+    };
 
-        return allCreators.slice(0, 4).map(c => ({
-            ...c,
-            role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
-        }));
-    } catch (e) {
-        console.error("API connection failed (creators):", e);
-        return [];
-    }
+    return attempt();
 };
 
 export const listenForUserTemplates = async (userEmail: string, callback: (templates: Template[]) => void) => {
     if (!userEmail) { callback([]); return { unsubscribe: () => {} }; }
 
-    if (!isApiConfigured) {
-        callback([]);
-        return { unsubscribe: () => {} };
-    }
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const fetchUserTemplates = async () => {
         try {
-            const { data } = await supabase
-                .from('templates')
-                .select('*')
-                .eq('author_email', userEmail)
-                .order('created_at', { ascending: false });
-            if (data) callback(data.map(mapTemplate));
-        } catch (e) {}
+            const { data, error } = await supabase
+                    .from('templates')
+                    .select('*')
+                    .eq('author_email', userEmail)
+                    .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (data) {
+                callback(data.map(mapTemplate));
+                retryCount = 0; // Reset on success
+            }
+        } catch (e: any) {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+                // Use warn instead of error to avoid triggering error monitors for polling
+                console.warn(`Polling fetch failed (attempt ${retryCount}):`, e.message);
+            }
+            // Silent fail after max retries to avoid console spam
+        }
     };
 
     fetchUserTemplates();
@@ -320,7 +483,6 @@ export const listenForUserTemplates = async (userEmail: string, callback: (templ
 
 export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<void> => {
     if (!user || !user.email) throw new Error("Authentication required.");
-    if (!isApiConfigured) return;
 
     const dbPayload: any = {
         title: templateData.title,
@@ -343,36 +505,26 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         file_url: unfixUrl(templateData.fileUrl || templateData.externalLink)
     };
 
-    try {
-        const { error } = await supabase.from('templates').insert(dbPayload);
-        if (error) throw error;
-    } catch (error: any) {
-        const msg = error.message?.toLowerCase() || '';
-        if (msg.includes('fetch')) throw new Error("Connection error while saving template.");
-        
-        if (msg.includes('column') && (msg.includes('not find') || msg.includes('does not exist'))) {
-            const legacyPayload = { ...dbPayload };
-            if (msg.includes('video_url')) delete legacyPayload.video_url;
-            if (msg.includes('tags')) delete legacyPayload.tags;
-            if (msg.includes('author_avatar')) delete legacyPayload.author_avatar;
-            if (msg.includes('source_code')) delete legacyPayload.source_code;
-            if (msg.includes('gallery_images')) delete legacyPayload.gallery_images;
-
-            if (JSON.stringify(dbPayload) === JSON.stringify(legacyPayload)) {
-                 delete legacyPayload.video_url;
-                 delete legacyPayload.tags;
+    const attempt = async (retryCount = 0): Promise<void> => {
+        try {
+            const { error } = await supabase.from('templates').insert(dbPayload);
+            if (error) throw error;
+        } catch (error: any) {
+            const msg = error.message?.toLowerCase() || '';
+            if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
+                const delay = 2000 * Math.pow(1.5, retryCount);
+                console.warn(`Add template failed, retrying... (${retryCount + 1}) in ${delay}ms`);
+                await new Promise(r => setTimeout(r, delay));
+                return attempt(retryCount + 1);
             }
-
-            const { error: retryError } = await supabase.from('templates').insert(legacyPayload);
-            if (retryError) throw new Error("Database schema mismatch. Contact support.");
-        } else {
-            throw new Error(error.message);
+            throw new Error(error.message || "Connection error while saving template.");
         }
-    }
+    };
+
+    return attempt();
 };
 
 export const updateTemplateData = async (id: string, data: Partial<NewTemplateData>, userEmail: string): Promise<void> => {
-    if (!isApiConfigured) return;
     const dbPayload: any = {};
     if (data.title) dbPayload.title = data.title;
     if (data.description) dbPayload.description = data.description;
@@ -385,183 +537,366 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.sourceCode) dbPayload.source_code = data.sourceCode;
     if (data.fileUrl) dbPayload.file_url = unfixUrl(data.fileUrl);
 
-    try {
-        const { error } = await supabase
-            .from('templates')
-            .update(dbPayload)
-            .eq('id', id)
-            .eq('author_email', userEmail);
-        if (error) throw new Error(error.message);
-    } catch (e: any) {
-        if (e.message?.includes('fetch')) throw new Error("Connection failed while updating.");
-        throw e;
-    }
+    const attempt = async (retryCount = 0): Promise<void> => {
+        try {
+            const { error } = await supabase
+                .from('templates')
+                .update(dbPayload)
+                .eq('id', id)
+                .eq('author_email', userEmail);
+            
+            if (error) throw error;
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                console.warn(`Update template failed, retrying... (${retryCount + 1})`);
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            throw new Error(e.message || "Connection failed while updating.");
+        }
+    };
+
+    return attempt();
 };
 
-export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string }) => {
+export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string; banner_url?: string }) => {
   if (!isApiConfigured) {
       return { user: { email: 'mock@example.com', user_metadata: updates } };
   }
   
-  const dbUpdates = { ...updates };
+  const dbUpdates: any = { ...updates };
   if (dbUpdates.avatar_url) {
       dbUpdates.avatar_url = unfixUrl(dbUpdates.avatar_url);
   }
-
-  try {
-    const { data, error } = await supabase.auth.updateUser({ data: dbUpdates });
-    if (error) throw new Error(error.message);
-
-    if (data.user?.email) {
-        try {
-            const syncUpdates: any = {};
-            if (dbUpdates.full_name) syncUpdates.author_name = dbUpdates.full_name;
-            if (dbUpdates.avatar_url) syncUpdates.author_avatar = dbUpdates.avatar_url;
-            await supabase.from('templates').update(syncUpdates).eq('author_email', data.user.email);
-        } catch (e) {}
-    }
-    return data;
-  } catch (e: any) {
-      if (e.message?.includes('fetch')) throw new Error("Connection error while updating profile.");
-      throw e;
+  if (dbUpdates.banner_url) {
+      dbUpdates.banner_url = unfixUrl(dbUpdates.banner_url);
   }
+
+  const attempt = async (retryCount = 0): Promise<any> => {
+    try {
+        const { data, error } = await supabase.auth.updateUser({ data: dbUpdates });
+        if (error) throw new Error(error.message);
+
+        if (data.user?.email) {
+            try {
+                const syncUpdates: any = {};
+                if (dbUpdates.full_name) syncUpdates.author_name = dbUpdates.full_name;
+                if (dbUpdates.avatar_url) syncUpdates.author_avatar = dbUpdates.avatar_url;
+                if (dbUpdates.banner_url) syncUpdates.author_banner = dbUpdates.banner_url;
+                
+                if (Object.keys(syncUpdates).length > 0) {
+                    await supabase.from('templates').update(syncUpdates).eq('author_email', data.user.email);
+                }
+            } catch (e) {}
+        }
+        return data;
+    } catch (e: any) {
+        const msg = e.message?.toLowerCase() || '';
+        if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+            console.warn(`Update profile failed, retrying... (${retryCount + 1})`);
+            await new Promise(r => setTimeout(r, 1000));
+            return attempt(retryCount + 1);
+        }
+        if (msg.includes('fetch')) throw new Error("Connection error while updating profile.");
+        throw e;
+    }
+  };
+
+  return attempt();
 };
 
 export const updateUserUsage = async (count: number) => {
   if (!isApiConfigured) return;
-  try {
-    const { error } = await supabase.auth.updateUser({ data: { usage_count: count } });
-    if (error) console.error("Sync usage error:", error);
-  } catch (e) {}
+  
+  const attempt = async (retryCount = 0): Promise<void> => {
+    try {
+        const { error } = await supabase.auth.updateUser({ data: { usage_count: count } });
+        if (error) throw error;
+    } catch (e: any) {
+        const msg = e.message?.toLowerCase() || '';
+        if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+            await new Promise(r => setTimeout(r, 1000));
+            return attempt(retryCount + 1);
+        }
+        if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+            console.warn("Sync usage error:", e.message);
+        } else {
+            console.error("Sync usage error:", e);
+        }
+    }
+  };
+
+  return attempt();
 };
 
 export const setProStatus = async (status: boolean) => {
     if (!isApiConfigured) return;
-    try {
-        const { error } = await supabase.auth.updateUser({ data: { is_pro: status } });
-        if (error) throw error;
-    } catch (e: any) {
-        console.error("Pro Status update failed:", e);
-        if (e.message?.includes('fetch')) {
-            // Silently fail or retry locally - fetch errors are often temporary or blocked
+    
+    const attempt = async (retryCount = 0): Promise<void> => {
+        try {
+            const { error } = await supabase.auth.updateUser({ data: { is_pro: status } });
+            if (error) throw error;
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+                console.warn("Pro Status update failed:", e.message);
+            } else {
+                console.error("Pro Status update failed:", e);
+            }
         }
-    }
+    };
+
+    return attempt();
 };
 
 export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
     if (!isApiConfigured) return;
-    try {
-        const dbUpdates: any = {};
-        if (updates.views !== undefined) dbUpdates.views = updates.views;
-        if (updates.likes !== undefined) dbUpdates.likes = updates.likes;
-        await supabase.from('templates').update(dbUpdates).eq('id', templateId);
-    } catch(e) {}
+    
+    const attempt = async (retryCount = 0): Promise<void> => {
+        try {
+            const dbUpdates: any = {};
+            if (updates.views !== undefined) dbUpdates.views = updates.views;
+            if (updates.likes !== undefined) dbUpdates.likes = updates.likes;
+            const { error } = await supabase.from('templates').update(dbUpdates).eq('id', templateId);
+            if (error) throw error;
+        } catch(e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+        }
+    };
+
+    return attempt();
 };
 
 export const deleteTemplate = async (templateId: string): Promise<void> => {
-    if (!isApiConfigured) return;
-    try {
-        const { error } = await supabase.from('templates').delete().eq('id', templateId);
-        if (error) throw new Error(error.message);
-        if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
+    const attempt = async (retryCount = 0): Promise<void> => {
+        try {
+            const { error } = await supabase.from('templates').delete().eq('id', templateId);
+            if (error) throw error;
+
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
+            }
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                console.warn(`Delete template failed, retrying... (${retryCount + 1})`);
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            throw new Error(e.message || "Connection failed while deleting.");
         }
-    } catch (e: any) {
-        if (e.message?.includes('fetch')) throw new Error("Connection failed while deleting.");
-        throw e;
-    }
+    };
+
+    return attempt();
+};
+
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
 };
 
 export const uploadFile = async (file: File, path: string): Promise<string> => {
+    if (!file) throw new Error("No file provided for upload.");
     if (!isApiConfigured) {
         return URL.createObjectURL(file);
     }
-    try {
-        const { error } = await supabase.storage.from('assets').upload(path, file, { upsert: true });
-        if (error) throw new Error(error.message);
-        const { data } = supabase.storage.from('assets').getPublicUrl(path);
-        return fixUrl(data.publicUrl);
-    } catch (e: any) {
-        if (e.message?.includes('fetch')) throw new Error("Connection error while uploading.");
-        throw e;
-    }
+    
+    // Sanitize path just in case
+    const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
+
+    const attempt = async (retryCount = 0): Promise<string> => {
+        try {
+            console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
+
+            const uploadPromise = supabase.storage.from('assets').upload(safePath, file, { 
+                upsert: true,
+                contentType: file.type || 'application/octet-stream'
+            });
+            
+            const { error } = await uploadPromise;
+            
+            if (error) throw error;
+            
+            const { data } = supabase.storage.from('assets').getPublicUrl(safePath);
+            console.log(`[Upload] Success. Public URL: ${data.publicUrl}`);
+            return fixUrl(data.publicUrl);
+        } catch (e: any) {
+            console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
+            
+            if (retryCount < 2) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            throw new Error("Upload failed: " + e.message);
+        }
+    };
+
+    return attempt();
 };
 
 export const getSession = async (): Promise<Session | null> => {
-    if (!isApiConfigured) {
-        return null; 
-    }
     try {
+        // supabase.auth.getSession() can throw "Failed to fetch" if Supabase is unreachable
         const { data, error } = await supabase.auth.getSession();
-        if (error || !data.session) return null;
+        
+        if (error) {
+            if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
+                console.warn("[Auth] Invalid Refresh Token detected in getSession. Clearing session.");
+                await supabase.auth.signOut();
+                return null;
+            }
+            return null;
+        }
+        
+        if (!data || !data.session) return null;
         return {
             user: {
                 id: data.session.user.id,
                 email: data.session.user.email,
                 user_metadata: {
-                    full_name: data.session.user.user_metadata.full_name,
+                    ...data.session.user.user_metadata,
                     avatar_url: fixUrl(data.session.user.user_metadata.avatar_url),
-                    usage_count: data.session.user.user_metadata.usage_count,
-                    is_pro: data.session.user.user_metadata.is_pro
+                    banner_url: fixUrl(data.session.user.user_metadata.banner_url)
                 }
             }
         };
-    } catch (e) {
+    } catch (e: any) {
+        console.warn("getSession failed (likely network error to Supabase):", e.message);
         return null;
     }
 };
 
 export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Session | null) => void) => {
-    if (!isApiConfigured) {
-        if (typeof window !== 'undefined') {
-            const listener = (e: any) => {
-                const { event, session } = e.detail;
-                callback(event, session);
-            };
-            window.addEventListener('mock-auth-change', listener);
-            return { unsubscribe: () => window.removeEventListener('mock-auth-change', listener) };
-        }
+    try {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session: any) => {
+            if (event === 'SIGNED_OUT') {
+                // Clear any stale data if needed
+                callback('SIGNED_OUT', null);
+                return;
+            }
+
+            // Handle token refresh errors that might come through as events or session updates
+            if (event === 'TOKEN_REFRESHED') {
+                console.log("[Auth] Token refreshed successfully");
+            }
+
+            const mappedSession = session ? {
+                user: {
+                    id: session.user.id,
+                    email: session.user.email,
+                    user_metadata: {
+                        ...session.user.user_metadata,
+                        avatar_url: fixUrl(session.user.user_metadata?.avatar_url),
+                        banner_url: fixUrl(session.user.user_metadata?.banner_url)
+                    }
+                }
+            } : null;
+            callback(event as any, mappedSession as any);
+        });
+        return subscription;
+    } catch (e: any) {
+        console.warn("Auth listener failed (likely network error to Supabase):", e.message);
         return { unsubscribe: () => {} };
     }
-    const { data } = supabase.auth.onAuthStateChange((event, session: any) => {
-        const mappedSession = session ? {
-            user: {
-                id: session.user.id,
-                email: session.user.email,
-                user_metadata: {
-                    ...session.user.user_metadata,
-                    avatar_url: fixUrl(session.user.user_metadata?.avatar_url)
-                }
-            }
-        } : null;
-        callback(session ? 'SIGNED_IN' : 'SIGNED_OUT', mappedSession);
-    });
-    return data.subscription;
 };
 
+
+
 export const signInWithEmail = async (email: string, pass: string) => {
+    console.log("Attempting sign in for:", email);
+    
+    if (!isApiConfigured) {
+        console.warn("API not configured, using mock login");
+        return { 
+            session: { 
+                user: { 
+                    id: 'mock-user-id', 
+                    email: email, 
+                    user_metadata: { full_name: 'Mock User' } 
+                } 
+            }, 
+            error: null 
+        };
+    }
+
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        // Force sign out first to clear any stale state that might cause "Refresh Token Not Found"
+        // This is a nuclear fix for the specific error the user is seeing.
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) console.warn("Pre-login signout warning:", signOutError.message);
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: pass,
+        });
+
         if (error) throw error;
-        return data;
+        
+        // Map session to our format
+        if (data.session) {
+            return {
+                session: {
+                    user: {
+                        id: data.session.user.id,
+                        email: data.session.user.email,
+                        user_metadata: {
+                            ...data.session.user.user_metadata,
+                            avatar_url: fixUrl(data.session.user.user_metadata.avatar_url),
+                            banner_url: fixUrl(data.session.user.user_metadata.banner_url)
+                        }
+                    }
+                },
+                error: null
+            };
+        }
+        return { session: null, error: "No session returned" };
+
     } catch (e: any) {
-        if (e.message?.includes('fetch')) throw new Error("Server connection failed. Try again in a minute.");
+        console.error("Sign in failed:", e.message);
         throw e;
     }
 };
 
+
 export const signUpWithEmail = async (email: string, pass: string, name: string) => {
+    console.log("Attempting sign up for:", email);
+    
+    if (!isApiConfigured) {
+        throw new Error("Supabase is not configured. Please check your environment variables.");
+    }
+
     try {
         const { data, error } = await supabase.auth.signUp({
             email,
             password: pass,
-            options: { data: { full_name: name, usage_count: 0, is_pro: false } }
+            options: {
+                data: {
+                    full_name: name,
+                    avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`
+                }
+            }
         });
+
         if (error) throw error;
+        
+        console.log("Sign up success, session received:", !!data.session);
         return data;
     } catch (e: any) {
-        if (e.message?.includes('fetch')) throw new Error("Server connection failed. Try again in a minute.");
-        throw e;
+        console.error("Sign up exception:", e);
+        throw new Error(e.message || "Signup failed");
     }
 };
 
@@ -569,37 +904,4 @@ export const signOut = async () => {
     try {
         await supabase.auth.signOut();
     } catch (e) {}
-};
-
-export const seedDatabase = async (user: Session['user']): Promise<void> => {
-    if (!user.email) throw new Error("No user email");
-    if (!isApiConfigured) return;
-    const payloads = MockTemplates.map(t => ({
-        title: t.title,
-        author_name: t.author,
-        author_email: user.email, 
-        author_avatar: unfixUrl(user.user_metadata?.avatar_url),
-        image_url: unfixUrl(t.imageUrl),
-        banner_url: unfixUrl(t.bannerUrl),
-        category: t.category,
-        description: t.description,
-        price: t.price,
-        tags: t.tags || [],
-        file_type: t.fileType,
-        source_code: t.sourceCode,
-        file_url: unfixUrl(t.fileUrl),
-        status: 'approved',
-        likes: t.likes,
-        views: t.views,
-        file_size: 1024 * 1024 * 5
-    }));
-    
-    try {
-        const { error } = await supabase.from('templates').insert(payloads);
-        if (error) throw error;
-    } catch(e: any) {
-        const cleanPayloads = payloads.map(({ author_avatar, tags, source_code, video_url, ...rest }: any) => rest);
-        const { error: retryError } = await supabase.from('templates').insert(cleanPayloads);
-        if (retryError) throw new Error(retryError.message);
-    }
 };

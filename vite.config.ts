@@ -7,14 +7,7 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
-        proxy: {
-          '/supabase': {
-            target: 'https://risynxckpsgqgprnaccr.supabase.co',
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/supabase/, '')
-          }
-        }
+        host: '0.0.0.0'
       },
       plugins: [react()],
       define: {

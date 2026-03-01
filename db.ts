@@ -4,6 +4,7 @@ export interface Template {
   title: string;
   author: string;
   authorAvatar?: string; // Added field for real profile pics
+  authorBanner?: string; // Added field for real profile banners
   imageUrl: string; // Used for iframe preview if data-uri
   bannerUrl: string; 
   likes: number;
@@ -29,18 +30,18 @@ export interface Template {
 }
 
 // Helper for iframe previews
-const codePreviewColor = (color: string) => `data:text/html;charset=utf-8,<html><body style="margin:0;overflow:hidden;background:%23000;"><div style="width:100%;height:100%;background:linear-gradient(45deg, ${color}, transparent);opacity:0.5;animation:p 4s ease infinite;"></div><style>@keyframes p{0%{opacity:0.3}50%{opacity:0.7}100%{opacity:0.3}}</style></body></html>`;
+const codePreviewColor = (color: string) => `data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="100%" height="100%" fill="%23000"/><rect width="100%" height="100%" fill="${color}" opacity="0.5"/></svg>`;
 
 // --- IMAGES ---
-// Optimized with width=800 for thumbnail usage to improve load speed
-const imgCyber = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop";
-const imgSaaS = "https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=800&auto=format&fit=crop";
-const imgMobile = "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?q=80&w=800&auto=format&fit=crop";
-const imgArt = "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=800&auto=format&fit=crop";
-const imgDash = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=800&auto=format&fit=crop";
-const imgCrypto = "https://images.unsplash.com/photo-1621504450162-e152930d674f?q=80&w=800&auto=format&fit=crop";
-const imgDark = "https://images.unsplash.com/photo-1635830625698-3b9bd74671ca?q=80&w=800&auto=format&fit=crop";
-const imgMinimal = "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?q=80&w=800&auto=format&fit=crop";
+// Using reliable Picsum and other stable sources
+const imgCyber = "https://picsum.photos/seed/cyber/800/600";
+const imgSaaS = "https://picsum.photos/seed/saas/800/600";
+const imgMobile = "https://picsum.photos/seed/mobile/800/600";
+const imgArt = "https://picsum.photos/seed/art/800/600";
+const imgDash = "https://picsum.photos/seed/dash/800/600";
+const imgCrypto = "https://picsum.photos/seed/crypto/800/600";
+const imgDark = "https://picsum.photos/seed/dark/800/600";
+const imgMinimal = "https://picsum.photos/seed/minimal/800/600";
 
 export const templates: Template[] = [
   // 1. STATE: BOTH (Link + Code)
@@ -48,9 +49,9 @@ export const templates: Template[] = [
     id: '1', 
     title: 'Neon Cyber Portfolio', 
     author: 'NexusDesigns', 
-    imageUrl: codePreviewColor('%234f46e5'), 
+    imageUrl: imgCyber, 
     bannerUrl: imgCyber, 
-    videoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-futuristic-holographic-interface-903-large.mp4',
+    videoUrl: '', 
     likes: 1340, 
     views: 25000, 
     isLiked: false, 
@@ -72,7 +73,7 @@ export const templates: Template[] = [
     id: '2', 
     title: 'Modern SaaS Landing', 
     author: 'PixelPerfect', 
-    imageUrl: '', 
+    imageUrl: imgSaaS, 
     bannerUrl: imgSaaS, 
     likes: 2100, 
     views: 42000, 
@@ -95,7 +96,7 @@ export const templates: Template[] = [
     id: '3', 
     title: 'Abstract Concept UI', 
     author: 'ArtStationPro', 
-    imageUrl: '', 
+    imageUrl: imgArt, 
     bannerUrl: imgArt, 
     likes: 980, 
     views: 18000, 
@@ -118,7 +119,7 @@ export const templates: Template[] = [
     id: '4', 
     title: 'Glassmorphism Admin', 
     author: 'DevMaster', 
-    imageUrl: codePreviewColor('%2306b6d4'), 
+    imageUrl: imgDash, 
     bannerUrl: imgDash, 
     likes: 3420, 
     views: 15600, 
@@ -141,7 +142,7 @@ export const templates: Template[] = [
     id: '5', 
     title: 'Fintech Mobile App', 
     author: 'MobileKing', 
-    imageUrl: '', 
+    imageUrl: imgMobile, 
     bannerUrl: imgMobile, 
     likes: 850, 
     views: 12000, 
@@ -164,7 +165,7 @@ export const templates: Template[] = [
     id: '6', 
     title: 'DeFi Exchange', 
     author: 'CryptoWhale', 
-    imageUrl: '', 
+    imageUrl: imgCrypto, 
     bannerUrl: imgCrypto, 
     likes: 3000, 
     views: 60000, 
@@ -187,7 +188,7 @@ export const templates: Template[] = [
     id: '7', 
     title: 'Obsidian Dashboard', 
     author: 'DarkMatter', 
-    imageUrl: '', 
+    imageUrl: imgDark, 
     bannerUrl: imgDark, 
     likes: 450, 
     views: 5000, 
@@ -210,7 +211,7 @@ export const templates: Template[] = [
     id: '8', 
     title: 'React Hooks Library', 
     author: 'HookMaster', 
-    imageUrl: codePreviewColor('%2310b981'), 
+    imageUrl: imgMinimal, 
     bannerUrl: imgMinimal, 
     likes: 5000, 
     views: 10000, 
@@ -233,8 +234,8 @@ export const templates: Template[] = [
     id: '9', 
     title: 'Luxe Fashion Store', 
     author: 'TrendSetter', 
-    imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=800&auto=format&fit=crop", 
+    imageUrl: imgArt, 
+    bannerUrl: imgArt, 
     likes: 1200, 
     views: 22000, 
     isLiked: false, 
@@ -256,8 +257,8 @@ export const templates: Template[] = [
     id: '10', 
     title: 'Isometric City', 
     author: 'PolyPush', 
-    imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=800&auto=format&fit=crop", 
+    imageUrl: imgCyber, 
+    bannerUrl: imgCyber, 
     likes: 670, 
     views: 8900, 
     isLiked: false, 
@@ -274,13 +275,13 @@ export const templates: Template[] = [
     createdAt: Date.now() - 900000 
   },
 
-   // 11. LINK ONLY (Blog)
-   { 
+  // 11. LINK ONLY (Blog)
+  { 
     id: '11', 
     title: 'Minimalist Ghost Theme', 
     author: 'WriteSpace', 
-    imageUrl: '', 
-    bannerUrl: "https://images.unsplash.com/photo-1499750310159-52f0f83ad713?q=80&w=800&auto=format&fit=crop", 
+    imageUrl: imgMinimal, 
+    bannerUrl: imgMinimal, 
     likes: 890, 
     views: 14500, 
     isLiked: false, 
@@ -302,8 +303,8 @@ export const templates: Template[] = [
     id: '12', 
     title: 'Sorting Visualizer', 
     author: 'AlgoExpert', 
-    imageUrl: codePreviewColor('%238b5cf6'), 
-    bannerUrl: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=800&auto=format&fit=crop", 
+    imageUrl: imgDash, 
+    bannerUrl: imgDash, 
     likes: 4100, 
     views: 32000, 
     isLiked: false, 

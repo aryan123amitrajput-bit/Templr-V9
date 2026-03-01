@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, ClipboardIcon, CheckCircleIcon, CpuIcon, ShieldCheckIcon, RocketIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
-import { supabase, seedDatabase, Session } from '../api';
+import { supabase, Session } from '../api';
 
 interface SetupGuideModalProps {
   isOpen: boolean;
@@ -131,15 +131,12 @@ const CopyBlock = ({ label, content }: { label: string, content: string }) => {
 };
 
 const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'quick' | 'env' | 'db' | 'seed'>('db'); 
+  const [activeTab, setActiveTab] = useState<'quick' | 'env' | 'db'>('db'); 
   
   const [urlInput, setUrlInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [seedSuccess, setSeedSuccess] = useState(false);
-  const [seedError, setSeedError] = useState('');
   const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
@@ -147,8 +144,6 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
         setUrlInput(localStorage.getItem('templr_project_url') || '');
         setKeyInput(localStorage.getItem('templr_anon_key') || '');
         setIsSaved(false);
-        setSeedSuccess(false);
-        setSeedError('');
 
         supabase.auth.getSession().then(({ data }) => {
             const mapped = data.session ? {
@@ -173,26 +168,6 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
           setIsSaved(true);
           playSuccessSound();
           setTimeout(() => { window.location.reload(); }, 800);
-      }
-  };
-
-  const handleSeedData = async () => {
-      if (!session) {
-          setSeedError("You must be logged in to seed data.");
-          return;
-      }
-      setIsSeeding(true);
-      setSeedError('');
-      try {
-          await seedDatabase(session.user);
-          setSeedSuccess(true);
-          playSuccessSound();
-          setTimeout(() => window.location.reload(), 1500);
-      } catch (err: any) {
-          setSeedError(err.message || "Failed to seed data.");
-          playNotificationSound();
-      } finally {
-          setIsSeeding(false);
       }
   };
 
@@ -230,9 +205,6 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
                 </button>
                 <button onClick={() => setActiveTab('env')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'env' ? 'border-blue-500 text-white bg-white/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
                     .env
-                </button>
-                <button onClick={() => setActiveTab('seed')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-widest transition-colors border-b-2 min-w-[100px] ${activeTab === 'seed' ? 'border-emerald-500 text-white bg-emerald-500/5' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
-                    Seed Data
                 </button>
             </div>
 
@@ -274,7 +246,7 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
                                 {isSaved ? <span>Connected!</span> : <span>Save & Connect</span>}
                             </button>
                         </motion.div>
-                    ) : activeTab === 'env' ? (
+                    ) : (
                         <motion.div key="env" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
                              <ol className="list-decimal list-inside space-y-4 text-sm text-slate-300">
                                 <li>Create a free project at <a href="https://supabase.com" target="_blank" className="text-blue-400 hover:underline">Supabase.com</a></li>
@@ -284,20 +256,6 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
                             <div className="mt-6">
                                 <CopyBlock label=".env File Content" content={ENV_EXAMPLE} />
                             </div>
-                        </motion.div>
-                    ) : (
-                        <motion.div key="seed" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-                            <div className="flex items-start gap-3 p-4 mb-6 rounded-xl bg-emerald-900/10 border border-emerald-500/20">
-                                <RocketIcon className="w-5 h-5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <p className="text-xs font-bold text-emerald-300 uppercase mb-1">Populate Content</p>
-                                    <p className="text-xs text-emerald-200/70 leading-relaxed">Inject high-quality demo data into your database to test the platform instantly.</p>
-                                </div>
-                            </div>
-                            <button onClick={handleSeedData} disabled={isSeeding || seedSuccess || !session} className={`w-full py-4 rounded-xl text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${seedSuccess ? 'bg-emerald-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg disabled:opacity-50'}`}>
-                                {isSeeding ? 'Injecting...' : seedSuccess ? 'Data Seeded!' : 'Inject Demo Data'}
-                            </button>
-                            {!session && <p className="text-center text-[10px] text-red-400 mt-4 font-bold uppercase tracking-widest">Sign in first to seed data</p>}
                         </motion.div>
                     )}
                 </AnimatePresence>

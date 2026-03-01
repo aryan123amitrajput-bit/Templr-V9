@@ -93,6 +93,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
       global?: string;
   }>({});
 
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
         setErrors({});
@@ -133,20 +140,48 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[LoginModal] Submit triggered. Mode:", mode);
     playClickSound();
     setErrors({});
-    if (!validateForm()) return;
+    if (!validateForm()) {
+        console.log("[LoginModal] Validation failed");
+        return;
+    }
 
     setIsLoading(true);
+    console.log("[LoginModal] Loading state set to true");
+    
+    // Safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+        if (mounted.current) {
+            console.warn("[LoginModal] Safety timeout triggered (90s)");
+            setIsLoading(false);
+            setErrors(prev => ({ ...prev, global: "Request is taking longer than expected. Please try again." }));
+        }
+    }, 90000);
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        clearTimeout(safetyTimeout);
+        setIsLoading(false);
+        setErrors(prev => ({ ...prev, global: "You are offline. Please check your internet connection." }));
+        return;
+    }
+
     try {
       if (mode === 'signin') {
+          console.log("[LoginModal] Calling onLogin...");
           await onLogin(email, password);
-          setSuccess(true);
-          playSuccessSound();
-          setTimeout(onClose, 2500); // Extended for cinematic feel
+          console.log("[LoginModal] onLogin resolved");
+          if (mounted.current) {
+              setSuccess(true);
+              playSuccessSound();
+              setTimeout(onClose, 2500); // Extended for cinematic feel
+          }
       } else {
+          console.log("[LoginModal] Calling onSignup...");
           const data = await onSignup(email, password, name);
-          if (data && (data.session || data.user)) {
+          console.log("[LoginModal] onSignup resolved", data);
+          if (mounted.current && data && (data.session || data.user)) {
               if (!data.session) {
                   try {
                       await onLogin(email, password);
@@ -158,6 +193,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
           }
       }
     } catch (err: any) {
+      console.error("[LoginModal] Login Error caught:", err);
       playNotificationSound();
       let displayError = err.message || "An unexpected error occurred.";
       const rawMsg = displayError.toLowerCase();
@@ -165,15 +201,23 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
       if (rawMsg.includes('user already registered')) {
           displayError = "This email is already in use. Please sign in instead.";
           setMode('signin'); // Helpfully switch mode
-      } else if (rawMsg.includes('fetch') || rawMsg.includes('network')) {
-          displayError = "Connection Error: Failed to reach server. Please try again.";
+      } else if (rawMsg.includes('fetch') || rawMsg.includes('network') || rawMsg.includes('failed to fetch')) {
+          displayError = "Connection Error: Could not reach the database. Please check your internet connection or try again later.";
       } else if (rawMsg.includes('invalid login credentials')) {
           displayError = "Incorrect email or password.";
+      } else if (rawMsg.includes('refresh token') || rawMsg.includes('invalid token')) {
+          displayError = "Session expired. Please try signing in again.";
       }
       
-      setErrors(prev => ({ ...prev, global: displayError }));
+      if (mounted.current) {
+          setErrors(prev => ({ ...prev, global: displayError }));
+      }
     } finally {
-      if (!success) setIsLoading(false);
+      console.log("[LoginModal] Finally block reached. Clearing timeout.");
+      clearTimeout(safetyTimeout);
+      if (mounted.current) {
+          setIsLoading(false);
+      }
     }
   };
 

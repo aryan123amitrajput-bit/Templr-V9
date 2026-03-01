@@ -132,6 +132,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                             key={previewSrc || 'empty'}
                             src={previewSrc || undefined} 
                             alt="Preview" 
+                            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
                             className="w-full h-full object-contain" 
                         />
                     ) : (
@@ -315,11 +316,13 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setUploadStatus('Uploading Template...');
               
               if (previewType === 'video') {
-                  videoUrl = await uploadFile(previewFile, `videos/${Date.now()}_${previewFile.name.replace(/\s+/g, '_')}`);
+                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  videoUrl = await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`);
                   // Ensure we have a valid background image if user only uploaded a video
                   if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
-                  imageUrl = await uploadFile(previewFile, `images/${Date.now()}_${previewFile.name.replace(/\s+/g, '_')}`);
+                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  imageUrl = await uploadFile(previewFile, `images/${Date.now()}_${safeName}`);
                   videoUrl = ''; // User specifically switched to image
               }
           }
@@ -327,7 +330,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
           let zipUrl = '';
           if (zipFile) {
               setUploadStatus('Uploading Project Files...');
-              zipUrl = await uploadFile(zipFile, `templates/${Date.now()}_${zipFile.name.replace(/\s+/g, '_')}`);
+              const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+              zipUrl = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
               zipUrl = initialData.fileUrl;
           }

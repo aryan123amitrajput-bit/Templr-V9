@@ -3,7 +3,7 @@ import React, { useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, TwitterIcon, DribbbleIcon, GithubIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
-import { Template } from '../api';
+import { Template, fixUrl } from '../api';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;
@@ -16,17 +16,6 @@ interface CreatorProfileModalProps {
   likedIds: Set<string>;
   favoriteIds: Set<string>;
 }
-
-// Mock data generator for profile details based on name
-const getCreatorDetails = (name: string) => {
-  // Deterministic mock data based on name length/char codes
-  const seed = name.length;
-  return {
-    role: seed % 2 === 0 ? 'UI/UX Architect' : 'Frontend Engineer',
-    location: seed % 3 === 0 ? 'San Francisco, CA' : seed % 3 === 1 ? 'Tokyo, Japan' : 'Berlin, Germany',
-    bio: `Digital artisan crafting high-fidelity experiences. specialized in ${seed % 2 === 0 ? 'minimalist interfaces' : 'immersive 3D web'} and design systems.`
-  };
-};
 
 const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ 
   isOpen, 
@@ -45,13 +34,16 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
     return templates.filter(t => t.author === creatorName);
   }, [creatorName, templates]);
 
-  const details = useMemo(() => {
-    return creatorName ? getCreatorDetails(creatorName) : null;
-  }, [creatorName]);
-
   // Try to find the real avatar from one of the templates
-  const realAvatar = useMemo(() => {
-      return creatorTemplates.find(t => t.authorAvatar)?.authorAvatar;
+  const avatar_url = useMemo(() => {
+      const raw = creatorTemplates.find(t => t.authorAvatar)?.authorAvatar;
+      return raw ? fixUrl(raw) : null;
+  }, [creatorTemplates]);
+
+  // Try to find the real banner from one of the templates
+  const banner_url = useMemo(() => {
+      const raw = creatorTemplates.find(t => t.authorBanner)?.authorBanner;
+      return raw ? fixUrl(raw) : null;
   }, [creatorTemplates]);
 
   useEffect(() => {
@@ -62,9 +54,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isOpen, onClose]);
 
-  if (!isOpen || !creatorName || !details) return null;
-
-  const displayAvatar = realAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorName)}&background=111&color=fff&size=256`;
+  if (!isOpen || !creatorName) return null;
 
   return (
     <AnimatePresence>
@@ -91,10 +81,16 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
             {/* --- HEADER SECTION --- */}
             <div className="relative h-64 md:h-80 flex-shrink-0 overflow-hidden">
                 {/* Banner Image */}
-                <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 via-[#050505] to-[#050505]">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
-                    <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                </div>
+                {banner_url && (
+                    <div className="absolute inset-0">
+                        <img 
+                            src={banner_url} 
+                            alt={`${creatorName} banner`}
+                            className="w-full h-full object-cover opacity-60"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/50 to-[#050505]"></div>
+                    </div>
+                )}
 
                 {/* Close Button */}
                 <button 
@@ -111,12 +107,18 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         {/* Avatar */}
                         <div className="relative group">
                              <div className="absolute -inset-1 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full blur opacity-50 group-hover:opacity-100 transition-opacity duration-500"></div>
-                             <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full p-1 bg-[#050505]">
-                                <img 
-                                    src={displayAvatar || null} 
-                                    alt={creatorName}
-                                    className="w-full h-full rounded-full object-cover border border-white/10"
-                                />
+                             <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full p-1">
+                                {avatar_url ? (
+                                    <img 
+                                        src={avatar_url} 
+                                        alt={creatorName}
+                                        className="w-full h-full rounded-full object-cover border border-white/10"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center border border-white/10">
+                                        <span className="text-2xl font-bold text-zinc-700">{creatorName.charAt(0).toUpperCase()}</span>
+                                    </div>
+                                )}
                              </div>
                              <div className="absolute bottom-1 right-1 bg-black rounded-full p-1">
                                  <CheckCircleIcon className="w-6 h-6 text-blue-400" />
@@ -127,8 +129,8 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         <div className="mb-2">
                             <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-2">{creatorName}</h1>
                             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-400 font-medium">
-                                <span className="text-white bg-white/10 px-3 py-1 rounded-full border border-white/5">{details.role}</span>
-                                <span className="flex items-center gap-1"><MapPinIcon className="w-4 h-4" /> {details.location}</span>
+                                <span className="text-white bg-white/10 px-3 py-1 rounded-full border border-white/5">Verified Creator</span>
+                                <span className="flex items-center gap-1"><MapPinIcon className="w-4 h-4" /> Global</span>
                             </div>
                         </div>
                     </div>
@@ -146,7 +148,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                     <div className="mb-8">
                         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">About</h3>
                         <p className="text-sm text-slate-300 leading-relaxed font-light">
-                            {details.bio}
+                            Digital creator on Templr. Check out my portfolio of templates below.
                         </p>
                     </div>
 

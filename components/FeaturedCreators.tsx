@@ -14,12 +14,22 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchCreators = async () => {
+    const fetchCreators = async (retryCount = 0) => {
         try {
             const data = await getFeaturedCreators();
             setCreators(data);
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                console.warn(`Featured creators fetch failed, retrying... (${retryCount + 1})`);
+                setTimeout(() => fetchCreators(retryCount + 1), 1500);
+            } else {
+                if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+                    console.warn("Featured creators fetch failed:", e.message);
+                } else {
+                    console.error(e);
+                }
+            }
         } finally {
             setLoading(false);
         }
@@ -87,7 +97,17 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                                     {/* Avatar */}
                                     <div className="relative w-24 h-24 mb-6 group-hover:scale-105 transition-transform duration-500">
                                         <div className="absolute inset-0 rounded-full border border-white/10 shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)]"></div>
-                                        <img src={creator.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`} alt={creator.name} className="w-full h-full rounded-full object-cover grayscale opacity-90 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500" />
+                                        <img 
+                                            src={creator.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`} 
+                                            alt={creator.name} 
+                                            onError={(e) => { 
+                                                const target = e.target as HTMLImageElement;
+                                                if (!target.src.includes('ui-avatars.com')) {
+                                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`; 
+                                                }
+                                            }}
+                                            className="w-full h-full rounded-full object-cover grayscale opacity-90 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500" 
+                                         />
                                         <div className="absolute bottom-0 right-0 bg-[#1a1a1a] rounded-full p-1 border border-white/10 shadow-lg">
                                             <CheckCircleIcon className="w-4 h-4 text-white" />
                                         </div>
