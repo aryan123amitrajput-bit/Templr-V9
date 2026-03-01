@@ -118,9 +118,8 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
     {
         id: 2,
         text: "Optimized for phone",
-        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-display font-bold tracking-tight [filter:drop-shadow(0_0_30px_rgba(59,130,246,0.5))_drop-shadow(0_0_80px_rgba(59,130,246,0.2))]",
-        // UPDATED: Deep Blue-Black Gradient with Strong Glow
-        colors: "bg-gradient-to-b from-blue-400 via-blue-900 to-black bg-clip-text text-transparent pb-6"
+        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-display font-bold tracking-tight [filter:drop-shadow(0_0_100px_rgba(59,130,246,0.8))_drop-shadow(0_0_250px_rgba(59,130,246,0.4))]",
+        colors: "bg-gradient-to-b from-blue-100 via-blue-400 to-blue-800 bg-clip-text text-transparent pb-6"
     },
     {
         id: 3,

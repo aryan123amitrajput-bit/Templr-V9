@@ -113,81 +113,86 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
         <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }} 
-            className="absolute inset-0 bg-black/90 backdrop-blur-md" 
+            className="absolute inset-0 bg-black/60 backdrop-blur-xl" 
         />
 
         <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md bg-[#09090b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="relative w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-[24px] shadow-2xl overflow-hidden flex flex-col"
             onClick={e => e.stopPropagation()}
         >
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#09090b]">
-                <h2 className="text-xl font-bold text-white">Profile Settings</h2>
-                <button onClick={() => { playClickSound(); onClose(); }} className="p-2 text-zinc-500 hover:text-white transition-colors">
+            {/* Header Close Button */}
+            <div className="absolute top-4 right-4 z-50">
+                <button onClick={() => { playClickSound(); onClose(); }} className="p-2 bg-black/50 hover:bg-black/80 backdrop-blur-md text-white/70 hover:text-white rounded-full transition-all">
                     <XIcon className="w-5 h-5" />
                 </button>
             </div>
 
-            <div className="p-8 flex flex-col gap-6">
+            {/* Banner Section */}
+            <div className="relative w-full h-48 sm:h-56 bg-zinc-900 group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
+                {bannerPreview ? (
+                    <img 
+                        src={bannerPreview} 
+                        alt="Banner" 
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                    />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-950">
+                        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent blur-2xl"></div>
+                    </div>
+                )}
                 
-                {/* Banner Uploader */}
-                <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 ml-1">Profile Banner</label>
+                {/* Banner Hover Overlay */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                    <div className="flex items-center gap-2 bg-black/60 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md border border-white/10 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                        <CameraIcon className="w-4 h-4" />
+                        <span>Change Cover</span>
+                    </div>
+                </div>
+                
+                <input 
+                    ref={bannerInputRef}
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleBannerChange}
+                />
+            </div>
+
+            {/* Content Section */}
+            <div className="px-6 sm:px-8 pb-8 pt-0 relative flex-1 flex flex-col">
+                
+                {/* Avatar Section (Overlapping) */}
+                <div className="relative -mt-16 sm:-mt-20 mb-6 flex justify-between items-end">
                     <div 
-                        onClick={() => bannerInputRef.current?.click()}
-                        className="group relative w-full h-32 rounded-xl cursor-pointer overflow-hidden bg-[#18181b] border border-white/10 hover:border-blue-500/50 transition-colors"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="group relative w-32 h-32 sm:w-40 sm:h-40 rounded-full cursor-pointer shadow-2xl border-4 border-[#0a0a0a] bg-zinc-800 overflow-hidden"
                     >
-                        {bannerPreview ? (
+                        {avatarPreview ? (
                             <img 
-                                src={bannerPreview} 
-                                alt="Banner" 
-                                className="w-full h-full object-cover" 
+                                src={avatarPreview} 
+                                alt="Avatar" 
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                             />
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center">
-                                <div className="w-full h-full absolute inset-0 bg-gradient-to-r from-blue-900/20 to-purple-900/20 opacity-50"></div>
-                                <div className="relative z-10 flex flex-col items-center">
-                                    <CameraIcon className="w-6 h-6 text-zinc-500 mb-2" />
-                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Upload Banner</span>
-                                </div>
+                            <div className="w-full h-full flex items-center justify-center text-zinc-500">
+                                <CameraIcon className="w-8 h-8" />
                             </div>
                         )}
                         
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                            <CameraIcon className="w-8 h-8 text-white" />
+                        {/* Avatar Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-sm">
+                            <CameraIcon className="w-8 h-8 text-white transform scale-75 group-hover:scale-100 transition-transform duration-300" />
                         </div>
                         
-                        <input 
-                            ref={bannerInputRef}
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={handleBannerChange}
-                        />
-                    </div>
-                </div>
-
-                {/* Avatar Uploader */}
-                <div className="flex flex-col items-center -mt-12 relative z-10">
-                    <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="group relative w-24 h-24 rounded-full cursor-pointer shadow-xl"
-                    >
-                        <img 
-                            src={avatarPreview || undefined} 
-                            alt="Avatar" 
-                            className="w-full h-full rounded-full object-cover border-2 border-white/10 group-hover:border-blue-500/50 transition-colors" 
-                        />
-                        <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                            <CameraIcon className="w-6 h-6 text-white" />
-                        </div>
                         <input 
                             ref={fileInputRef}
                             type="file" 
@@ -196,39 +201,57 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                             onChange={handleFileChange}
                         />
                     </div>
-                    <p className="text-xs text-zinc-500 mt-3 font-medium uppercase tracking-wide">Click to change avatar</p>
                 </div>
 
-                {/* Name Input */}
-                <div>
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-2 ml-1">Display Name</label>
-                    <input 
-                        type="text" 
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Your Name"
-                        className="w-full bg-[#18181b] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-colors placeholder-zinc-600 font-medium"
-                    />
+                {/* Form Fields */}
+                <div className="space-y-6 flex-1">
+                    <div>
+                        <h2 className="text-2xl font-semibold text-white tracking-tight mb-1">Profile Details</h2>
+                        <p className="text-sm text-zinc-400">Personalize how you appear to others.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider ml-1">Display Name</label>
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    placeholder="e.g. Jane Doe"
+                                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/20 transition-all font-medium"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Save Button */}
-                <button 
-                    onClick={handleSave}
-                    disabled={isLoading}
-                    className={`
-                        w-full py-3.5 rounded-xl text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg mt-2
-                        ${isLoading ? 'bg-zinc-800 text-zinc-500 cursor-wait' : 'bg-white text-black hover:bg-zinc-200'}
-                    `}
-                >
-                    {isLoading ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-zinc-500 border-t-zinc-300 rounded-full animate-spin"></div>
-                            <span>Saving...</span>
-                        </>
-                    ) : (
-                        <span>Save Changes</span>
-                    )}
-                </button>
+                {/* Footer / Actions */}
+                <div className="mt-8 pt-6 border-t border-white/5 flex gap-3 justify-end">
+                    <button 
+                        onClick={() => { playClickSound(); onClose(); }}
+                        className="px-6 py-3 rounded-xl text-sm font-semibold text-white hover:bg-white/5 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleSave}
+                        disabled={isLoading}
+                        className={`
+                            px-8 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all shadow-lg
+                            ${isLoading ? 'bg-zinc-800 text-zinc-500 cursor-wait' : 'bg-white text-black hover:bg-zinc-200 hover:scale-[0.98] active:scale-[0.95]'}
+                        `}
+                    >
+                        {isLoading ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-zinc-500 border-t-zinc-300 rounded-full animate-spin"></div>
+                                <span>Saving...</span>
+                            </>
+                        ) : (
+                            <span>Save Changes</span>
+                        )}
+                    </button>
+                </div>
 
             </div>
         </motion.div>
