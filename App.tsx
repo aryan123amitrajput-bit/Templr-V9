@@ -483,27 +483,62 @@ const App: React.FC = () => {
       />
       
       <main>
-        <Hero onUploadClick={handleOpenUpload} />
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <Hero onUploadClick={handleOpenUpload} />
+        </motion.div>
         
-        <TemplateGallery 
-          templates={templates}
-          isLoading={isLoading}
-          onMessageCreator={handleMessageCreator} 
-          onLike={handleLikeClick}
-          onFavorite={handleFavoriteClick}
-          onView={handleViewClick}
-          onCreatorClick={handleOpenCreator}
-          likedIds={likedTemplateIds}
-          favoriteIds={favoriteTemplateIds}
-          isLoggedIn={!!session}
-        />
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <TemplateGallery 
+            templates={templates}
+            isLoading={isLoading}
+            onMessageCreator={handleMessageCreator} 
+            onLike={handleLikeClick}
+            onFavorite={handleFavoriteClick}
+            onView={handleViewClick}
+            onCreatorClick={handleOpenCreator}
+            likedIds={likedTemplateIds}
+            favoriteIds={favoriteTemplateIds}
+            isLoggedIn={!!session}
+          />
+        </motion.div>
         
-        <FeaturedCreators onCreatorClick={handleOpenCreator} />
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <FeaturedCreators onCreatorClick={handleOpenCreator} />
+        </motion.div>
         
-        <CTA />
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <CTA />
+        </motion.div>
       </main>
       
-      <Footer onShowNotification={(msg) => showNotification(msg, 'info')} />
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      >
+        <Footer onShowNotification={(msg) => showNotification(msg, 'info')} />
+      </motion.div>
       
       <ContactFloat />
 

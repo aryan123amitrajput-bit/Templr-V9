@@ -158,7 +158,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
   // Video Manager Registration
   useEffect(() => {
     videoManager.register(id, (shouldPlay) => {
-        if (videoRef.current && videoReady) {
+        if (videoRef.current) {
             if (shouldPlay) {
                 const promise = videoRef.current.play();
                 if (promise !== undefined) {
@@ -172,7 +172,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
         }
     });
     return () => videoManager.unregister(id);
-  }, [id, videoReady]);
+  }, [id]);
 
   // Visibility Observer for Video Playback
   useEffect(() => {
