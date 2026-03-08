@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import TemplateGallery from './components/TemplateGallery';
@@ -106,6 +106,50 @@ const RealtimeVisitors: React.FC = () => {
             )}
         </AnimatePresence>
     );
+};
+
+const LazySection: React.FC<{ children: React.ReactNode; minHeight?: string }> = ({ children, minHeight = "800px" }) => {
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
+  const [hasRendered, setHasRendered] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) {
+      setHasRendered(true);
+      return;
+    }
+    
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasRendered(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '400px' }
+    );
+    
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+    return () => observer.disconnect();
+  }, [isDesktop]);
+
+  if (!isDesktop) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div ref={ref} style={{ minHeight: hasRendered ? 'auto' : minHeight }}>
+      {hasRendered ? children : null}
+    </div>
+  );
 };
 
 const App: React.FC = () => {
@@ -487,62 +531,72 @@ const App: React.FC = () => {
       />
       
       <main>
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <Hero onUploadClick={handleOpenUpload} />
-        </motion.div>
+        <LazySection minHeight="800px">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <Hero onUploadClick={handleOpenUpload} />
+          </motion.div>
+        </LazySection>
         
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <TemplateGallery 
-            templates={templates}
-            isLoading={isLoading}
-            onMessageCreator={handleMessageCreator} 
-            onLike={handleLikeClick}
-            onFavorite={handleFavoriteClick}
-            onView={handleViewClick}
-            onCreatorClick={handleOpenCreator}
-            likedIds={likedTemplateIds}
-            favoriteIds={favoriteTemplateIds}
-            isLoggedIn={!!session}
-          />
-        </motion.div>
+        <LazySection minHeight="1200px">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <TemplateGallery 
+              templates={templates}
+              isLoading={isLoading}
+              onMessageCreator={handleMessageCreator} 
+              onLike={handleLikeClick}
+              onFavorite={handleFavoriteClick}
+              onView={handleViewClick}
+              onCreatorClick={handleOpenCreator}
+              likedIds={likedTemplateIds}
+              favoriteIds={favoriteTemplateIds}
+              isLoggedIn={!!session}
+            />
+          </motion.div>
+        </LazySection>
         
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <FeaturedCreators onCreatorClick={handleOpenCreator} />
-        </motion.div>
+        <LazySection minHeight="600px">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <FeaturedCreators onCreatorClick={handleOpenCreator} />
+          </motion.div>
+        </LazySection>
         
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
-          <CTA onOpenDocumentation={handleOpenDocumentation} />
-        </motion.div>
+        <LazySection minHeight="400px">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <CTA onOpenDocumentation={handleOpenDocumentation} />
+          </motion.div>
+        </LazySection>
       </main>
       
-      <motion.div
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-      >
-        <Footer onShowNotification={(msg) => showNotification(msg, 'info')} />
-      </motion.div>
+      <LazySection minHeight="300px">
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <Footer onShowNotification={(msg) => showNotification(msg, 'info')} />
+        </motion.div>
+      </LazySection>
       
       <ContactFloat />
 
