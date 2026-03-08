@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { TwitterIcon, DribbbleIcon, GithubIcon } from './Icons';
+import { TwitterIcon } from './Icons';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 
@@ -29,11 +29,9 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
                     </p>
                 </div>
 
-                {/* Socials (Real or Placeholders) */}
+                {/* Socials */}
                 <div className="flex gap-6">
-                    <a href="https://twitter.com" onClick={(e) => handleLink(e, 'https://twitter.com')} className="text-slate-500 hover:text-white transition-colors"><TwitterIcon className="w-4 h-4" /></a>
-                    <a href="https://github.com" onClick={(e) => handleLink(e, 'https://github.com')} className="text-slate-500 hover:text-white transition-colors"><GithubIcon className="w-4 h-4" /></a>
-                    <a href="https://dribbble.com" onClick={(e) => handleLink(e, 'https://dribbble.com')} className="text-slate-500 hover:text-white transition-colors"><DribbbleIcon className="w-4 h-4" /></a>
+                    <a href="https://x.com/GTqhqh48540" onClick={(e) => handleLink(e, 'https://x.com/GTqhqh48540')} className="text-slate-500 hover:text-white transition-colors"><TwitterIcon className="w-4 h-4" /></a>
                 </div>
             </div>
             

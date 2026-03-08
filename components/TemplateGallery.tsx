@@ -225,10 +225,10 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             </div>
                         </div>
 
-                        <div className="hidden md:block w-[1px] my-3 bg-white/10 mx-1"></div>
+                        <div className="block w-[1px] my-3 bg-white/10 mx-1"></div>
 
                         {/* Quick Filter Toggles */}
-                        <div className="hidden md:flex items-center gap-1 overflow-x-auto no-scrollbar px-1">
+                        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-1">
                             {filters.slice(0, 4).map((filter) => (
                                 <button
                                 key={filter}

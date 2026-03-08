@@ -41,10 +41,10 @@ export function ShinyButton({ children, onClick, className = "" }: ShinyButtonPr
 
         .shiny-cta {
           --shiny-cta-bg: #000000;
-          --shiny-cta-bg-subtle: #1a1818;
+          --shiny-cta-bg-subtle: #0f172a;
           --shiny-cta-fg: #ffffff;
-          --shiny-cta-highlight: blue;
-          --shiny-cta-highlight-subtle: #8484ff;
+          --shiny-cta-highlight: #06b6d4;
+          --shiny-cta-highlight-subtle: #22d3ee;
           --animation: gradient-angle linear infinite;
           --duration: 3s;
           --shadow-size: 2px;

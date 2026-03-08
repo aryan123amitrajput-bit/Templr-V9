@@ -220,7 +220,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             <div className="relative h-[350px] md:h-[550px] w-full flex items-center justify-center mb-2 perspective-container z-20">
                 <button 
                     onClick={prevHeadline}
-                    className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full text-white/20 hover:text-white hover:bg-white/5 transition-all opacity-0 group-hover/carousel:opacity-100 -translate-x-4 group-hover/carousel:translate-x-0"
+                    className="flex absolute left-0 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full text-white/20 hover:text-white hover:bg-white/5 transition-all opacity-0 group-hover/carousel:opacity-100 -translate-x-4 group-hover/carousel:translate-x-0"
                     aria-label="Previous Headline"
                 >
                     <ArrowLeftIcon className="w-8 h-8" />
@@ -228,7 +228,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                 
                 <button 
                     onClick={nextHeadline}
-                    className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full text-white/20 hover:text-white hover:bg-white/5 transition-all opacity-0 group-hover/carousel:opacity-100 translate-x-4 group-hover/carousel:translate-x-0"
+                    className="flex absolute right-0 top-1/2 -translate-y-1/2 z-30 p-4 rounded-full text-white/20 hover:text-white hover:bg-white/5 transition-all opacity-0 group-hover/carousel:opacity-100 translate-x-4 group-hover/carousel:translate-x-0"
                     aria-label="Next Headline"
                 >
                     <ArrowRightIcon className="w-8 h-8" />
@@ -283,19 +283,14 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             {/* Primary Button: Explore Collection */}
             <motion.button 
                 onClick={scrollToGallery}
-                whileHover={{ 
-                    scale: 1.05, 
-                    boxShadow: "0 0 50px rgba(255,255,255,0.3)",
-                    textShadow: "0 0 8px rgba(255,255,255,0.5)"
-                }}
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                className="group relative h-14 px-8 min-w-[200px] rounded-full shadow-[0_20px_50px_-20px_rgba(255,255,255,0.3),0_10px_20px_-10px_rgba(255,255,255,0.1)] overflow-hidden ring-1 ring-white/50"
+                className="group relative h-[56px] px-8 min-w-[240px] rounded-full bg-gradient-to-b from-[#ffffff] to-[#e0e0e0] text-black overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.15)]"
             >
-                <div className="absolute inset-0 bg-gradient-to-b from-white via-slate-100 to-[#d4d4d8]"></div>
-                <div className="absolute top-[2px] left-[2px] right-[2px] h-[40%] bg-gradient-to-b from-white to-transparent rounded-t-full opacity-90"></div>
+                <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
                 
-                <span className="relative z-10 flex items-center justify-center gap-2 text-black font-bold tracking-wide text-sm drop-shadow-[0_1px_0_rgba(255,255,255,0.8)]">
+                <span className="relative z-10 flex items-center justify-center gap-2 font-semibold text-[16px]">
                     Explore Collection
                     <ArrowRightIcon className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                 </span>
@@ -304,9 +299,9 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             {/* Secondary Button: Submit Work - SHINY BUTTON INTEGRATION */}
             <ShinyButton 
                 onClick={() => { playClickSound(); onUploadClick(); }}
-                className="min-w-[220px] font-bold uppercase tracking-[0.2em] text-white"
+                className="min-w-[220px] h-[60px] font-bold uppercase tracking-[0.15em] text-sm text-white"
             >
-                <UploadIcon className="w-4 h-4" />
+                <UploadIcon className="w-4 h-4 transition-transform group-hover:-translate-y-1" />
                 <span>Submit Work</span>
             </ShinyButton>
 

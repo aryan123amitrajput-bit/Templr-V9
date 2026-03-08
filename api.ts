@@ -53,7 +53,17 @@ export const isApiConfigured = config.url && config.url !== 'https://placeholder
 
 export const testConnection = async (url: string, key: string): Promise<{ success: boolean; message: string }> => {
     try {
-        const testClient = createClient(url, key);
+        const testClient = createClient(url, key, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false,
+                storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+                lock: (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+                    return fn();
+                }
+            }
+        });
         // Try a very simple public query with timeout
         const { error } = await testClient.from('templates').select('count', { count: 'exact', head: true });
         
@@ -109,7 +119,12 @@ export const supabase = createClient(
         auth: { 
             persistSession: true, 
             autoRefreshToken: true, 
-            detectSessionInUrl: true
+            detectSessionInUrl: true,
+            storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+            lock: (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+                // Bypass navigator.locks to fix timeout issues in iframes/preview environments
+                return fn();
+            }
         },
         global: {
             fetch: retryingFetch
