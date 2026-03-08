@@ -14,6 +14,7 @@ import CreatorProfileModal from './components/CreatorProfileModal';
 import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
 import SubscriptionModal from './components/SubscriptionModal';
+import DocumentationModal from './components/DocumentationModal';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
@@ -116,6 +117,7 @@ const App: React.FC = () => {
   const [isSetupOpen, setSetupOpen] = useState(false);
   const [isProfileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [isSubscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [isDocumentationOpen, setDocumentationOpen] = useState(false);
   
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null);
@@ -341,6 +343,8 @@ const App: React.FC = () => {
   const handleCloseSettings = () => { playCloseModalSound(); setProfileSettingsOpen(false); };
   const handleOpenCreator = (name: string) => { playOpenModalSound(); setViewingCreator(name); };
   const handleCloseCreator = () => { playCloseModalSound(); setViewingCreator(null); };
+  const handleOpenDocumentation = () => { playOpenModalSound(); setDocumentationOpen(true); };
+  const handleCloseDocumentation = () => { playCloseModalSound(); setDocumentationOpen(false); };
 
   const handleSignOut = async () => { 
       await api.signOut(); 
@@ -527,7 +531,7 @@ const App: React.FC = () => {
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
-          <CTA />
+          <CTA onOpenDocumentation={handleOpenDocumentation} />
         </motion.div>
       </main>
       
@@ -602,6 +606,7 @@ const App: React.FC = () => {
         onShowNotification={showNotification}
       />
       <SetupGuideModal isOpen={isSetupOpen} onClose={handleCloseSetup} />
+      <DocumentationModal isOpen={isDocumentationOpen} onClose={handleCloseDocumentation} />
       
       {/* 
           SUBSCRIPTION MODAL 

@@ -4,7 +4,11 @@ import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 import { ArrowRightIcon } from './Icons';
 
-const CTA: React.FC = () => {
+interface CTAProps {
+  onOpenDocumentation?: () => void;
+}
+
+const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
   const handleGetStarted = () => {
     playClickSound();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -12,8 +16,11 @@ const CTA: React.FC = () => {
 
   const handleDocumentation = () => {
       playClickSound();
-      // Placeholder for docs link
-      window.open('#', '_blank');
+      if (onOpenDocumentation) {
+        onOpenDocumentation();
+      } else {
+        window.open('#', '_blank');
+      }
   };
 
   return (
@@ -41,14 +48,14 @@ const CTA: React.FC = () => {
                     */}
                     <button 
                       onClick={handleGetStarted}
-                      className="group relative w-[320px] h-[64px] rounded-full overflow-hidden transition-all duration-300 hover:scale-105 active:scale-95 bg-gradient-to-b from-[#1a1a1a] to-[#050505] border border-white/10 shadow-[0_0_40px_rgba(255,255,255,0.05)] flex items-center justify-center"
+                      className="group relative px-14 py-5 rounded-full overflow-hidden transition-all duration-400 hover:scale-105 active:scale-95 bg-white/10 hover:bg-white/20 backdrop-blur-3xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(255,255,255,0.1)]"
                     >
-                      {/* Top inner glow */}
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-[50%] bg-gradient-to-b from-white/10 to-transparent blur-md pointer-events-none"></div>
-                      
+                      {/* Liquid Gloss Top Reflection */}
+                      <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent opacity-50 pointer-events-none"></div>
+
                       {/* Text Content */}
-                      <span className="relative z-20 font-sans font-semibold text-white text-[13px] tracking-[0.25em] uppercase">
-                          GET STARTED
+                      <span className="relative z-20 font-sans font-medium text-white text-xl tracking-wide flex items-center justify-center drop-shadow-sm">
+                          Get Started
                       </span>
                     </button>
                 </div>

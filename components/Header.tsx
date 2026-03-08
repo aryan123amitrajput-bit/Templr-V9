@@ -86,20 +86,6 @@ const Header: React.FC<HeaderProps> = ({
                 )}
             </div>
 
-            {/* Nav Links (Desktop) - Technical & Minimal */}
-            <nav className="hidden md:flex items-center gap-6 border-l border-white/5 pl-6 h-4">
-                {['Gallery', 'Studio', 'Pro'].map((item) => (
-                    <a 
-                        key={item}
-                        href="#" 
-                        onClick={(e) => { e.preventDefault(); playClickSound(); }}
-                        className="text-[11px] font-medium uppercase tracking-wider text-slate-400 hover:text-white transition-colors relative"
-                    >
-                        {item}
-                    </a>
-                ))}
-            </nav>
-
             {/* Actions */}
             <div className="flex items-center gap-3 pl-2">
                 
