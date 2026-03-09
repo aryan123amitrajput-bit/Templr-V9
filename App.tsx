@@ -28,86 +28,6 @@ const LIMIT_MAX = 3;
 const USAGE_KEY = 'templr_usage_v12_strict'; 
 const PRO_KEY = 'templr_pro_v12_strict';
 
-const RealtimeVisitors: React.FC = () => {
-    const [visitorCount, setVisitorCount] = useState<number>(1);
-    const [isVisible, setIsVisible] = useState(false);
-
-    useEffect(() => {
-        if (!api.isApiConfigured) {
-            setIsVisible(true);
-            const interval = setInterval(() => {
-                setVisitorCount(prev => Math.max(1, prev + (Math.floor(Math.random() * 3) - 1)));
-            }, 5000);
-            return () => clearInterval(interval);
-        }
-
-        const roomOne = api.supabase.channel('online-users', {
-            config: {
-                presence: {
-                    key: Math.random().toString(36).substring(7),
-                },
-            },
-        });
-
-        roomOne
-            .on('presence', { event: 'sync' }, () => {
-                const newState = roomOne.presenceState();
-                let count = 0;
-                for (const key in newState) {
-                    count += newState[key].length;
-                }
-                setVisitorCount(Math.max(1, count));
-                setIsVisible(true);
-            })
-            .subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    await roomOne.track({
-                        online_at: new Date().toISOString(),
-                    });
-                }
-            });
-
-        return () => {
-            api.supabase.removeChannel(roomOne);
-        };
-    }, []);
-
-    return (
-        <AnimatePresence>
-            {isVisible && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.9 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    className="fixed bottom-6 left-6 z-50 pointer-events-none"
-                >
-                    <div className="relative flex items-center gap-3 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2 shadow-2xl overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="relative flex h-2.5 w-2.5 items-center justify-center">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <motion.span 
-                                key={visitorCount}
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="text-sm font-bold text-white tabular-nums"
-                            >
-                                {visitorCount}
-                            </motion.span>
-                            <span className="text-xs font-medium text-slate-300 tracking-wide uppercase">
-                                {visitorCount === 1 ? 'Designer Online' : 'Designers Online'}
-                            </span>
-                        </div>
-                    </div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-};
-
 const LazySection: React.FC<{ children: React.ReactNode; minHeight?: string }> = ({ children, minHeight = "800px" }) => {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
   const [hasRendered, setHasRendered] = useState(false);
@@ -484,7 +404,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#000000] text-white font-sans overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
-      <RealtimeVisitors />
       <AnimatePresence>
         {showSplash && (
           <motion.div 
