@@ -21,6 +21,7 @@ import * as api from './api';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
 import type { Session, Template, NewTemplateData } from './api';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Analytics } from '@vercel/analytics/react';
 
 // NUCLEAR KEY ROTATION - V12 STRICT
 // Double-lock enforcement: UI Guard + Storage Guard.
@@ -598,6 +599,7 @@ const App: React.FC = () => {
           onClose={() => setNotification(null)}
         />
       )}
+      <Analytics />
     </div>
   );
 };
