@@ -226,4 +226,4 @@ const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, onClose
   );
 };
 
-export default DocumentationModal;
+export default React.memo(DocumentationModal);

@@ -83,4 +83,4 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
   );
 };
 
-export default Notification;
+export default React.memo(Notification);

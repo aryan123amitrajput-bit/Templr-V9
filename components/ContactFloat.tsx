@@ -28,4 +28,4 @@ const ContactFloat = () => {
   );
 };
 
-export default ContactFloat;
+export default React.memo(ContactFloat);

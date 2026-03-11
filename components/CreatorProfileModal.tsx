@@ -216,4 +216,4 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
   );
 };
 
-export default CreatorProfileModal;
+export default React.memo(CreatorProfileModal);

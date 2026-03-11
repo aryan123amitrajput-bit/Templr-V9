@@ -135,14 +135,14 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       if (page > 0) fetchData(false);
   }, [page]);
 
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
       setPage(prev => prev + 1);
-  };
+  }, []);
 
-  const handleFilterClick = (filter: string) => {
+  const handleFilterClick = useCallback((filter: string) => {
     playClickSound();
     setActiveFilter(filter);
-  };
+  }, []);
 
   // --- STABLE HANDLERS FOR MEMOIZATION ---
   
@@ -445,4 +445,4 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   );
 };
 
-export default TemplateGallery;
+export default React.memo(TemplateGallery);

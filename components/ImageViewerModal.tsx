@@ -462,4 +462,4 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   );
 };
 
-export default ImageViewerModal;
+export default React.memo(ImageViewerModal);

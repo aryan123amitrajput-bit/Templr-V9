@@ -259,4 +259,4 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   );
 };
 
-export default ProfileSettingsModal;
+export default React.memo(ProfileSettingsModal);

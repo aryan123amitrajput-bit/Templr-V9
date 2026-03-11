@@ -117,4 +117,4 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   );
 };
 
-export default SubscriptionModal;
+export default React.memo(SubscriptionModal);

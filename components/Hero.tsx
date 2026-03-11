@@ -1,10 +1,9 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { ArrowRightIcon, UploadIcon, ArrowLeftIcon } from './Icons';
 import { playClickSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
 import Galaxy from './Galaxy';
-import QuantumFlow from './QuantumFlow';
 import { ShinyButton } from './ui/shiny-button';
 
 interface HeroProps {
@@ -139,28 +138,28 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
     return () => clearInterval(interval);
   }, [headlines.length, isPaused]);
 
-  const nextHeadline = () => {
+  const nextHeadline = useCallback(() => {
     playClickSound();
     setHeadlineIndex((prev) => (prev + 1) % headlines.length);
-  };
+  }, [headlines.length]);
 
-  const prevHeadline = () => {
+  const prevHeadline = useCallback(() => {
     playClickSound();
     setHeadlineIndex((prev) => (prev - 1 + headlines.length) % headlines.length);
-  };
+  }, [headlines.length]);
 
-  const goToHeadline = (index: number) => {
+  const goToHeadline = useCallback((index: number) => {
       playClickSound();
       setHeadlineIndex(index);
-  }
+  }, []);
 
-  const scrollToGallery = () => {
+  const scrollToGallery = useCallback(() => {
     playClickSound();
     const gallery = document.getElementById('gallery');
     if (gallery) {
         gallery.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  };
+  }, []);
 
   const currentHeadline = headlines[headlineIndex];
 
@@ -173,13 +172,6 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
       <div className="absolute inset-0 z-0 pointer-events-none bg-black">
          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-950/30 via-[#050505] to-black z-0"></div>
          <Galaxy density={3} mouseInteraction={true} />
-      </div>
-
-      {/* --- 3D QUANTUM FLOW (Canvas Fluid) Z-0 --- */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1400px] h-[800px] z-0 pointer-events-none opacity-100 mix-blend-screen perspective-[1000px]">
-          <div className="w-full h-full transform rotate-12 scale-110">
-              <QuantumFlow />
-          </div>
       </div>
 
       {/* --- MAIN CONTENT (Z-10) --- */}
@@ -315,4 +307,4 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
   );
 };
 
-export default Hero;
+export default React.memo(Hero);

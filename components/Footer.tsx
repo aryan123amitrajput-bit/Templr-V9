@@ -16,8 +16,8 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
   };
 
   return (
-    <footer className="bg-[#030304] border-t border-white/[0.08] pt-12 pb-10">
-      <div className="container mx-auto px-6">
+    <footer className="relative bg-[#030304] border-t border-white/[0.08] pt-16 overflow-hidden flex flex-col">
+      <div className="container mx-auto px-6 relative z-10">
         <ScrollReveal>
             <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                 
@@ -39,6 +39,20 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
                 <p className="text-slate-700 text-[10px]">© 2024 Templr Inc. All rights reserved.</p>
             </div>
         </ScrollReveal>
+      </div>
+
+      {/* Background Image with top fade */}
+      <div className="relative w-full h-[300px] md:h-[450px] z-0 pointer-events-none mt-4">
+        <img 
+          src="https://cdn.discordapp.com/attachments/1344733249628541099/1481305717007712387/1773216566644-019cdbf1-0fae-77a1-9733-2fc4cbbed401.png?ex=69b2d4f4&is=69b18374&hm=84a5a9ac7293afa3954fdb9470649e9876158c6675a02773b6073c8f9281717b&" 
+          alt="Footer Background" 
+          className="w-full h-full object-cover object-top opacity-100"
+          referrerPolicy="no-referrer"
+          style={{ 
+            maskImage: 'linear-gradient(to bottom, transparent 0%, black 30%, black 100%)', 
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 30%, black 100%)' 
+          }}
+        />
       </div>
     </footer>
   );

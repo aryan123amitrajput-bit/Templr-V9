@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 import { CheckCircleIcon, RocketIcon } from './Icons';
@@ -37,12 +37,12 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
     fetchCreators();
   }, []);
 
-  const handleCardClick = (name: string) => {
+  const handleCardClick = useCallback((name: string) => {
     if (onCreatorClick) {
         playClickSound();
         onCreatorClick(name);
     }
-  };
+  }, [onCreatorClick]);
 
   if (!loading && creators.length === 0) {
       // Don't show section if no data
@@ -78,7 +78,7 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
               ))
           ) : (
               creators.map((creator, index) => (
-                <ScrollReveal key={creator.name} staggerIndex={index}>
+                <ScrollReveal key={creator.email || `${creator.name}-${index}`} staggerIndex={index}>
                     <div 
                         onClick={() => handleCardClick(creator.name)}
                         className="group relative h-[420px] rounded-[32px] cursor-pointer transition-transform duration-500 hover:-translate-y-2"
@@ -145,4 +145,4 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
   );
 };
 
-export default FeaturedCreators;
+export default React.memo(FeaturedCreators);

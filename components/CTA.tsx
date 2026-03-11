@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { memo } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 import { ArrowRightIcon } from './Icons';
@@ -76,4 +76,4 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
   );
 };
 
-export default CTA;
+export default memo(CTA);

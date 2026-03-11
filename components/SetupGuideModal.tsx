@@ -271,4 +271,4 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
   );
 };
 
-export default SetupGuideModal;
+export default React.memo(SetupGuideModal);

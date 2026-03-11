@@ -82,7 +82,7 @@ const CapacityProjection = ({ usedBytes, templateCount }: { usedBytes: number, t
             </p>
             <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-white font-mono">~{estimatedRemaining}</span>
-                <span className="text-[10px] text-slate-400">more uploads</span>
+                <span className="text-[10px] text-slate-400">{estimatedRemaining === 1 ? 'more upload' : 'more uploads'}</span>
             </div>
             <p className="text-[9px] text-slate-500 mt-1">Based on your avg size of {formatSize(avgSizeBytes)}</p>
         </div>
@@ -371,7 +371,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
                     <div className="flex-shrink-0 p-6 md:p-8 bg-[#050505] border-b border-white/5">
                         <div className="flex flex-col lg:flex-row gap-6">
                             <div className="flex flex-col sm:flex-row gap-4 flex-[2]">
-                                <UsageRing current={myTemplates.length} label="Total Assets" />
+                                <UsageRing current={myTemplates.length} label={myTemplates.length === 1 ? "Total Asset" : "Total Assets"} />
                                 <StorageBar used={storageUsed} max={MAX_STORAGE_MB} />
                                 <CapacityProjection usedBytes={storageUsed} templateCount={myTemplates.length} />
                             </div>

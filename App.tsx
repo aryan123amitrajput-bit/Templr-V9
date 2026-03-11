@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import TemplateGallery from './components/TemplateGallery';
@@ -125,7 +125,7 @@ const App: React.FC = () => {
 
   const [usageCount, setUsageCount] = useState<number>(0);
 
-  const loadTemplates = async (retryCount = 0) => {
+  const loadTemplates = useCallback(async (retryCount = 0) => {
     setIsLoading(true);
     try {
       const { data, error } = await api.getPublicTemplates(0, 6);
@@ -151,7 +151,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // Sync state to storage
   useEffect(() => {
@@ -279,62 +279,74 @@ const App: React.FC = () => {
       }
   };
 
-  const handleUpgradeConfirm = () => {
+  const showNotification = useCallback((message: string, type: NotificationType = 'info') => {
+      setNotification({ message, type });
+  }, []);
+
+  const handleUpgradeConfirm = useCallback(() => {
       setIsSubscribed(true);
       localStorage.setItem(PRO_KEY, 'true');
       if (session) api.setProStatus(true);
       showNotification("Pro unlocked!", 'success');
-  };
+  }, [session, showNotification]);
 
-  const handleToggleSound = (enabled: boolean) => {
+  const handleToggleSound = useCallback((enabled: boolean) => {
       setSoundEnabledState(enabled);
       setSoundEnabled(enabled);
       if (enabled) showNotification("Sound enabled", 'info');
-  };
+  }, [showNotification]);
 
-  const showNotification = (message: string, type: NotificationType = 'info') => {
-      setNotification({ message, type });
-  };
+  const handleOpenUpload = useCallback(() => { playOpenModalSound(); setUploadModalOpen(true); setEditingTemplate(null); }, []);
+  const handleCloseUpload = useCallback(() => { playCloseModalSound(); setUploadModalOpen(false); setEditingTemplate(null); }, []);
+  const handleOpenDashboard = useCallback(() => { playOpenModalSound(); setDashboardOpen(true); }, []);
+  const handleCloseDashboard = useCallback(() => { playCloseModalSound(); setDashboardOpen(false); }, []);
+  const handleOpenLogin = useCallback(() => { playOpenModalSound(); setLoginModalOpen(true); }, []);
+  const handleCloseLogin = useCallback(() => { playCloseModalSound(); setLoginModalOpen(false); }, []);
+  const handleOpenSetup = useCallback(() => { playOpenModalSound(); setSetupOpen(true); }, []);
+  const handleCloseSetup = useCallback(() => { playCloseModalSound(); setSetupOpen(false); }, []);
+  const handleOpenSettings = useCallback(() => { playOpenModalSound(); setProfileSettingsOpen(true); }, []);
+  const handleCloseSettings = useCallback(() => { playCloseModalSound(); setProfileSettingsOpen(false); }, []);
+  const handleOpenCreator = useCallback((name: string) => { playOpenModalSound(); setViewingCreator(name); }, []);
+  const handleCloseCreator = useCallback(() => { playCloseModalSound(); setViewingCreator(null); }, []);
+  const handleOpenDocumentation = useCallback(() => { playOpenModalSound(); setDocumentationOpen(true); }, []);
+  const handleCloseDocumentation = useCallback(() => { playCloseModalSound(); setDocumentationOpen(false); }, []);
 
-  const handleOpenUpload = () => { playOpenModalSound(); setUploadModalOpen(true); setEditingTemplate(null); };
-  const handleCloseUpload = () => { playCloseModalSound(); setUploadModalOpen(false); setEditingTemplate(null); };
-  const handleOpenDashboard = () => { playOpenModalSound(); setDashboardOpen(true); };
-  const handleCloseDashboard = () => { playCloseModalSound(); setDashboardOpen(false); };
-  const handleOpenLogin = () => { playOpenModalSound(); setLoginModalOpen(true); };
-  const handleCloseLogin = () => { playCloseModalSound(); setLoginModalOpen(false); };
-  const handleOpenSetup = () => { playOpenModalSound(); setSetupOpen(true); };
-  const handleCloseSetup = () => { playCloseModalSound(); setSetupOpen(false); };
-  const handleOpenSettings = () => { playOpenModalSound(); setProfileSettingsOpen(true); };
-  const handleCloseSettings = () => { playCloseModalSound(); setProfileSettingsOpen(false); };
-  const handleOpenCreator = (name: string) => { playOpenModalSound(); setViewingCreator(name); };
-  const handleCloseCreator = () => { playCloseModalSound(); setViewingCreator(null); };
-  const handleOpenDocumentation = () => { playOpenModalSound(); setDocumentationOpen(true); };
-  const handleCloseDocumentation = () => { playCloseModalSound(); setDocumentationOpen(false); };
+  const handleCloseSubscription = useCallback(() => setSubscriptionModalOpen(false), []);
+  const handleCloseNotification = useCallback(() => setNotification(null), []);
+  const handleLogin = useCallback(async (e: string, p: string) => { 
+      const data = await api.signInWithEmail(e, p); 
+      if (data.session) setSession(data.session);
+  }, []);
+  const handleSignup = useCallback(async (e: string, p: string, n: string) => { 
+      const data = await api.signUpWithEmail(e, p, n); 
+      if (data.session) setSession(data.session);
+      return data;
+  }, []);
 
-  const handleSignOut = async () => { 
+  const handleSignOut = useCallback(async () => { 
       await api.signOut(); 
       setSession(null);
       setIsSubscribed(false);
       localStorage.removeItem(PRO_KEY); 
       showNotification("Signed out", 'info');
-  };
+  }, [showNotification]);
 
-  const handleAddOrUpdateTemplate = async (data: NewTemplateData) => {
+  const handleAddOrUpdateTemplate = useCallback(async (data: NewTemplateData) => {
     if (editingTemplate && session?.user.email) {
         await api.updateTemplateData(editingTemplate.id, data, session.user.email);
     } else {
         await api.addTemplate(data, session?.user);
     }
     await loadTemplates();
-  };
+  }, [editingTemplate, session, loadTemplates]);
 
-  const handleEditTemplate = (template: Template) => {
+  const handleEditTemplate = useCallback((template: Template) => {
       setEditingTemplate(template);
       setDashboardOpen(false);
       setUploadModalOpen(true);
-  };
+  }, []);
 
-  const handleViewClick = (template: Template) => {
+  const handleViewClick = useCallback((template: Template) => {
     // LOGIN GATE: "When click arrow button without sign in, we can't sign in and go to sign in page instead"
     // Requirement: Redirect anonymous users to Login immediately upon clicking View.
     if (!session) {
@@ -354,15 +366,15 @@ const App: React.FC = () => {
         setViewingTemplate(template);
         setViewerOpen(true);
     }
-  };
+  }, [session, viewedTemplateIds]);
 
-  const handleCloseViewer = () => {
+  const handleCloseViewer = useCallback(() => {
     playCloseModalSound();
     setViewerOpen(false);
     setTimeout(() => setViewingTemplate(null), 300);
-  };
+  }, []);
 
-  const handleLikeClick = (templateId: string) => {
+  const handleLikeClick = useCallback((templateId: string) => {
     if (!session) {
         playOpenModalSound();
         setLoginModalOpen(true);
@@ -379,9 +391,9 @@ const App: React.FC = () => {
         api.updateTemplate(templateId, { likes: newLikes });
         setTemplates(prev => prev.map(t => t.id === templateId ? { ...t, likes: newLikes } : t));
     }
-  };
+  }, [session, likedTemplateIds, templates]);
 
-  const handleFavoriteClick = (templateId: string) => {
+  const handleFavoriteClick = useCallback((templateId: string) => {
       if (!session) {
           playOpenModalSound();
           setLoginModalOpen(true);
@@ -394,12 +406,12 @@ const App: React.FC = () => {
       setFavoriteTemplateIds(newSet);
       localStorage.setItem('templr_favorites', JSON.stringify(Array.from(newSet)));
       if (!isFavorited) showNotification("Added to favorites", 'success');
-  };
+  }, [session, favoriteTemplateIds, showNotification]);
 
-  const handleMessageCreator = (creatorName: string) => {
+  const handleMessageCreator = useCallback((creatorName: string) => {
       playClickSound();
       showNotification(`Messaging ${creatorName} is coming soon!`, 'info');
-  };
+  }, [showNotification]);
 
   const creditsRemaining = Math.max(0, LIMIT_MAX - usageCount);
 
@@ -562,15 +574,8 @@ const App: React.FC = () => {
       <LoginModal 
         isOpen={isLoginModalOpen}
         onClose={handleCloseLogin}
-        onLogin={async (e, p) => { 
-            const data = await api.signInWithEmail(e, p); 
-            if (data.session) setSession(data.session);
-        }}
-        onSignup={async (e, p, n) => { 
-            const data = await api.signUpWithEmail(e, p, n); 
-            if (data.session) setSession(data.session);
-            return data;
-        }}
+        onLogin={handleLogin}
+        onSignup={handleSignup}
         onOpenSetup={handleOpenSetup}
       />
       <ProfileSettingsModal 
@@ -588,7 +593,7 @@ const App: React.FC = () => {
       */}
       <SubscriptionModal 
         isOpen={isSubscriptionModalOpen}
-        onClose={() => setSubscriptionModalOpen(false)}
+        onClose={handleCloseSubscription}
         onUpgradeConfirm={handleUpgradeConfirm}
       />
       
@@ -596,7 +601,7 @@ const App: React.FC = () => {
         <Notification 
           message={notification.message}
           type={notification.type}
-          onClose={() => setNotification(null)}
+          onClose={handleCloseNotification}
         />
       )}
       <Analytics />

@@ -493,4 +493,4 @@ const UploadModal: React.FC<UploadModalProps> = ({
   );
 };
 
-export default UploadModal;
+export default React.memo(UploadModal);
