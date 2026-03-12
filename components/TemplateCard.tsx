@@ -365,22 +365,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     {category}
                  </div>
              </div>
-             <div className="flex gap-2 pointer-events-auto">
-                <button 
-                    onClick={handleFavorite}
-                    className={`
-                        p-2 rounded-lg backdrop-blur-xl border transition-all
-                        ${isFavorited 
-                            ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' 
-                            : 'bg-white/10 border-white/5 text-white hover:bg-white/20'}
-                    `}
-                >
-                    <BookmarkIcon className={`w-4 h-4 ${isFavorited ? 'fill-current' : ''}`} />
-                </button>
-                <div className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold backdrop-blur-xl border border-white/5 bg-white/10 text-white">
-                    Free
-                </div>
-             </div>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-5 z-30 translate-y-2 group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none">

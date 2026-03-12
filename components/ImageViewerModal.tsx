@@ -386,9 +386,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
 
                     {/* --- ACTION BAR --- */}
                     <div className="absolute bottom-0 left-0 right-0 p-6 bg-[#09090b] border-t border-white/10 z-40 shadow-[0_-20px_40px_rgba(0,0,0,0.5)]">
-                        <div className="flex justify-between items-end mb-4">
-                            <div><p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Price</p><p className="text-3xl font-bold text-white tracking-tight">Free</p></div>
-                            
+                        <div className="flex justify-end items-end mb-4">
                             {!isSubscribed && (
                                 <div className="flex flex-col items-end">
                                     <p className="text-[10px] text-slate-500 uppercase font-bold mb-2">Actions Left</p>
