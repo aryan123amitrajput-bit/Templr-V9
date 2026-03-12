@@ -167,6 +167,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
     <section 
         className="relative h-screen min-h-[800px] w-full flex flex-col items-center justify-center overflow-hidden"
     >
+      <h1 className="sr-only">Templr - Download Real Landing Page Templates for SaaS, Startups, and Portfolios</h1>
       
       {/* --- GALAXY BACKGROUND (Z-[-2]) --- */}
       <div className="absolute inset-0 z-0 pointer-events-none bg-black">

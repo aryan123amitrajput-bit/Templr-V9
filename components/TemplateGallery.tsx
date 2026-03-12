@@ -12,6 +12,7 @@ const filters = ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 
 
 interface TemplateGalleryProps {
   templates: Template[]; 
+  initialCategory?: string;
   onMessageCreator: (creatorName: string) => void;
   onView: (template: Template) => void;
   onLike: (templateId: string) => void;
@@ -27,6 +28,7 @@ type SortOption = 'newest' | 'popular' | 'likes';
 
 const TemplateGallery: React.FC<TemplateGalleryProps> = ({ 
     templates: initialTemplates,
+    initialCategory = 'All',
     onMessageCreator, 
     onView, 
     onLike, 
@@ -37,7 +39,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     favoriteIds,
     isLoggedIn
 }) => {
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [activeFilter, setActiveFilter] = useState(initialCategory);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -61,6 +63,10 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
           }
       }
   }, [initialTemplates]);
+
+  useEffect(() => {
+    setActiveFilter(initialCategory);
+  }, [initialCategory]);
 
   // Debounce Search
   useEffect(() => {
@@ -178,6 +184,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
   return (
     <section id="gallery" className="py-32 relative z-10 bg-black">
+      <h2 className="sr-only">Explore UI Templates and Landing Pages</h2>
       <div className="container mx-auto px-6 md:px-12 max-w-[90rem]">
         
         {/* Floating Filter Dock */}

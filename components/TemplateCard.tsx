@@ -312,7 +312,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                 {(signedBanner || displayBanner) && !imageError ? (
                     <img 
                         src={signedBanner || displayBanner!} 
-                        alt={title}
+                        alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam

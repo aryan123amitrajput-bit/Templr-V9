@@ -63,7 +63,7 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                 <span className="text-slate-400 font-mono text-[10px] font-bold uppercase tracking-widest mb-4 px-4 py-1.5 rounded-full border border-white/10 bg-white/5">
                     Verified Talent
                 </span>
-                <h3 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tighter">Featured Creators</h3>
+                <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tighter">Featured Creators</h2>
                 <p className="text-slate-400 max-w-lg mx-auto text-lg font-light leading-relaxed">
                     Top performing architects of the digital future.
                 </p>
@@ -113,7 +113,7 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                                         </div>
                                     </div>
 
-                                    <h4 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-slate-200 transition-colors">{creator.name}</h4>
+                                    <h3 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-slate-200 transition-colors">{creator.name}</h3>
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-8">{creator.role}</p>
 
                                     {/* Stats */}

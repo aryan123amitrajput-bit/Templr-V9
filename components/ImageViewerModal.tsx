@@ -269,7 +269,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                         (signedImage || displayImage) && !imageError ? (
                                             <img 
                                                 src={signedImage || displayImage} 
-                                                alt={template.title} 
+                                                alt={`${template.title} - ${template.category} Landing Page Template Preview`} 
                                                 onError={handleImageError}
                                                 className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
                                             />
@@ -326,7 +326,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         </div>
                         <h1 className="text-2xl font-bold text-white mb-4 line-clamp-2">{template.title}</h1>
                         <div className="flex items-center gap-3">
-                            <img src={`https://ui-avatars.com/api/?name=${template.author}&background=333&color=fff`} className="w-8 h-8 rounded-full" />
+                            <img src={`https://ui-avatars.com/api/?name=${template.author}&background=333&color=fff`} alt={`${template.author} avatar`} className="w-8 h-8 rounded-full" />
                             <div className="flex flex-col"><span className="text-[10px] text-slate-500 font-bold uppercase">Creator</span><span className="text-sm font-bold text-white">{template.author}</span></div>
                         </div>
                     </div>
@@ -346,13 +346,13 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         </div>
 
                         <div>
-                            <h4 className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-white/5 pb-1">Description</h4>
+                            <h2 className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-white/5 pb-1">Description</h2>
                             <p className="text-sm text-slate-300 leading-relaxed font-light">{template.description}</p>
                         </div>
 
                         {hasLink && (
                             <div>
-                                <h4 className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-white/5 pb-1">External Links</h4>
+                                <h2 className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-white/5 pb-1">External Links</h2>
                                 <div className="space-y-2">
                                      <button 
                                         onClick={handleVisitLive}

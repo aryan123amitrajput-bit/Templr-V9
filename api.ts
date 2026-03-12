@@ -391,6 +391,32 @@ export const getPublicTemplates = async (
     return attempt();
 };
 
+export const getTemplateById = async (id: string): Promise<Template | null> => {
+    const attempt = async (retryCount = 0): Promise<Template | null> => {
+        try {
+            const { data, error } = await supabase
+                .from('templates')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (error) throw error;
+            if (!data) return null;
+
+            return mapTemplate(data);
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            console.error("Error fetching template by ID:", e);
+            return null;
+        }
+    };
+    return attempt();
+};
+
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     const attempt = async (retryCount = 0): Promise<CreatorStats[]> => {
         try {

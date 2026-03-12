@@ -23,6 +23,8 @@ import type { Session, Template, NewTemplateData } from './api';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Analytics } from '@vercel/analytics/react';
 
+import { useSEO } from './hooks/useSEO';
+
 // NUCLEAR KEY ROTATION - V12 STRICT
 // Double-lock enforcement: UI Guard + Storage Guard.
 const LIMIT_MAX = 3;
@@ -124,6 +126,54 @@ const App: React.FC = () => {
   });
 
   const [usageCount, setUsageCount] = useState<number>(0);
+  const [initialRouteHandled, setInitialRouteHandled] = useState(false);
+  const [initialCategory, setInitialCategory] = useState<string>('All');
+
+  // SEO for Homepage vs Template Page
+  const currentSEO = useMemo(() => {
+    if (viewingTemplate) {
+      const displayImage = viewingTemplate.bannerUrl || viewingTemplate.imageUrl;
+      return {
+        title: `${viewingTemplate.title} - ${viewingTemplate.category} Landing Page Template`,
+        description: `Download the ${viewingTemplate.title} ${viewingTemplate.category} template by ${viewingTemplate.author}. Explore real landing page designs and UI templates on Templr.`,
+        url: `https://templr-v9.vercel.app/templates/${viewingTemplate.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${viewingTemplate.id}`,
+        image: displayImage,
+        type: 'article',
+        schema: {
+          "@context": "https://schema.org",
+          "@type": "CreativeWork",
+          "name": viewingTemplate.title,
+          "author": {
+            "@type": "Person",
+            "name": viewingTemplate.author
+          },
+          "image": displayImage,
+          "description": viewingTemplate.description || `Download the ${viewingTemplate.title} ${viewingTemplate.category} template by ${viewingTemplate.author}.`
+        }
+      };
+    }
+
+    return {
+      title: 'Templr - Download Real Landing Page Templates',
+      description: 'Discover, explore, and download real landing page templates. Templr is the platform for designers and developers to find high-quality UI templates for SaaS, startups, and portfolios.',
+      url: 'https://templr-v9.vercel.app/',
+      type: 'website',
+      schema: {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Templr",
+        "url": "https://templr-v9.vercel.app/",
+        "description": "Discover, explore, and download real landing page templates.",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://templr-v9.vercel.app/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      }
+    };
+  }, [viewingTemplate]);
+
+  useSEO(currentSEO);
 
   const loadTemplates = useCallback(async (retryCount = 0) => {
     setIsLoading(true);
@@ -210,6 +260,56 @@ const App: React.FC = () => {
         authSubPromise.then(sub => sub?.unsubscribe());
     };
   }, []);
+
+  // Handle URL Routing
+  useEffect(() => {
+    if (initialRouteHandled || templates.length === 0) return;
+
+    const path = window.location.pathname;
+    
+    // Handle category URLs
+    const categoryMatch = path.match(/^\/([a-z0-9-]+)-templates\/?$/i);
+    if (categoryMatch) {
+      const catSlug = categoryMatch[1].toLowerCase();
+      const catMap: Record<string, string> = {
+        'saas': 'SaaS',
+        'startup': 'Startup', // Assuming 'Startup' is a category, but filters are ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 'Blog']
+        'portfolio': 'Portfolio',
+        'e-commerce': 'E-commerce',
+        'blog': 'Blog',
+        'ai-landing-page': 'AI', // Map as needed
+        'dark-ui': 'Dark UI'
+      };
+      if (catMap[catSlug]) {
+        setInitialCategory(catMap[catSlug]);
+      }
+    }
+
+    // Handle template URLs
+    if (path.startsWith('/templates/')) {
+      const parts = path.split('/');
+      const slugId = parts[2]; // e.g., saas-landing-page-123
+      if (slugId) {
+        const idMatch = slugId.match(/-([a-f0-9-]+)$/i);
+        const id = idMatch ? idMatch[1] : slugId;
+        
+        const template = templates.find(t => t.id === id);
+        if (template) {
+          setViewingTemplate(template);
+          setViewerOpen(true);
+        } else {
+          api.getTemplateById(id).then(t => {
+            if (t) {
+              setViewingTemplate(t);
+              setViewerOpen(true);
+            }
+          });
+        }
+      }
+    }
+    
+    setInitialRouteHandled(true);
+  }, [templates, initialRouteHandled]);
 
   // Session Sync Logic
   useEffect(() => {
@@ -365,6 +465,10 @@ const App: React.FC = () => {
         }
         setViewingTemplate(template);
         setViewerOpen(true);
+        
+        // Update URL for SEO
+        const slug = template.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        window.history.pushState({}, '', `/templates/${slug}-${template.id}`);
     }
   }, [session, viewedTemplateIds]);
 
@@ -372,6 +476,11 @@ const App: React.FC = () => {
     playCloseModalSound();
     setViewerOpen(false);
     setTimeout(() => setViewingTemplate(null), 300);
+    
+    // Restore URL
+    if (window.location.pathname.startsWith('/templates/')) {
+      window.history.pushState({}, '', '/');
+    }
   }, []);
 
   const handleLikeClick = useCallback((templateId: string) => {
@@ -484,6 +593,7 @@ const App: React.FC = () => {
             <TemplateGallery 
               templates={templates}
               isLoading={isLoading}
+              initialCategory={initialCategory}
               onMessageCreator={handleMessageCreator} 
               onLike={handleLikeClick}
               onFavorite={handleFavoriteClick}

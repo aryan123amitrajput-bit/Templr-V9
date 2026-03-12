@@ -38,6 +38,53 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // --- SEO Routes ---
+  app.get('/robots.txt', (req, res) => {
+    res.type('text/plain');
+    res.send(`User-agent: *
+Allow: /
+Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
+  });
+
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+      const { data: templates, error } = await supabase
+        .from('templates')
+        .select('id, title, updated_at');
+
+      if (error) throw error;
+
+      const baseUrl = 'https://templr-v9.vercel.app';
+      let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+      xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+      
+      // Homepage
+      xml += `  <url>\n    <loc>${baseUrl}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
+
+      // Categories
+      const categories = ['saas', 'startup', 'portfolio', 'ai-landing-page', 'dark-ui'];
+      categories.forEach(cat => {
+        xml += `  <url>\n    <loc>${baseUrl}/${cat}-templates</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+      });
+
+      // Templates
+      if (templates) {
+        templates.forEach(t => {
+          const slug = t.title ? t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') : t.id;
+          xml += `  <url>\n    <loc>${baseUrl}/templates/${slug}-${t.id}</loc>\n    <lastmod>${new Date(t.updated_at || Date.now()).toISOString()}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+        });
+      }
+
+      xml += `</urlset>`;
+
+      res.header('Content-Type', 'application/xml');
+      res.send(xml);
+    } catch (error) {
+      console.error('Sitemap generation error:', error);
+      res.status(500).end();
+    }
+  });
+
   // --- API Routes ---
 
   // Upload File Proxy
