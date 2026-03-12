@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background Circle -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c2135"/>
+      <stop offset="100%" stop-color="#141726"/>
+    </linearGradient>
+
+    <!-- Top Bar Top Face -->
+    <linearGradient id="top-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2c55d6"/>
+      <stop offset="100%" stop-color="#4dbdf8"/>
+    </linearGradient>
+    
+    <!-- Top Bar Front Face -->
+    <linearGradient id="front-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1b38a6"/>
+      <stop offset="100%" stop-color="#2c55d6"/>
+    </linearGradient>
+
+    <!-- Stem Right Face (Yellow/Orange) -->
+    <linearGradient id="stem-yellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffcf54"/>
+      <stop offset="100%" stop-color="#f58122"/>
+    </linearGradient>
+
+    <!-- Stem Left Face (Dark Orange) -->
+    <linearGradient id="stem-orange" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e85d1c"/>
+      <stop offset="100%" stop-color="#d14514"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <circle cx="256" cy="256" r="256" fill="url(#bg-grad)"/>
+
+  <!-- T Logo Group -->
+  <g transform="translate(0, -20)">
+    <!-- Stem Left Face -->
+    <path d="M220 215 L250 210 L200 380 L170 340 Z" fill="url(#stem-orange)"/>
+    
+    <!-- Stem Right Face -->
+    <path d="M250 210 L280 205 L280 310 L200 380 Z" fill="url(#stem-yellow)"/>
+
+    <!-- Top Bar Front Face -->
+    <path d="M140 190 L190 230 L350 180 L360 150 Z" fill="url(#front-blue)"/>
+
+    <!-- Top Bar Top Face -->
+    <path d="M140 190 L360 150 L350 140 L150 160 Z" fill="url(#top-blue)"/>
+  </g>
+</svg>
