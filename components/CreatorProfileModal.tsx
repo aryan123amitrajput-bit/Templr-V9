@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, TwitterIcon, DribbbleIcon, GithubIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
+import { XIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
 import { Template, fixUrl } from '../api';
 
@@ -150,24 +150,6 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         <p className="text-sm text-slate-300 leading-relaxed font-light">
                             Digital creator on Templr. Check out my portfolio of templates below.
                         </p>
-                    </div>
-
-                    <div className="mb-8">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-4">Connect</h3>
-                        <div className="flex flex-col gap-3">
-                            <button className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group text-sm text-slate-300 hover:text-white">
-                                <TwitterIcon className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
-                                <span>@twitter_handle</span>
-                            </button>
-                            <button className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group text-sm text-slate-300 hover:text-white">
-                                <DribbbleIcon className="w-4 h-4 text-slate-500 group-hover:text-pink-400 transition-colors" />
-                                <span>dribbble.com/user</span>
-                            </button>
-                            <button className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group text-sm text-slate-300 hover:text-white">
-                                <GithubIcon className="w-4 h-4 text-slate-500 group-hover:text-white transition-colors" />
-                                <span>github.com/dev</span>
-                            </button>
-                        </div>
                     </div>
 
                     {/* Follow button removed as requested */}
