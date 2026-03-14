@@ -44,7 +44,7 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
       {/* Background Image with top fade */}
       <div className="relative w-full h-[300px] md:h-[450px] z-0 pointer-events-none mt-4">
         <img 
-          src="https://cdn.discordapp.com/attachments/1344733249628541099/1481305717007712387/1773216566644-019cdbf1-0fae-77a1-9733-2fc4cbbed401.png?ex=69b2d4f4&is=69b18374&hm=84a5a9ac7293afa3954fdb9470649e9876158c6675a02773b6073c8f9281717b&" 
+          src="https://i.ibb.co/218M2Dpc/1773216566644-019cdbf1-0fae-77a1-9733-2fc4cbbed401.png" 
           alt="Footer Background" 
           className="w-full h-full object-cover object-top opacity-100"
           referrerPolicy="no-referrer"

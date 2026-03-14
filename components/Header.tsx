@@ -61,13 +61,13 @@ const Header: React.FC<HeaderProps> = ({
 
             {/* Logo */}
             <div 
-                className="flex items-center gap-3 cursor-pointer select-none" 
+                className="flex items-center gap-3 cursor-pointer select-none group/logo" 
                 onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}
             >
-                <div className="w-4 h-4 bg-white rounded-[4px] flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.4)]">
-                    <div className="w-1 h-1 bg-black rounded-[1px]"></div>
+                <div className="w-5 h-5 bg-gradient-to-b from-blue-500 to-blue-700 rounded-[6px] flex items-center justify-center shadow-[0_2px_10px_rgba(59,130,246,0.4),inset_0_1px_0_rgba(255,255,255,0.3)] transform transition-transform group-hover/logo:scale-105">
+                    <span className="text-white font-bold text-[11px] leading-none tracking-tighter" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>T</span>
                 </div>
-                <span className="font-display font-bold text-sm tracking-tight text-white transition-colors">Templr</span>
+                <span className="font-display font-bold text-sm tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 drop-shadow-[0_0_8px_rgba(59,130,246,0.4)] transition-all">Templr</span>
                 
                 {/* Status Indicator */}
                 {isApiConfigured ? (

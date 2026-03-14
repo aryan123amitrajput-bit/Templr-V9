@@ -64,7 +64,7 @@ const SpotlightCard = ({
       ref={divRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`relative rounded-[24px] border border-slate-800/60 bg-[#0B1121] overflow-hidden group shadow-2xl ${className}`}
+      className={`relative rounded-[24px] border border-slate-800/60 bg-[#0B1121] overflow-hidden group shadow-2xl transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:border-slate-700/60 ${className}`}
     >
       {/* 1. Mouse Spotlight Bloom (Interactive) */}
       <div

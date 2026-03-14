@@ -3,9 +3,6 @@ import React from 'react';
 import { ScrollReveal } from './ScrollReveal';
 
 const WhyTemplr: React.FC = () => {
-  // The specific visual requested
-  const HERO_IMAGE_URL = "https://cdn.discordapp.com/attachments/1424289543758282862/1462822707258458152/file_000000009eb871fabb9e910558a6a4fe.png?ex=696f974f&is=696e45cf&hm=f1e30dbbe1c1836f8663fb14591a92421201495eddcbf062c1d66c436e02af22&";
-
   return (
     <section id="features" className="py-32 bg-black relative overflow-hidden">
       
@@ -31,33 +28,6 @@ const WhyTemplr: React.FC = () => {
                 <p className="text-slate-400 text-lg max-w-2xl font-light">
                     We've reimagined the marketplace experience. No bloat, no outdated code. Just pure, production-ready design engineering.
                 </p>
-            </div>
-        </ScrollReveal>
-
-        {/* --- HERO IMAGE DISPLAY --- */}
-        <ScrollReveal delay={100}>
-            <div className="relative w-full rounded-[32px] p-[1px] bg-gradient-to-b from-white/20 via-white/5 to-transparent shadow-2xl group">
-                
-                {/* Glow Behind */}
-                <div className="absolute -inset-4 bg-blue-500/20 blur-3xl opacity-20 group-hover:opacity-30 transition-opacity duration-1000 rounded-[32px]"></div>
-
-                <div className="relative rounded-[31px] overflow-hidden bg-[#050505] border border-white/5">
-                    <img 
-                        src={HERO_IMAGE_URL} 
-                        alt="Templr Dashboard Interface" 
-                        className="w-full h-auto object-cover transform scale-100 group-hover:scale-[1.01] transition-transform duration-1000 ease-out"
-                        onError={(e) => {
-                            // Fallback purely for safety, though user requested specific image
-                            e.currentTarget.src = "https://images.unsplash.com/photo-1642427749670-f20e2e76ed8c?q=80&w=3400&auto=format&fit=crop";
-                        }}
-                    />
-                    
-                    {/* Cinematic Vignette Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10 pointer-events-none"></div>
-                    
-                    {/* Shine Effect */}
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
-                </div>
             </div>
         </ScrollReveal>
 
