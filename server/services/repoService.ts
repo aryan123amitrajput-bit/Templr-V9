@@ -627,6 +627,53 @@ export class RepoManager {
       }
     }
   }
+  public async getFile(path: string): Promise<string | null> {
+    if (this.githubRepos.length === 0) return null;
+    const { owner, repo } = this.githubRepos[0];
+    const octokit = new Octokit({ auth: this.githubToken });
+
+    try {
+      const { data } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+      });
+
+      if ('content' in data && !Array.isArray(data)) {
+        return Buffer.from(data.content, 'base64').toString();
+      }
+    } catch (e) {
+      // File might not exist
+    }
+    return null;
+  }
+
+  public async updateFile(path: string, content: string): Promise<void> {
+    if (this.githubRepos.length === 0) return;
+    const { owner, repo } = this.githubRepos[0];
+    const octokit = new Octokit({ auth: this.githubToken });
+
+    let sha: string | undefined;
+    try {
+      const { data } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+      });
+      if ('sha' in data && !Array.isArray(data)) {
+        sha = data.sha;
+      }
+    } catch (e) {}
+
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path,
+      message: `Update ${path}`,
+      content: Buffer.from(content).toString('base64'),
+      sha,
+    });
+  }
 }
 
 export const repoManager = new RepoManager();

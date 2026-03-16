@@ -7,6 +7,7 @@ import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager } from './server/services/repoService';
+import { freeHostService } from './server/services/freeHostService';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
@@ -151,6 +152,11 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Registry Endpoint for dynamic template loading
+  app.get('/api/registry', (req, res) => {
+    res.json(freeHostService.getRegistry());
+  });
+
   // --- SEO Routes ---
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
@@ -273,7 +279,6 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       ]);
 
       // Merge order priority: GitHub > GitLab > Supabase
-      // getMergedRegistry already returns GitHub > GitLab
       const mappedSupabase = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' }));
       
       // Use a Map to deduplicate by ID, keeping the first occurrence (highest priority)
@@ -316,13 +321,34 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       }
 
-      // Paginate
+      // Pagination Logic
       const start = page * limit;
-      const paginatedData = registry.slice(start, start + limit);
+      const gitSupabaseCount = registry.length;
+      
+      let paginatedData = [];
+      if (start < gitSupabaseCount) {
+        // Some or all from Git/Supabase
+        paginatedData = registry.slice(start, start + limit);
+        if (paginatedData.length < limit) {
+          // Need to fill the rest from FreeHost
+          const needed = limit - paginatedData.length;
+          const freeHostStart = 0;
+          const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
+          paginatedData.push(...extra);
+        }
+      } else {
+        // All from FreeHost
+        const freeHostOffset = start - gitSupabaseCount;
+        const freeHostPage = Math.floor(freeHostOffset / limit);
+        const freeHostLimit = limit;
+        paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+      }
+
+      const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
 
       res.json({ 
         data: paginatedData, 
-        hasMore: start + limit < registry.length 
+        hasMore: start + limit < totalCount 
       });
     } catch (error: any) {
       console.error('API Error:', error);
@@ -610,9 +636,13 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         }
       };
 
-      // 6. Save to GitHub
+      // 6. Save to GitHub & Free Hosts
       try {
+        // Legacy GitHub Save
         await saveTemplateToGitHub(metadata);
+        
+        // New Free Host Batch Save
+        await freeHostService.addTemplate(metadata);
         
         // 7. Save to Supabase (Legacy / Fallback)
         try {
@@ -755,7 +785,14 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         console.warn("GitHub deletion failed or skipped:", e);
       }
 
-      // 3. Delete from Supabase (legacy)
+      // 3. Delete from Free Hosts
+      try {
+        await freeHostService.deleteTemplate(id);
+      } catch (e) {
+        console.error("Free host deletion failed:", e);
+      }
+
+      // 4. Delete from Supabase (legacy)
       console.log(`Deleting template ${id} from Supabase legacy table`);
       const { error } = await supabase.from('templates').delete().eq('id', id);
       if (error) {
