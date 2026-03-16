@@ -6,6 +6,7 @@ import { getSupabase } from './server/services/supabaseService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { repoManager } from './server/services/repoService';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
@@ -104,238 +105,32 @@ function generatePreviewUrl(originalUrl: string): string {
  * Saves template metadata to GitHub as a JSON file.
  */
 async function deleteTemplateFromGitHub(templateId: string) {
-  const { owner, repo, token } = getGitHubConfig();
-  if (!owner || !token) throw new Error("GitHub integration not fully configured.");
-
-  const octokit = new Octokit({ auth: token });
-  const shard1 = templateId.substring(0, 2);
-  const shard2 = templateId.substring(2, 4);
-  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
-
-  try {
-    // 1. Delete individual file
-    try {
-      const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
-      await octokit.rest.repos.deleteFile({
-        owner,
-        repo,
-        path: filePath,
-        message: `Delete template: ${templateId}`,
-        sha: file.sha
-      });
-    } catch (e) {
-      console.warn(`File not found for deletion: ${filePath}`);
-    }
-
-    // 2. Update registry
-    const registryPath = 'registry.json';
-    try {
-      console.log(`Fetching registry from ${registryPath}`);
-      const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
-      let registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
-      console.log(`Current registry size: ${registry.length}`);
-      const newRegistry = registry.filter((t: any) => t.id !== templateId);
-      console.log(`New registry size: ${newRegistry.length}`);
-      
-      if (newRegistry.length !== registry.length) {
-        console.log(`Updating registry.json to remove ${templateId}`);
-        
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            await octokit.rest.repos.createOrUpdateFileContents({
-              owner,
-              repo,
-              path: registryPath,
-              message: `Remove from registry: ${templateId}`,
-              content: Buffer.from(JSON.stringify(newRegistry, null, 2)).toString('base64'),
-              sha: registryFile.sha
-            });
-            console.log(`Successfully updated registry.json`);
-            break;
-          } catch (e: any) {
-            retries--;
-            if (retries === 0) throw e;
-            console.warn(`Registry update failed, retrying... (${retries} attempts left)`);
-            // Refresh SHA
-            const { data: refreshedFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
-            registryFile.sha = refreshedFile.sha;
-          }
-        }
-      } else {
-        console.log(`Template ${templateId} not found in registry`);
-      }
-    } catch (e: any) {
-      if (e.status === 404) {
-        console.warn(`Registry file ${registryPath} not found, skipping registry update.`);
-      } else {
-        console.error("Failed to update registry during deletion:", e);
-        throw e; // Throw to be caught by the caller
-      }
-    }
-  } catch (error) {
-    console.error("GitHub deletion failed:", error);
-    throw error;
-  }
+  await repoManager.deleteTemplate(templateId);
 }
 
 async function updateTemplateOnGitHub(templateId: string, updates: any) {
-  const { owner, repo, token } = getGitHubConfig();
-  if (!owner || !token) throw new Error("GitHub integration not fully configured.");
-
-  const octokit = new Octokit({ auth: token });
-  const shard1 = templateId.substring(0, 2);
-  const shard2 = templateId.substring(2, 4);
-  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
-
-  try {
-    // 1. Update individual file
-    const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
-    const currentData = JSON.parse(Buffer.from(file.content, 'base64').toString());
-    const newData = { ...currentData, ...updates };
-    
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner,
-      repo,
-      path: filePath,
-      message: `Update template: ${templateId}`,
-      content: Buffer.from(JSON.stringify(newData, null, 2)).toString('base64'),
-      sha: file.sha
-    });
-
-    // 2. Update registry if needed
-    const registryPath = 'registry.json';
-    try {
-      const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
-      let registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
-      const index = registry.findIndex((t: any) => t.id === templateId);
-      
-      if (index >= 0) {
-        // Update registry entry with relevant fields
-        const entry = registry[index];
-        if (updates.title || updates.name) entry.title = updates.title || updates.name;
-        if (updates.image_url || updates.image_preview) entry.image_url = updates.image_url || updates.image_preview;
-        if (updates.category) entry.category = updates.category;
-        if (updates.tags) entry.tags = updates.tags;
-        
-        registry[index] = entry;
-
-        await octokit.rest.repos.createOrUpdateFileContents({
-          owner,
-          repo,
-          path: registryPath,
-          message: `Update registry: ${templateId}`,
-          content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
-          sha: registryFile.sha
-        });
-      }
-    } catch (e) {
-      console.error("Failed to update registry during update:", e);
-    }
-  } catch (error) {
-    console.error("GitHub update failed:", error);
-    throw error;
-  }
+  // Map updates to TemplateMetadata fields
+  const metadataUpdates: any = {};
+  if (updates.title || updates.name) metadataUpdates.title = updates.title || updates.name;
+  if (updates.image_url || updates.image_preview) metadataUpdates.thumbnail = updates.image_url || updates.image_preview;
+  if (updates.category) metadataUpdates.category = updates.category;
+  if (updates.tags) metadataUpdates.tags = updates.tags;
+  
+  await repoManager.updateTemplate(templateId, metadataUpdates);
 }
 
 async function saveTemplateToGitHub(template: any) {
-  const { owner, repo, token } = getGitHubConfig();
-
-  if (!owner || !token) {
-    const missing = [];
-    if (!owner) missing.push('GITHUB_OWNER');
-    if (!token) missing.push('GITHUB_TOKEN');
-    console.warn(`GitHub integration not fully configured. Missing: ${missing.join(', ')}. Skipping GitHub save.`);
-    return; // Return early instead of throwing
-  }
-
-  const octokit = new Octokit({ auth: token });
-  console.log(`Attempting to save template to GitHub: ${owner}/${repo}`);
-
-  const templateId = template.id || Math.random().toString(36).substring(2, 15);
-  // Sharding: /templates/a1/b2/id.json
-  const shard1 = templateId.substring(0, 2);
-  const shard2 = templateId.substring(2, 4);
-  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
-
-  const content = Buffer.from(JSON.stringify(template, null, 2)).toString('base64');
-
-  try {
-    // 1. Save the individual template file
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: owner,
-      repo: repo,
-      path: filePath,
-      message: `Add template: ${template.name || template.title}`,
-      content: content,
-    });
-    console.log(`Successfully saved template to GitHub: ${filePath}`);
-
-    // 2. Update the registry index (for the gallery)
-    // Note: In a high-concurrency environment, this would need a lock or a queue.
-    // For now, we'll use a simple read-modify-write.
-    try {
-      const registryPath = 'registry.json';
-      let registry: any[] = [];
-      let sha: string | undefined;
-
-      try {
-        const { data: registryFile }: any = await octokit.rest.repos.getContent({
-          owner,
-          repo,
-          path: registryPath,
-        });
-        sha = registryFile.sha;
-        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
-      } catch (e) {
-        console.log("Registry not found, creating new one.");
-      }
-
-      // Add new template to registry (limit to basic info for gallery performance)
-      const registryEntry = {
-        id: template.id,
-        title: template.name || template.title,
-        author: template.creator || template.author_name,
-        author_email: template.author_email,
-        image_url: template.image_preview || template.image_url,
-        category: template.category,
-        created_at: template.created_at,
-        tags: template.tags || []
-      };
-
-      // Check if already exists (update)
-      const existingIndex = registry.findIndex(t => t.id === template.id);
-      if (existingIndex >= 0) {
-        registry[existingIndex] = registryEntry;
-      } else {
-        registry.unshift(registryEntry); // Newest first
-      }
-
-      // Keep registry manageable (e.g., last 1000 items)
-      // For "Unlimited" scaling, you would use sharded registries or a search index.
-      if (registry.length > 1000) registry = registry.slice(0, 1000);
-
-      await octokit.rest.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path: registryPath,
-        message: `Update registry: ${template.name || template.title}`,
-        content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
-        sha
-      });
-      console.log("Registry updated successfully.");
-    } catch (registryError) {
-      console.error("Failed to update registry, but template file was saved:", registryError);
-    }
-
-  } catch (error: any) {
-    if (error.status === 404) {
-      console.error(`GitHub Error: Repository "${owner}/${repo}" not found. Please ensure the repository exists and your token has access to it.`);
-      throw new Error(`GitHub Repository "${owner}/${repo}" not found. Did you create it?`);
-    }
-    console.error("Error saving template to GitHub:", error.message || error);
-    throw error;
-  }
+  const metadata = {
+    id: template.id,
+    title: template.name || template.title,
+    author: template.creator || template.author_name,
+    thumbnail: template.image_preview || template.image_url,
+    category: template.category,
+    created_at: template.created_at,
+    tags: template.tags || [],
+    ...template // Keep everything else
+  };
+  await repoManager.uploadTemplate(metadata);
 }
 
 async function startServer() {
@@ -471,19 +266,35 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const searchQuery = req.query.searchQuery as string;
       const sortBy = req.query.sortBy as string || 'newest';
 
-      const { owner, repo, token } = getGitHubConfig();
-      if (!owner || !token) return res.json({ data: [], hasMore: false });
+      // Fetch Git and Supabase templates in parallel
+      const [gitRegistry, { data: supabaseData }] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        supabase.from('templates').select('*').order('created_at', { ascending: false })
+      ]);
 
-      const octokit = new Octokit({ auth: token });
-      const registryPath = 'registry.json';
+      // Merge order priority: GitHub > GitLab > Supabase
+      // getMergedRegistry already returns GitHub > GitLab
+      const mappedSupabase = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' }));
       
-      let registry: any[] = [];
-      try {
-        const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
-        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
-      } catch (e) {
-        console.log("Registry not found for templates.");
-      }
+      // Use a Map to deduplicate by ID, keeping the first occurrence (highest priority)
+      const templatesMap = new Map();
+      gitRegistry.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, { ...t, _source: 'git' });
+        }
+      });
+      mappedSupabase.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, t);
+        }
+      });
+
+      let registry = Array.from(templatesMap.values());
+
+      // Filter out deleted templates
+      const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
+      const deletedIds = new Set((deletedTemplates || []).map(t => t.id));
+      registry = registry.filter((t: any) => !deletedIds.has(t.id));
 
       // Filter by category
       if (category && category !== 'All') {
@@ -522,19 +333,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
-      const { owner, repo, token } = getGitHubConfig();
-      if (!owner || !token) return res.json({ data: [] });
-
-      const octokit = new Octokit({ auth: token });
-      const registryPath = 'registry.json';
-      
-      let registry: any[] = [];
-      try {
-        const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
-        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
-      } catch (e) {
-        console.log("Registry not found for creators.");
-      }
+      let registry = await repoManager.getMergedRegistry();
 
       // Aggregate by email
       const creatorsMap = new Map();
@@ -615,18 +414,46 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const email = req.query.email as string;
       if (!email) throw new Error("Email required");
 
-      const { data: supabaseData, error } = await supabase.from('templates')
-        .select('*')
-        .eq('author_email', email);
+      // Fetch Git and Supabase templates in parallel
+      const [gitRegistry, { data: supabaseData, error: supabaseError }, { data: deletedTemplates }] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        supabase.from('templates').select('*').eq('author_email', email),
+        supabase.from('deleted_templates').select('id')
+      ]);
       
-      if (error) throw error;
+      if (supabaseError) console.warn("Supabase user templates fetch failed:", supabaseError);
 
-      const allData = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' })).sort((a: any, b: any) => {
+      // Filter out deleted templates from Git registry
+      const deletedIds = new Set((deletedTemplates || []).map(t => t.id));
+      const filteredGit = gitRegistry.filter((t: any) => !deletedIds.has(t.id));
+
+      const userGitTemplates = filteredGit.filter((t: any) => 
+        t.author_email === email || t.creator_email === email || t.email === email
+      );
+
+      // Merge order priority: GitHub > GitLab > Supabase
+      const mappedSupabase = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' }));
+      
+      // Use a Map to deduplicate by ID, keeping the first occurrence (highest priority)
+      const templatesMap = new Map();
+      userGitTemplates.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, { ...t, _source: 'git' });
+        }
+      });
+      mappedSupabase.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, t);
+        }
+      });
+
+      const allData = Array.from(templatesMap.values()).sort((a: any, b: any) => {
         return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       });
 
       res.json({ data: allData });
     } catch (error: any) {
+      console.error('API Error (User Templates):', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -635,19 +462,10 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.get('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      const { owner, repo, token } = getGitHubConfig();
-      if (!owner || !token) return res.status(500).json({ error: 'GitHub not configured' });
-
-      const octokit = new Octokit({ auth: token });
-      const shard1 = id.substring(0, 2);
-      const shard2 = id.substring(2, 4);
-      const filePath = `templates/${shard1}/${shard2}/${id}.json`;
-
-      try {
-        const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
-        const content = JSON.parse(Buffer.from(file.content, 'base64').toString());
+      const content = await repoManager.getTemplateById(id);
+      if (content) {
         res.json({ data: content });
-      } catch (e) {
+      } else {
         res.status(404).json({ error: 'Template not found' });
       }
     } catch (error: any) {
