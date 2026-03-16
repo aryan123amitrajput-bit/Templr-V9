@@ -165,9 +165,13 @@ async function deleteTemplateFromGitHub(templateId: string) {
       } else {
         console.log(`Template ${templateId} not found in registry`);
       }
-    } catch (e) {
-      console.error("Failed to update registry during deletion:", e);
-      throw e; // Throw to be caught by the caller
+    } catch (e: any) {
+      if (e.status === 404) {
+        console.warn(`Registry file ${registryPath} not found, skipping registry update.`);
+      } else {
+        console.error("Failed to update registry during deletion:", e);
+        throw e; // Throw to be caught by the caller
+      }
     }
   } catch (error) {
     console.error("GitHub deletion failed:", error);
