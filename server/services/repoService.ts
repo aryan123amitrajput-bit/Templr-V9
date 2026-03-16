@@ -68,7 +68,42 @@ export class RepoManager {
     }).filter((item): item is { owner: string; repo: string } => item !== null);
 
     const gitlabList = process.env.GITLAB_PROJECT_LIST || '';
-    this.gitlabProjects = gitlabList.split(',').filter(Boolean).map(item => item.trim());
+    this.gitlabProjects = gitlabList.split(',').filter(Boolean).map(item => {
+      const trimmed = item.trim();
+      
+      // Handle SSH format: git@gitlab.com:owner/repo.git
+      if (trimmed.startsWith('git@')) {
+        const pathPart = trimmed.split(':').pop();
+        if (pathPart) {
+          let projectPath = pathPart;
+          if (projectPath.endsWith('.git')) {
+            projectPath = projectPath.slice(0, -4);
+          }
+          return projectPath;
+        }
+      }
+
+      // Handle HTTP format: https://gitlab.com/owner/repo
+      if (trimmed.startsWith('http')) {
+        try {
+          const url = new URL(trimmed);
+          let projectPath = url.pathname.split('/').filter(Boolean).join('/');
+          if (projectPath.endsWith('.git')) {
+            projectPath = projectPath.slice(0, -4);
+          }
+          return projectPath;
+        } catch (e) {
+          console.error(`Invalid GitLab URL in GITLAB_PROJECT_LIST: ${trimmed}`);
+        }
+      }
+
+      // Handle owner/repo format
+      let projectPath = trimmed;
+      if (projectPath.endsWith('.git')) {
+        projectPath = projectPath.slice(0, -4);
+      }
+      return projectPath;
+    }).filter(Boolean);
   }
 
   async getAllRepos(): Promise<RepoConfig[]> {

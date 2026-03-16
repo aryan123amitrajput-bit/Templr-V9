@@ -45,6 +45,20 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const [isFocused, setIsFocused] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Keyboard shortcut for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && !isFocused && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        const searchInput = document.getElementById('template-search-input');
+        searchInput?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFocused]);
 
   // Real Data State
   const [data, setData] = useState<Template[]>(initialTemplates);
@@ -197,7 +211,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                     
                     {/* Primary Bar */}
                     <div className={`
-                        relative p-2 bg-[#050505]/80 backdrop-blur-2xl border border-white/[0.08] rounded-full 
+                        relative p-2 bg-[#050505]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl 
                         flex flex-col md:flex-row gap-2 w-full
                         shadow-[0_20px_40px_-10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.05)]
                         ${isFocused ? 'scale-[1.01] border-white/10 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]' : 'hover:border-white/10'}
@@ -208,11 +222,12 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         {/* Search Input */}
                         <div className="relative flex-1 group/search">
                             <div className={`
-                                relative h-12 flex items-center rounded-full border transition-all duration-300 overflow-hidden px-4
+                                relative h-12 flex items-center rounded-xl border transition-all duration-300 overflow-hidden px-4
                                 ${isFocused ? 'bg-black border-blue-500/30' : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.05]'}
                             `}>
                                 <SearchIcon className={`w-5 h-5 mr-3 transition-colors duration-300 ${isFocused ? 'text-blue-400' : 'text-slate-500'}`} />
                                 <input 
+                                    id="template-search-input"
                                     type="text" 
                                     placeholder="Search templates, tags, creators..." 
                                     value={searchQuery}
@@ -221,15 +236,75 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                                     onBlur={() => setIsFocused(false)}
                                     className="w-full h-full bg-transparent text-sm font-medium text-white placeholder-slate-500 focus:outline-none"
                                 />
-                                {searchQuery && (
-                                    <button 
-                                        onClick={() => { setSearchQuery(''); playClickSound(); }}
-                                        className="p-1 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-colors animate-fade-in"
-                                    >
-                                        <XIcon className="w-4 h-4" />
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {isFetching && (
+                                        <motion.div 
+                                            animate={{ rotate: 360 }}
+                                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                            className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full"
+                                        />
+                                    )}
+                                    {!searchQuery && !isFocused && (
+                                        <div className="hidden md:flex items-center px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-[10px] text-slate-500 font-mono">
+                                            /
+                                        </div>
+                                    )}
+                                    {searchQuery && (
+                                        <button 
+                                            onClick={() => { setSearchQuery(''); playClickSound(); }}
+                                            className="p-1 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-colors animate-fade-in"
+                                        >
+                                            <XIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
+
+                            {/* Results Count Badge */}
+                            <AnimatePresence>
+                                {debouncedSearch && !isFetching && data.length > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: -5 }}
+                                        className="absolute -top-6 right-4 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-bold text-blue-400 uppercase tracking-tighter"
+                                    >
+                                        {data.length}{hasMore ? '+' : ''} Results
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            {/* Trending Tags Dropdown */}
+                            <AnimatePresence>
+                                {isFocused && !searchQuery && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                                        className="absolute top-full left-0 right-0 mt-2 p-4 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden"
+                                    >
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></div>
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Trending Searches</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['Modern Dashboard', 'SaaS Landing', 'Dark Mode', 'Portfolio', 'E-commerce'].map((tag) => (
+                                                <button
+                                                    key={tag}
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault(); // Prevent blur
+                                                        setSearchQuery(tag);
+                                                        playClickSound();
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:border-blue-500/30 hover:bg-blue-500/10 text-[11px] text-slate-400 hover:text-blue-400 transition-all duration-200"
+                                                >
+                                                    {tag}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
 
                         <div className="block w-[1px] my-3 bg-white/10 mx-1"></div>
@@ -241,7 +316,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                                 key={filter}
                                 onClick={() => handleFilterClick(filter)}
                                 className={`
-                                    relative px-5 py-2.5 rounded-full text-[12px] font-bold tracking-wide transition-all duration-300 whitespace-nowrap overflow-hidden
+                                    relative px-5 py-2.5 rounded-xl text-[12px] font-bold tracking-wide transition-all duration-300 whitespace-nowrap overflow-hidden
                                     ${activeFilter === filter
                                     ? 'text-white bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]'
                                     : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
@@ -259,7 +334,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         <button 
                             onClick={() => { playClickSound(); setShowFilters(!showFilters); }}
                             className={`
-                                relative p-3 rounded-full transition-all duration-300 flex items-center justify-center
+                                relative p-3 rounded-xl transition-all duration-300 flex items-center justify-center
                                 ${showFilters ? 'bg-white text-black' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}
                             `}
                         >
@@ -280,9 +355,24 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                                 <div className="mt-2 p-6 bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/[0.08] rounded-[24px] shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
                                     
                                     <div>
-                                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 block flex items-center gap-2">
-                                            <SortIcon className="w-3 h-3" /> Sort By
-                                        </label>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block flex items-center gap-2">
+                                                <SortIcon className="w-3 h-3" /> Sort By
+                                            </label>
+                                            {(sortBy !== 'newest' || activeFilter !== 'All' || searchQuery) && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setSortBy('newest');
+                                                        setActiveFilter('All');
+                                                        setSearchQuery('');
+                                                        playClickSound();
+                                                    }}
+                                                    className="text-[9px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
+                                                >
+                                                    Reset All
+                                                </button>
+                                            )}
+                                        </div>
                                         <div className="flex gap-2">
                                             {(['newest', 'popular', 'likes'] as SortOption[]).map((option) => (
                                                 <button
