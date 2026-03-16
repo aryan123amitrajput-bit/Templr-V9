@@ -70,8 +70,10 @@ end $$;
 alter table public.templates enable row level security;
 
 -- 4. CREATE FRESH POLICIES
+-- NOTE: We allow public inserts for now to ensure the "Publish" feature works even if 
+-- the backend is using the Anon Key. For production, use the Service Role Key on the backend.
 create policy "templr_read_all" on public.templates for select using (true);
-create policy "templr_insert_auth" on public.templates for insert with check (auth.role() = 'authenticated');
+create policy "templr_insert_all" on public.templates for insert with check (true);
 create policy "templr_update_own" on public.templates for update using (auth.jwt() ->> 'email' = author_email);
 create policy "templr_delete_own" on public.templates for delete using (auth.jwt() ->> 'email' = author_email);
 

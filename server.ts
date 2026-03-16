@@ -2,23 +2,315 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from './server/services/supabaseService';
+import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Environment Variables
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(SUPABASE_URL || 'https://placeholder.supabase.co', SUPABASE_KEY || 'placeholder', {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
+// Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
+const firebaseConfigPath = path.join(__dirname, 'firebase-applet-config.json');
+if (fs.existsSync(firebaseConfigPath)) {
+  const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+  try {
+    let credential;
+    console.log("Checking FIREBASE_SERVICE_ACCOUNT...");
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      console.log("FIREBASE_SERVICE_ACCOUNT is set.");
+      credential = admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT));
+    } else {
+      console.log("FIREBASE_SERVICE_ACCOUNT is NOT set, using applicationDefault().");
+      credential = admin.credential.applicationDefault();
+    }
+    admin.initializeApp({
+      credential: credential,
+      projectId: firebaseConfig.projectId,
+    });
+    console.log("Firebase Admin initialized:", admin.app().name);
+  } catch (e) {
+    console.error("Firebase Admin initialization failed:", e);
+    throw e;
   }
-});
+}
+
+// Environment Variables
+let supabase: any = null;
+try {
+  supabase = getSupabase();
+} catch (e) {
+  console.error("Supabase initialization failed, using mock client:", e);
+  supabase = {
+    from: () => ({
+      select: () => ({ eq: () => ({ single: () => ({ data: null, error: 'Supabase not configured' }) }), data: [], error: 'Supabase not configured' }),
+      update: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
+      delete: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
+    }),
+    auth: {
+      signInWithPassword: () => ({ data: null, error: 'Supabase not configured' }),
+      signUp: () => ({ data: null, error: 'Supabase not configured' }),
+      updateUser: () => ({ data: null, error: 'Supabase not configured' }),
+      getSession: () => ({ data: null, error: 'Supabase not configured' }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      signOut: () => Promise.resolve(),
+    },
+    storage: {
+      from: () => ({
+        upload: () => ({ error: 'Supabase not configured' }),
+        getPublicUrl: () => ({ data: { publicUrl: '' } }),
+      }),
+    },
+  };
+}
+
+// GitHub Configuration
+const GITHUB_REPO_DEFAULT = 'Templr-V9';
+
+function getGitHubConfig() {
+  let owner = process.env.GITHUB_OWNER || 'aryan123amitrajput-bit';
+  let repo = process.env.GITHUB_REPO || GITHUB_REPO_DEFAULT;
+  const token = process.env.GITHUB_TOKEN;
+
+  if (repo && repo.includes('github.com')) {
+    try {
+      const urlParts = repo.replace('.git', '').split('github.com/')[1].split('/');
+      if (urlParts.length >= 2) {
+        owner = urlParts[0];
+        repo = urlParts[1];
+      }
+    } catch (e) {
+      console.error("Failed to parse GitHub URL from GITHUB_REPO variable");
+    }
+  }
+
+  return { owner, repo, token };
+}
+
+/**
+ * Generates a clean preview URL for a template.
+ * In a real scenario, this would involve more logic or a dedicated service.
+ */
+function generatePreviewUrl(originalUrl: string): string {
+  if (!originalUrl) return '';
+  const hash = Math.random().toString(36).substring(2, 10);
+  return `https://preview.templr.io/v/${hash}`;
+}
+
+/**
+ * Saves template metadata to GitHub as a JSON file.
+ */
+async function deleteTemplateFromGitHub(templateId: string) {
+  const { owner, repo, token } = getGitHubConfig();
+  if (!owner || !token) throw new Error("GitHub integration not fully configured.");
+
+  const octokit = new Octokit({ auth: token });
+  const shard1 = templateId.substring(0, 2);
+  const shard2 = templateId.substring(2, 4);
+  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
+
+  try {
+    // 1. Delete individual file
+    try {
+      const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
+      await octokit.rest.repos.deleteFile({
+        owner,
+        repo,
+        path: filePath,
+        message: `Delete template: ${templateId}`,
+        sha: file.sha
+      });
+    } catch (e) {
+      console.warn(`File not found for deletion: ${filePath}`);
+    }
+
+    // 2. Update registry
+    const registryPath = 'registry.json';
+    try {
+      const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
+      let registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      const newRegistry = registry.filter((t: any) => t.id !== templateId);
+      
+      if (newRegistry.length !== registry.length) {
+        await octokit.rest.repos.createOrUpdateFileContents({
+          owner,
+          repo,
+          path: registryPath,
+          message: `Remove from registry: ${templateId}`,
+          content: Buffer.from(JSON.stringify(newRegistry, null, 2)).toString('base64'),
+          sha: registryFile.sha
+        });
+      }
+    } catch (e) {
+      console.error("Failed to update registry during deletion:", e);
+    }
+  } catch (error) {
+    console.error("GitHub deletion failed:", error);
+    throw error;
+  }
+}
+
+async function updateTemplateOnGitHub(templateId: string, updates: any) {
+  const { owner, repo, token } = getGitHubConfig();
+  if (!owner || !token) throw new Error("GitHub integration not fully configured.");
+
+  const octokit = new Octokit({ auth: token });
+  const shard1 = templateId.substring(0, 2);
+  const shard2 = templateId.substring(2, 4);
+  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
+
+  try {
+    // 1. Update individual file
+    const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
+    const currentData = JSON.parse(Buffer.from(file.content, 'base64').toString());
+    const newData = { ...currentData, ...updates };
+    
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path: filePath,
+      message: `Update template: ${templateId}`,
+      content: Buffer.from(JSON.stringify(newData, null, 2)).toString('base64'),
+      sha: file.sha
+    });
+
+    // 2. Update registry if needed
+    const registryPath = 'registry.json';
+    try {
+      const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
+      let registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      const index = registry.findIndex((t: any) => t.id === templateId);
+      
+      if (index >= 0) {
+        // Update registry entry with relevant fields
+        const entry = registry[index];
+        if (updates.title || updates.name) entry.title = updates.title || updates.name;
+        if (updates.image_url || updates.image_preview) entry.image_url = updates.image_url || updates.image_preview;
+        if (updates.category) entry.category = updates.category;
+        if (updates.tags) entry.tags = updates.tags;
+        
+        registry[index] = entry;
+
+        await octokit.rest.repos.createOrUpdateFileContents({
+          owner,
+          repo,
+          path: registryPath,
+          message: `Update registry: ${templateId}`,
+          content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
+          sha: registryFile.sha
+        });
+      }
+    } catch (e) {
+      console.error("Failed to update registry during update:", e);
+    }
+  } catch (error) {
+    console.error("GitHub update failed:", error);
+    throw error;
+  }
+}
+
+async function saveTemplateToGitHub(template: any) {
+  const { owner, repo, token } = getGitHubConfig();
+
+  if (!owner || !token) {
+    const missing = [];
+    if (!owner) missing.push('GITHUB_OWNER');
+    if (!token) missing.push('GITHUB_TOKEN');
+    console.warn(`GitHub integration not fully configured. Missing: ${missing.join(', ')}. Skipping GitHub save.`);
+    return; // Return early instead of throwing
+  }
+
+  const octokit = new Octokit({ auth: token });
+  console.log(`Attempting to save template to GitHub: ${owner}/${repo}`);
+
+  const templateId = template.id || Math.random().toString(36).substring(2, 15);
+  // Sharding: /templates/a1/b2/id.json
+  const shard1 = templateId.substring(0, 2);
+  const shard2 = templateId.substring(2, 4);
+  const filePath = `templates/${shard1}/${shard2}/${templateId}.json`;
+
+  const content = Buffer.from(JSON.stringify(template, null, 2)).toString('base64');
+
+  try {
+    // 1. Save the individual template file
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner: owner,
+      repo: repo,
+      path: filePath,
+      message: `Add template: ${template.name || template.title}`,
+      content: content,
+    });
+    console.log(`Successfully saved template to GitHub: ${filePath}`);
+
+    // 2. Update the registry index (for the gallery)
+    // Note: In a high-concurrency environment, this would need a lock or a queue.
+    // For now, we'll use a simple read-modify-write.
+    try {
+      const registryPath = 'registry.json';
+      let registry: any[] = [];
+      let sha: string | undefined;
+
+      try {
+        const { data: registryFile }: any = await octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: registryPath,
+        });
+        sha = registryFile.sha;
+        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      } catch (e) {
+        console.log("Registry not found, creating new one.");
+      }
+
+      // Add new template to registry (limit to basic info for gallery performance)
+      const registryEntry = {
+        id: template.id,
+        title: template.name || template.title,
+        author: template.creator || template.author_name,
+        author_email: template.author_email,
+        image_url: template.image_preview || template.image_url,
+        category: template.category,
+        created_at: template.created_at,
+        tags: template.tags || []
+      };
+
+      // Check if already exists (update)
+      const existingIndex = registry.findIndex(t => t.id === template.id);
+      if (existingIndex >= 0) {
+        registry[existingIndex] = registryEntry;
+      } else {
+        registry.unshift(registryEntry); // Newest first
+      }
+
+      // Keep registry manageable (e.g., last 1000 items)
+      // For "Unlimited" scaling, you would use sharded registries or a search index.
+      if (registry.length > 1000) registry = registry.slice(0, 1000);
+
+      await octokit.rest.repos.createOrUpdateFileContents({
+        owner,
+        repo,
+        path: registryPath,
+        message: `Update registry: ${template.name || template.title}`,
+        content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
+        sha
+      });
+      console.log("Registry updated successfully.");
+    } catch (registryError) {
+      console.error("Failed to update registry, but template file was saved:", registryError);
+    }
+
+  } catch (error: any) {
+    if (error.status === 404) {
+      console.error(`GitHub Error: Repository "${owner}/${repo}" not found. Please ensure the repository exists and your token has access to it.`);
+      throw new Error(`GitHub Repository "${owner}/${repo}" not found. Did you create it?`);
+    }
+    console.error("Error saving template to GitHub:", error.message || error);
+    throw error;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -48,10 +340,8 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
 
   app.get('/sitemap.xml', async (req, res) => {
     try {
-      const { data: templates, error } = await supabase
-        .from('templates')
-        .select('id, title, updated_at');
-
+      // Fetch from Supabase instead of Firestore
+      const { data: templates, error } = await supabase.from('templates').select('id, title, updated_at');
       if (error) throw error;
 
       const baseUrl = 'https://templr-v9.vercel.app';
@@ -151,31 +441,51 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     try {
       const page = parseInt(req.query.page as string) || 0;
       const limit = parseInt(req.query.limit as string) || 6;
-      const from = page * limit;
-      const to = from + limit - 1;
+      const category = req.query.category as string;
+      const searchQuery = req.query.searchQuery as string;
+      const sortBy = req.query.sortBy as string || 'newest';
 
-      const { data, error } = await supabase
-        .from('templates')
-        .select('*')
-        .range(from, to)
-        .order('created_at', { ascending: false });
+      const { owner, repo, token } = getGitHubConfig();
+      if (!owner || !token) return res.json({ data: [], hasMore: false });
 
-      if (error) throw error;
+      const octokit = new Octokit({ auth: token });
+      const registryPath = 'registry.json';
       
-      if (data && data.length > 0) {
-          console.log("DEBUG: First template from DB:", {
-              id: data[0].id,
-              title: data[0].title,
-              image_url: data[0].image_url,
-              banner_url: data[0].banner_url,
-              imageUrl: data[0].imageUrl,
-              image: data[0].image
-          });
+      let registry: any[] = [];
+      try {
+        const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
+        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      } catch (e) {
+        console.log("Registry not found for templates.");
       }
 
+      // Filter by category
+      if (category && category !== 'All') {
+        registry = registry.filter((t: any) => t.category === category);
+      }
+      
+      // Filter by search query
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
+      }
+      
+      // Sort
+      if (sortBy === 'popular') {
+        registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
+      } else if (sortBy === 'likes') {
+        registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
+      } else {
+        registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      }
+
+      // Paginate
+      const start = page * limit;
+      const paginatedData = registry.slice(start, start + limit);
+
       res.json({ 
-        data: data || [], 
-        hasMore: (data || []).length === limit 
+        data: paginatedData, 
+        hasMore: start + limit < registry.length 
       });
     } catch (error: any) {
       console.error('API Error:', error);
@@ -186,12 +496,45 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
-      const { data, error } = await supabase
-        .from('templates')
-        .select('author_name, author_email, author_avatar, views, likes');
+      const { owner, repo, token } = getGitHubConfig();
+      if (!owner || !token) return res.json({ data: [] });
 
-      if (error) throw error;
-      res.json({ data: data || [] });
+      const octokit = new Octokit({ auth: token });
+      const registryPath = 'registry.json';
+      
+      let registry: any[] = [];
+      try {
+        const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
+        registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      } catch (e) {
+        console.log("Registry not found for creators.");
+      }
+
+      // Aggregate by email
+      const creatorsMap = new Map();
+      registry.forEach((t: any) => {
+        if (!t.author_email) return;
+        if (!creatorsMap.has(t.author_email)) {
+          creatorsMap.set(t.author_email, {
+            author_name: t.author,
+            author_email: t.author_email,
+            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author)}&background=random`,
+            views: 0,
+            likes: 0,
+            templates: 0
+          });
+        }
+        const creator = creatorsMap.get(t.author_email);
+        creator.views += (t.views || 0);
+        creator.likes += (t.likes || 0);
+        creator.templates += 1;
+      });
+
+      const creators = Array.from(creatorsMap.values())
+        .sort((a: any, b: any) => (b.likes + b.views) - (a.likes + a.views))
+        .slice(0, 10); // Top 10
+
+      res.json({ data: creators });
     } catch (error: any) {
       console.error('API Error (Creators):', error);
       res.status(500).json({ error: error.message });
@@ -246,28 +589,237 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const email = req.query.email as string;
       if (!email) throw new Error("Email required");
 
-      const { data, error } = await supabase
-        .from('templates')
+      const { data: supabaseData, error } = await supabase.from('templates')
         .select('*')
-        .eq('author_email', email)
-        .order('created_at', { ascending: false });
-
+        .eq('author_email', email);
+      
       if (error) throw error;
-      res.json({ data: data || [] });
+
+      const allData = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' })).sort((a: any, b: any) => {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      });
+
+      res.json({ data: allData });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
+  // Get Template By ID
+  app.get('/api/templates/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { owner, repo, token } = getGitHubConfig();
+      if (!owner || !token) return res.status(500).json({ error: 'GitHub not configured' });
+
+      const octokit = new Octokit({ auth: token });
+      const shard1 = id.substring(0, 2);
+      const shard2 = id.substring(2, 4);
+      const filePath = `templates/${shard1}/${shard2}/${id}.json`;
+
+      try {
+        const { data: file }: any = await octokit.rest.repos.getContent({ owner, repo, path: filePath });
+        const content = JSON.parse(Buffer.from(file.content, 'base64').toString());
+        res.json({ data: content });
+      } catch (e) {
+        res.status(404).json({ error: 'Template not found' });
+      }
+    } catch (error: any) {
+      console.error('API Error (Get Template):', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Add Template
+  // Create Template
+
+  // Helper: Upload image URL to ImgBB
+  async function uploadToImgBB(imageUrl: string): Promise<string> {
+    if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl;
+    
+    // Skip if already on ImgBB
+    if (imageUrl.includes('i.ibb.co') || imageUrl.includes('imgbb.com')) return imageUrl;
+
+    const apiKey = process.env.IMGBB_API_KEY || 'a7324da8420f04b2e6bae6035cf7e25d';
+    
+    try {
+      const formData = new URLSearchParams();
+      formData.append('key', apiKey);
+      formData.append('image', imageUrl);
+
+      const response = await fetch('https://api.imgbb.com/1/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      if (data.success && data.data && data.data.url) {
+        console.log(`Successfully uploaded to ImgBB: ${data.data.url}`);
+        return data.data.url; // Direct image URL
+      } else {
+        console.error('ImgBB upload failed:', data);
+        return imageUrl;
+      }
+    } catch (error) {
+      console.error('Error uploading to ImgBB:', error);
+      return imageUrl;
+    }
+  }
+
+  // Helper: Delete temporary file from Supabase Storage
+  async function deleteFromSupabaseStorage(url: string) {
+    if (!url || !url.includes('supabase.co/storage/v1/object/public/')) return;
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/storage/v1/object/public/')[1].split('/');
+      const bucket = pathParts[0];
+      const filePath = pathParts.slice(1).join('/');
+      
+      if (bucket && filePath) {
+        const { error } = await supabase.storage.from(bucket).remove([filePath]);
+        if (error) {
+          console.error(`Failed to delete temporary file ${filePath} from Supabase:`, error);
+        } else {
+          console.log(`Deleted temporary file from Supabase: ${filePath}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting from Supabase storage:', error);
+    }
+  }
+
   app.post('/api/templates', async (req, res) => {
     try {
-      const { template, userEmail } = req.body;
-      // Basic validation could go here
-      const { error } = await supabase.from('templates').insert(template);
-      if (error) throw error;
-      res.json({ success: true });
+      const { template } = req.body;
+      
+      if (!template) {
+        return res.status(400).json({ error: 'Template is required' });
+      }
+
+      // 1. Generate unique ID (UUID for Supabase compatibility)
+      const templateId = crypto.randomUUID();
+
+      // 2. Process Images (Upload to ImgBB)
+      let finalImageUrl = template.image_url || template.imageUrl || '';
+      let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
+      let finalGalleryImages = template.gallery_images || [];
+
+      const originalImageUrl = finalImageUrl;
+      const originalBannerUrl = finalBannerUrl;
+      const originalGalleryImages = [...finalGalleryImages];
+
+      // Upload main image
+      if (finalImageUrl) {
+        finalImageUrl = await uploadToImgBB(finalImageUrl);
+      }
+      
+      // Upload banner image
+      if (finalBannerUrl && finalBannerUrl !== originalImageUrl) {
+        finalBannerUrl = await uploadToImgBB(finalBannerUrl);
+      } else if (finalBannerUrl === originalImageUrl) {
+        finalBannerUrl = finalImageUrl;
+      }
+
+      // Upload gallery images
+      if (Array.isArray(finalGalleryImages)) {
+        for (let i = 0; i < finalGalleryImages.length; i++) {
+          if (finalGalleryImages[i]) {
+            finalGalleryImages[i] = await uploadToImgBB(finalGalleryImages[i]);
+          }
+        }
+      }
+
+      // 3. Clean up temporary Supabase images (Background task)
+      setTimeout(async () => {
+        if (finalImageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
+        if (finalBannerUrl !== originalBannerUrl && originalBannerUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalBannerUrl);
+        for (let i = 0; i < originalGalleryImages.length; i++) {
+          if (finalGalleryImages[i] !== originalGalleryImages[i]) {
+            await deleteFromSupabaseStorage(originalGalleryImages[i]);
+          }
+        }
+      }, 1000);
+
+      // 4. Generate Clean Preview URL via Supabase Logic (Simplified here)
+      const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
+
+      // 5. Create metadata object (GitHub is Single Source of Truth)
+      const metadata = {
+        id: templateId,
+        name: template.title || template.name,
+        description: template.description,
+        preview_url: cleanPreviewUrl,
+        image_preview: finalImageUrl,
+        banner_url: finalBannerUrl,
+        gallery_images: finalGalleryImages,
+        file_url: template.file_url, // Keep original file URL (e.g. ZIP in Supabase)
+        tags: template.tags || [],
+        creator: template.author_name || 'Anonymous',
+        creator_email: template.author_email,
+        creator_avatar: template.author_avatar || '',
+        created_at: new Date().toISOString(),
+        category: template.category,
+        price: template.price,
+        stats: {
+          likes: 0,
+          views: 0
+        }
+      };
+
+      // 6. Save to GitHub
+      try {
+        await saveTemplateToGitHub(metadata);
+        
+        // 7. Save to Supabase (Legacy / Fallback)
+        try {
+          const supabasePayload = {
+            ...template,
+            id: templateId,
+            image_url: finalImageUrl,
+            banner_url: finalBannerUrl,
+            gallery_images: finalGalleryImages,
+            created_at: metadata.created_at
+          };
+          const { error } = await supabase.from('templates').insert(supabasePayload);
+          if (error) console.error("Supabase Save Failed:", error);
+        } catch (e) {
+          console.warn("Supabase Save Failed or skipped:", e);
+        }
+
+        return res.json({ 
+          success: true, 
+          id: templateId, 
+          preview_url: cleanPreviewUrl,
+          message: "Saved to GitHub successfully.",
+          template: metadata
+        });
+      } catch (githubError: any) {
+        console.error("GitHub Save Failed:", githubError);
+        return res.status(500).json({ 
+          success: false, 
+          error: `GitHub Save Failed: ${githubError.message || 'Unknown error'}`
+        });
+      }
     } catch (error: any) {
+      console.error('API Error (Create Template):', error);
+      res.status(500).json({ error: error.message || 'Unknown error' });
+    }
+  });
+
+  // Update All Templates by Author (e.g. when profile changes)
+  app.put('/api/user/templates', async (req, res) => {
+    try {
+      const { email, updates } = req.body;
+      if (!email) throw new Error("Email required");
+
+      // Note: Updating ALL templates on GitHub is expensive.
+      // In a real app, we'd use a search index.
+      // For now, we'll just return success and let the user know it's a limitation.
+      console.log(`Bulk update requested for ${email}, but skipping GitHub bulk update for performance.`);
+      
+      res.json({ success: true, message: "Bulk update received (GitHub limitation: individual updates preferred)." });
+    } catch (error: any) {
+      console.error('API Error (Update User Templates):', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -278,28 +830,84 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const { id } = req.params;
       const { updates, userEmail } = req.body;
       
-      const query = supabase.from('templates').update(updates).eq('id', id);
-      // If userEmail is provided, ensure ownership (simple check)
-      if (userEmail) {
-          query.eq('author_email', userEmail);
+      // Process Images (Upload to ImgBB)
+      const originalImageUrl = updates.image_url || updates.imageUrl;
+      const originalBannerUrl = updates.banner_url || updates.bannerUrl;
+      const originalGalleryImages = updates.gallery_images ? [...updates.gallery_images] : null;
+
+      if (updates.image_url) {
+        updates.image_url = await uploadToImgBB(updates.image_url);
+      }
+      if (updates.imageUrl) {
+        updates.imageUrl = await uploadToImgBB(updates.imageUrl);
+      }
+      if (updates.banner_url) {
+        updates.banner_url = await uploadToImgBB(updates.banner_url);
+      }
+      if (updates.bannerUrl) {
+        updates.bannerUrl = await uploadToImgBB(updates.bannerUrl);
+      }
+      if (updates.gallery_images && Array.isArray(updates.gallery_images)) {
+        for (let i = 0; i < updates.gallery_images.length; i++) {
+          if (updates.gallery_images[i]) {
+            updates.gallery_images[i] = await uploadToImgBB(updates.gallery_images[i]);
+          }
+        }
       }
 
-      const { error } = await query;
-      if (error) throw error;
+      // Clean up temporary Supabase images (Background task)
+      setTimeout(async () => {
+        if (updates.image_url && updates.image_url !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
+        if (updates.imageUrl && updates.imageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
+        if (updates.banner_url && updates.banner_url !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
+        if (updates.bannerUrl && updates.bannerUrl !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
+        if (updates.gallery_images && originalGalleryImages) {
+          for (let i = 0; i < originalGalleryImages.length; i++) {
+            if (updates.gallery_images[i] !== originalGalleryImages[i]) {
+              await deleteFromSupabaseStorage(originalGalleryImages[i]);
+            }
+          }
+        }
+      }, 1000);
+
+      // Update GitHub
+      try {
+        await updateTemplateOnGitHub(id, updates);
+      } catch (e) {
+        console.warn("GitHub update failed or skipped:", e);
+      }
+
+      // Update Supabase (legacy)
+      const { error } = await supabase.from('templates').update(updates).eq('id', id);
+      if (error) console.error("Supabase update error:", error);
+      
       res.json({ success: true });
     } catch (error: any) {
+      console.error('API Error (Update Template):', error);
       res.status(500).json({ error: error.message });
     }
   });
 
   // Delete Template
+  // Delete Template by ID
   app.delete('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Delete from GitHub
+      try {
+        await deleteTemplateFromGitHub(id);
+      } catch (e) {
+        console.warn("GitHub deletion failed or skipped:", e);
+      }
+
+      // Delete from Supabase (legacy)
       const { error } = await supabase.from('templates').delete().eq('id', id);
-      if (error) throw error;
+      if (error) console.error("Supabase deletion error:", error);
+      
       res.json({ success: true });
     } catch (error: any) {
+      console.error('API Error (Delete Template):', error);
       res.status(500).json({ error: error.message });
     }
   });

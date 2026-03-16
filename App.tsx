@@ -434,10 +434,11 @@ const App: React.FC = () => {
   const handleAddOrUpdateTemplate = useCallback(async (data: NewTemplateData) => {
     if (editingTemplate && session?.user.email) {
         await api.updateTemplateData(editingTemplate.id, data, session.user.email);
+        await loadTemplates();
     } else {
-        await api.addTemplate(data, session?.user);
+        const newTemplate = await api.addTemplate(data, session?.user);
+        setTemplates(prev => [newTemplate, ...prev]);
     }
-    await loadTemplates();
   }, [editingTemplate, session, loadTemplates]);
 
   const handleEditTemplate = useCallback((template: Template) => {

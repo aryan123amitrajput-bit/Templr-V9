@@ -1,12 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-interface ErrorPageProps {
+interface SafePageProps {
   error?: Error;
   resetErrorBoundary?: () => void;
 }
 
-const ErrorPage: React.FC<ErrorPageProps> = ({ error, resetErrorBoundary }) => {
+const SafePage: React.FC<SafePageProps> = ({ error, resetErrorBoundary }) => {
   return (
     <div className="min-h-screen w-full bg-[#050505] flex flex-col items-center justify-center relative overflow-hidden">
       {/* Mobile Background Image */}
@@ -59,4 +59,4 @@ const ErrorPage: React.FC<ErrorPageProps> = ({ error, resetErrorBoundary }) => {
   );
 };
 
-export default ErrorPage;
+export default SafePage;

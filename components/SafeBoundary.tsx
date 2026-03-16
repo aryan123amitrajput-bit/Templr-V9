@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import ErrorPage from './ErrorPage';
+import SafePage from './SafePage';
 
 interface Props {
   children?: ReactNode;
@@ -10,7 +10,7 @@ interface State {
   error?: Error;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+class SafeBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false
   };
@@ -56,11 +56,11 @@ class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      return <ErrorPage error={this.state.error} resetErrorBoundary={this.resetErrorBoundary} />;
+      return <SafePage error={this.state.error} resetErrorBoundary={this.resetErrorBoundary} />;
     }
 
     return this.props.children;
   }
 }
 
-export default ErrorBoundary;
+export default SafeBoundary;

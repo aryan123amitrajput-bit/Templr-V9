@@ -227,6 +227,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
     isOpen, 
     onClose, 
     onAddTemplate, 
+    onDashboardClick,
     isLoggedIn, 
     onLoginRequest, 
     onShowNotification,
@@ -289,7 +290,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleSubmit = async () => {
-      if (!isLoggedIn) return onLoginRequest();
+      if (!isLoggedIn) {
+          return onLoginRequest();
+      }
 
       const newErrors: any = {};
       if (!title.trim() || title.trim().length < 3) newErrors.title = true;
@@ -306,37 +309,35 @@ const UploadModal: React.FC<UploadModalProps> = ({
           return;
       }
 
-      setIsSubmitting(true);
+      // Trigger instant navigation and notification
+      onShowNotification("Uploading Template...", 'info');
+      onDashboardClick();
+
+      // Continue upload in background
       try {
           let imageUrl = existingImageUrl;
           let videoUrl = existingVideoUrl;
 
           if (previewFile) {
-              // Changed text per user request: "Uploading Template" instead of specific media types
-              setUploadStatus('Uploading Template...');
-              
               if (previewType === 'video') {
                   const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                   videoUrl = await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`);
-                  // Ensure we have a valid background image if user only uploaded a video
                   if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
                   const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                   imageUrl = await uploadFile(previewFile, `images/${Date.now()}_${safeName}`);
-                  videoUrl = ''; // User specifically switched to image
+                  videoUrl = ''; 
               }
           }
 
           let zipUrl = '';
           if (zipFile) {
-              setUploadStatus('Uploading Project Files...');
               const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
               zipUrl = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
               zipUrl = initialData.fileUrl;
           }
 
-          setUploadStatus('Saving Asset...');
           await onAddTemplate({
               title,
               description,
@@ -358,14 +359,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
           playSuccessSound();
           onShowNotification(isEditing ? "Updated successfully!" : "Published successfully!", 'success');
-          onClose();
+          onClose(); // Close modal only after upload is finished
       } catch (e: any) {
-          setIsSubmitting(false);
           playNotificationSound();
           onShowNotification(e.message || "Operation failed", 'error');
-      } finally {
-          setIsSubmitting(false);
-          setUploadStatus('');
       }
   };
 

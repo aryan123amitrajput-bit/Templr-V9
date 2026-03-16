@@ -177,6 +177,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                             >
                                 <TemplateCard 
                                     {...template}
+                                    index={idx}
                                     isLiked={likedIds.has(template.id)}
                                     isFavorited={favoriteIds.has(template.id)}
                                     onMessageCreator={() => {}} // No chat inside profile

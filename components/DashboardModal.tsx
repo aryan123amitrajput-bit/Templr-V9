@@ -237,20 +237,18 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const refreshData = async () => {
-      if(userEmail) {
-          setIsLoading(true);
-          listenForUserTemplates(userEmail, (data) => {
-              setMyTemplates(data);
-              setIsLoading(false);
-          });
-      }
-  };
-
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
     if (isOpen && userEmail) {
-        refreshData();
+        setIsLoading(true);
+        unsubscribe = listenForUserTemplates(userEmail, (data) => {
+            setMyTemplates(data);
+            setIsLoading(false);
+        }).unsubscribe;
     }
+    return () => {
+        if (unsubscribe) unsubscribe();
+    };
   }, [isOpen, userEmail]);
 
   const confirmDelete = (id: string) => {
@@ -269,12 +267,10 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
           try {
               setMyTemplates(prev => prev.filter(t => t.id !== templateToDelete.id));
               await deleteTemplate(templateToDelete.id);
-              await refreshData();
               setTemplateToDelete(null);
               playSuccessSound();
           } catch (e: any) {
               playNotificationSound();
-              await refreshData(); 
               setDeleteError("Could not delete asset. Ensure you have ownership permissions.");
           } finally {
               setIsProcessing(false);

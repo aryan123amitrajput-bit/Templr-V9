@@ -51,6 +51,32 @@ const config = getSupabaseConfig();
 export const activeApiUrl = config.url;
 export const isApiConfigured = config.url && config.url !== 'https://placeholder.supabase.co';
 
+const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER || 'aryan123amitrajput-bit';
+const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'Templr-V9';
+const GITHUB_CDN_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main`;
+
+// Load deleted template IDs from localStorage to persist across reloads
+const getDeletedTemplateIds = (): Set<string> => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+        const stored = localStorage.getItem('templr_deleted_ids');
+        return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+        return new Set();
+    }
+};
+
+const saveDeletedTemplateIds = (ids: Set<string>) => {
+    if (typeof window === 'undefined') return;
+    try {
+        localStorage.setItem('templr_deleted_ids', JSON.stringify(Array.from(ids)));
+    } catch {
+        // Ignore
+    }
+};
+
+const deletedTemplateIds = getDeletedTemplateIds();
+
 export const testConnection = async (url: string, key: string): Promise<{ success: boolean; message: string }> => {
     try {
         const testClient = createClient(url, key, {
@@ -131,6 +157,20 @@ export const supabase = createClient(
         }
     }
 );
+
+export const signInWithGoogle = async () => {
+    if (!isApiConfigured) {
+        return { session: { user: { id: 'mock-user', email: 'mock@example.com' } } };
+    }
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: `${window.location.origin}/auth/callback`
+        }
+    });
+    if (error) throw error;
+    return data;
+};
 
 export interface NewTemplateData {
   title: string;
@@ -254,7 +294,7 @@ const mapTemplate = (data: any): Template => {
         // Robustly check multiple possible column names for images (snake_case and camelCase)
         const rawImage = data.preview_media || data.image_url || data.imageUrl || data.image || data.thumbnail || data.thumbnail_url || data.thumbnailUrl || data.preview_url || data.previewUrl || data.preview_image || data.previewImage || data.preview || data.cover_image || data.coverImage || data.cover || data.photo || data.picture || data.screenshot || data.screenshot_url || data.screenshotUrl || data.media || data.media_url || data.mediaUrl || (data.images && data.images[0]) || (data.gallery_images && data.gallery_images[0]) || (data.galleryImages && data.galleryImages[0]);
         const rawBanner = data.banner_url || data.bannerUrl || data.banner || rawImage;
-        const rawAvatar = data.author_avatar || data.authorAvatar || data.avatar_url || data.avatarUrl || data.avatar || data.profile_pic || data.profilePic || data.profile_image || data.profileImage;
+        const rawAvatar = data.creator_avatar || data.author_avatar || data.authorAvatar || data.avatar_url || data.avatarUrl || data.avatar || data.profile_pic || data.profilePic || data.profile_image || data.profileImage;
         const rawAuthorBanner = data.author_banner || data.authorBanner || data.profile_banner || data.profileBanner;
         const rawVideo = data.video_url || data.videoUrl || data.video || data.preview_video || data.previewVideo;
 
@@ -317,73 +357,95 @@ export const getPublicTemplates = async (
     
     const attempt = async (retryCount = 0): Promise<any> => {
         try {
-            const from = page * limit;
-            const to = from + limit - 1;
+            let allTemplates: Template[] = [];
 
-            console.log(`[Fetch] Starting fetch. Page: ${page}, Limit: ${limit}, URL: ${activeApiUrl}`);
+            // Fetch from GitHub and Supabase simultaneously
+            const [githubResult, supabaseResult] = await Promise.allSettled([
+                fetch(`${GITHUB_CDN_BASE}/registry.json?t=${Date.now()}`, { cache: 'no-store' }).then(res => {
+                    if (!res.ok) throw new Error(`GitHub Registry returned ${res.status}`);
+                    return res.json();
+                }),
+                isApiConfigured ? supabase
+                    .from('templates')
+                    .select('*')
+                    .eq('status', 'approved')
+                    .order('created_at', { ascending: false })
+                    .limit(1000) : Promise.resolve({ data: null, error: null })
+            ]);
 
-            // 1. Start Query
-            let query = supabase
-                .from('templates')
-                .select('*', { count: 'exact' });
-
-            // 2. Apply Filters
-            if (category && category !== 'All') {
-                query = query.eq('category', category);
+            // 1. Process GitHub Registry
+            if (githubResult.status === 'fulfilled') {
+                const registry = githubResult.value;
+                const githubTemplates = registry.map((t: any) => ({
+                    id: t.id,
+                    title: t.title || t.name,
+                    author: t.author || t.creator,
+                    imageUrl: t.image_url || t.image_preview,
+                    bannerUrl: t.banner_url || t.image_url || t.image_preview,
+                    category: t.category,
+                    tags: t.tags || [],
+                    createdAt: new Date(t.created_at).getTime(),
+                    likes: t.stats?.likes || 0,
+                    views: t.stats?.views || 0,
+                    isLiked: false,
+                    description: t.description || '',
+                    price: t.price || 'Free',
+                    sourceCode: '',
+                    status: 'approved',
+                    sales: 0,
+                    earnings: 0,
+                    fileUrl: t.file_url || t.preview_url
+                }));
+                allTemplates = [...allTemplates, ...githubTemplates];
+            } else {
+                console.warn("GitHub Registry fetch failed:", githubResult.reason);
             }
 
+            // 2. Process Supabase Data
+            if (supabaseResult.status === 'fulfilled' && !supabaseResult.value.error && supabaseResult.value.data) {
+                const mappedSupabase = supabaseResult.value.data.map(mapTemplate);
+                
+                // Merge, preferring Supabase data (which is more recent)
+                const supabaseIds = new Set(mappedSupabase.map(t => t.id));
+                allTemplates = allTemplates.filter(t => !supabaseIds.has(t.id));
+                
+                allTemplates = [...allTemplates, ...mappedSupabase];
+            } else if (supabaseResult.status === 'rejected' || (supabaseResult.status === 'fulfilled' && supabaseResult.value.error)) {
+                console.warn("Supabase fetch failed:", supabaseResult.status === 'rejected' ? supabaseResult.reason : supabaseResult.value.error);
+            }
+
+            // 3. Apply Filters
+            allTemplates = allTemplates.filter(t => !deletedTemplateIds.has(t.id));
+
+            if (category !== 'All') {
+                allTemplates = allTemplates.filter(t => t.category === category);
+            }
+            
             if (searchQuery) {
-                query = query.ilike('title', `%${searchQuery}%`);
-            }
-
-            // 3. Apply Sorting
-            if (sortBy === 'popular') {
-                query = query.order('views', { ascending: false });
-            } else if (sortBy === 'likes') {
-                query = query.order('likes', { ascending: false });
-            } else {
-                query = query.order('created_at', { ascending: false });
-            }
-
-            // 4. Apply Pagination (Range) LAST
-            query = query.range(from, to);
-
-            const { data, error, count } = await query;
-
-            if (error) {
-                console.error("[Fetch] Supabase Error Details:", JSON.stringify(error, null, 2));
-                throw error;
+                const q = searchQuery.toLowerCase();
+                allTemplates = allTemplates.filter(t => 
+                    t.title.toLowerCase().includes(q) || 
+                    (t.tags && t.tags.some((tag: string) => tag.toLowerCase().includes(q))) ||
+                    (t.author && t.author.toLowerCase().includes(q))
+                );
             }
             
-            console.log(`[Fetch] Success. Rows: ${data?.length || 0}, Total Count: ${count}`);
-            
-            if (!data || data.length === 0) {
-                // Double check if DB is empty or just this query
-                if (page === 0 && category === 'All' && !searchQuery) {
-                    console.warn("[Fetch] No templates found in DB.");
-                }
+            // 4. Apply Sorting
+            if (sortBy === 'newest') {
+                allTemplates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            } else if (sortBy === 'popular' || sortBy === 'likes') {
+                allTemplates.sort((a, b) => (b.likes || 0) - (a.likes || 0));
             }
+            
+            // 5. Pagination
+            const start = page * limit;
+            const end = start + limit;
+            const paginatedData = allTemplates.slice(start, end);
+            const hasMore = allTemplates.length > end;
 
-            return { 
-                data: (data || []).map(mapTemplate), 
-                hasMore: (count || 0) > to + 1
-            };
+            return { data: paginatedData, hasMore };
         } catch (e: any) {
-            const msg = e.message?.toLowerCase() || '';
-            
-            if (msg.includes('timeout') || msg.includes('timed out')) {
-                console.warn("[Fetch] Timeout Exception:", e.message);
-            } else {
-                console.error("[Fetch] Exception:", e);
-            }
-
-            if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
-                const delay = 2000 * Math.pow(1.5, retryCount);
-                console.warn(`Public templates fetch failed, retrying... (${retryCount + 1}) in ${delay}ms`);
-                await new Promise(r => setTimeout(r, delay));
-                return attempt(retryCount + 1);
-            }
-            
+            console.error("Error fetching public templates:", e);
             return { data: [], hasMore: false, error: e.message || "Connection failed" };
         }
     };
@@ -394,23 +456,55 @@ export const getPublicTemplates = async (
 export const getTemplateById = async (id: string): Promise<Template | null> => {
     const attempt = async (retryCount = 0): Promise<Template | null> => {
         try {
-            const { data, error } = await supabase
-                .from('templates')
-                .select('*')
-                .eq('id', id)
-                .single();
+            const shard1 = id.substring(0, 2);
+            const shard2 = id.substring(2, 4);
+            const filePath = `templates/${shard1}/${shard2}/${id}.json`;
+            
+            const [githubResult, supabaseResult] = await Promise.allSettled([
+                fetch(`${GITHUB_CDN_BASE}/${filePath}?t=${Date.now()}`, { cache: 'no-store' }).then(res => {
+                    if (!res.ok) throw new Error(`GitHub Template returned ${res.status}`);
+                    return res.json();
+                }),
+                isApiConfigured ? supabase
+                    .from('templates')
+                    .select('*')
+                    .eq('id', id)
+                    .single() : Promise.resolve({ data: null, error: null })
+            ]);
 
-            if (error) throw error;
-            if (!data) return null;
-
-            return mapTemplate(data);
-        } catch (e: any) {
-            const msg = e.message?.toLowerCase() || '';
-            if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-                await new Promise(r => setTimeout(r, 1000));
-                return attempt(retryCount + 1);
+            // Prefer Supabase (more recent)
+            if (supabaseResult.status === 'fulfilled' && !supabaseResult.value.error && supabaseResult.value.data) {
+                return mapTemplate(supabaseResult.value.data);
             }
-            console.error("Error fetching template by ID:", e);
+
+            // Fallback to GitHub
+            if (githubResult.status === 'fulfilled') {
+                const data = githubResult.value;
+                return {
+                    id: data.id,
+                    title: data.name || data.title,
+                    author: data.creator || data.author_name,
+                    imageUrl: data.image_preview || data.image_url,
+                    bannerUrl: data.image_preview || data.image_url,
+                    description: data.description || '',
+                    category: data.category || 'Other',
+                    tags: data.tags || [],
+                    price: data.price || 'Free',
+                    createdAt: new Date(data.created_at).getTime(),
+                    likes: data.stats?.likes || 0,
+                    views: data.stats?.views || 0,
+                    isLiked: false,
+                    sourceCode: '',
+                    status: 'approved',
+                    sales: 0,
+                    earnings: 0,
+                    fileUrl: data.preview_url || data.file_url
+                };
+            }
+            
+            return null;
+        } catch (e: any) {
+            console.error("Error fetching template:", e);
             return null;
         }
     };
@@ -420,38 +514,67 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     const attempt = async (retryCount = 0): Promise<CreatorStats[]> => {
         try {
-            const { data, error } = await supabase.from('templates').select('author_name, author_email, author_avatar, views, likes');
-
-            if (error) throw error;
-            
-            let sourceData = data || [];
-            
             const statsMap = new Map<string, CreatorStats>();
 
-            sourceData.forEach((t: any) => {
-                const email = t.author_email || t.authorEmail || t.email || 'anon';
-                const name = t.author_name || t.authorName || t.author || 'Anonymous';
-                const rawAvatar = t.author_avatar || t.authorAvatar || t.avatar_url || t.avatarUrl || t.avatar;
+            // 1. Fetch from GitHub (via backend /api/creators)
+            try {
+                const response = await fetch('/api/creators');
+                if (response.ok) {
+                    const { data } = await response.json();
+                    (data || []).forEach((t: any) => {
+                        const email = t.author_email || t.authorEmail || t.email || 'anon';
+                        const name = t.author_name || t.authorName || t.author || 'Anonymous';
+                        const rawAvatar = t.author_avatar || t.authorAvatar || t.avatar_url || t.avatarUrl || t.avatar;
 
-                const current = statsMap.get(email) || {
-                    name: name,
-                    email: email,
-                    totalViews: 0,
-                    totalLikes: 0,
-                    templateCount: 0,
-                    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                    role: 'Creator'
-                };
-
-                if (rawAvatar) {
-                    current.avatarUrl = fixUrl(rawAvatar);
+                        statsMap.set(email, {
+                            name: name,
+                            email: email,
+                            totalViews: t.views || 0,
+                            totalLikes: t.likes || 0,
+                            templateCount: t.templates || 1,
+                            avatarUrl: rawAvatar ? fixUrl(rawAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                            role: 'Creator'
+                        });
+                    });
                 }
+            } catch (githubErr) {
+                console.warn("GitHub creators fetch failed:", githubErr);
+            }
 
-                current.totalViews += (t.views || 0);
-                current.totalLikes += (t.likes || 0);
-                current.templateCount += 1;
-                statsMap.set(email, current);
-            });
+            // 2. Fetch from Supabase
+            if (isApiConfigured) {
+                try {
+                    const { data: supabaseData, error } = await supabase
+                        .from('templates')
+                        .select('author_name, author_email, author_avatar, views, likes')
+                        .eq('status', 'approved');
+                    
+                    if (!error && supabaseData) {
+                        supabaseData.forEach((t: any) => {
+                            const email = t.author_email || 'anon';
+                            const name = t.author_name || 'Anonymous';
+                            const rawAvatar = t.author_avatar;
+
+                            const current = statsMap.get(email) || {
+                                name: name,
+                                email: email,
+                                totalViews: 0,
+                                totalLikes: 0,
+                                templateCount: 0,
+                                avatarUrl: rawAvatar ? fixUrl(rawAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                                role: 'Creator'
+                            };
+
+                            current.totalViews += (t.views || 0);
+                            current.totalLikes += (t.likes || 0);
+                            current.templateCount += 1;
+                            statsMap.set(email, current);
+                        });
+                    }
+                } catch (supabaseErr) {
+                    console.warn("Supabase creators fetch failed:", supabaseErr);
+                }
+            }
 
             const allCreators = Array.from(statsMap.values())
                 .sort((a, b) => b.totalViews - a.totalViews)
@@ -474,12 +597,6 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
                 await new Promise(r => setTimeout(r, delay));
                 return attempt(retryCount + 1);
             }
-            if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
-                console.warn("API connection failed (creators):", e.message);
-            } else {
-                console.error("API connection failed (creators):", e);
-            }
-            
             return [];
         }
     };
@@ -487,42 +604,87 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     return attempt();
 };
 
-export const listenForUserTemplates = async (userEmail: string, callback: (templates: Template[]) => void) => {
+export const listenForUserTemplates = (userEmail: string, callback: (templates: Template[]) => void) => {
     if (!userEmail) { callback([]); return { unsubscribe: () => {} }; }
-
-    let retryCount = 0;
-    const maxRetries = 3;
 
     const fetchUserTemplates = async () => {
         try {
-            const { data, error } = await supabase
+            let allTemplates: Template[] = [];
+
+            // Fetch from GitHub and Supabase simultaneously
+            const [githubResult, supabaseResult] = await Promise.allSettled([
+                fetch(`${GITHUB_CDN_BASE}/registry.json?t=${Date.now()}`, { cache: 'no-store' }).then(res => {
+                    if (!res.ok) throw new Error(`GitHub Registry returned ${res.status}`);
+                    return res.json();
+                }),
+                isApiConfigured ? supabase
                     .from('templates')
                     .select('*')
                     .eq('author_email', userEmail)
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false }) : Promise.resolve({ data: null, error: null })
+            ]);
 
-            if (error) throw error;
-
-            if (data) {
-                callback(data.map(mapTemplate));
-                retryCount = 0; // Reset on success
+            // 1. Process GitHub Registry
+            if (githubResult.status === 'fulfilled') {
+                const registry = githubResult.value;
+                const userTemplates = registry.filter((t: any) => t.author_email === userEmail || t.email === userEmail || t.creator_email === userEmail);
+                const githubTemplates = userTemplates.map((t: any) => ({
+                    id: t.id,
+                    title: t.title || t.name,
+                    author: t.author || t.creator,
+                    imageUrl: t.image_url || t.image_preview,
+                    bannerUrl: t.banner_url || t.image_url || t.image_preview,
+                    category: t.category,
+                    tags: t.tags || [],
+                    createdAt: new Date(t.created_at).getTime(),
+                    likes: t.stats?.likes || 0,
+                    views: t.stats?.views || 0,
+                    isLiked: false,
+                    description: t.description || '',
+                    price: t.price || 'Free',
+                    sourceCode: '',
+                    status: 'approved',
+                    sales: 0,
+                    earnings: 0,
+                    fileUrl: t.file_url || t.preview_url,
+                    authorAvatar: t.creator_avatar || t.author_avatar || t.avatar_url || ''
+                }));
+                allTemplates = [...allTemplates, ...githubTemplates];
+            } else {
+                console.warn("GitHub Registry fetch failed for user templates:", githubResult.reason);
             }
+
+            // 2. Process Supabase Data
+            if (supabaseResult.status === 'fulfilled' && !supabaseResult.value.error && supabaseResult.value.data) {
+                const mappedSupabase = supabaseResult.value.data.map(mapTemplate);
+                
+                // Merge, preferring Supabase data (which is more recent)
+                const supabaseIds = new Set(mappedSupabase.map(t => t.id));
+                allTemplates = allTemplates.filter(t => !supabaseIds.has(t.id));
+                
+                allTemplates = [...allTemplates, ...mappedSupabase];
+            } else if (supabaseResult.status === 'rejected' || (supabaseResult.status === 'fulfilled' && supabaseResult.value.error)) {
+                console.warn("Supabase fetch failed for user templates:", supabaseResult.status === 'rejected' ? supabaseResult.reason : supabaseResult.value.error);
+            }
+
+            // Filter out deleted templates
+            allTemplates = allTemplates.filter(t => !deletedTemplateIds.has(t.id));
+
+            // Sort newest first
+            allTemplates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            
+            callback(allTemplates);
         } catch (e: any) {
-            retryCount++;
-            if (retryCount <= maxRetries) {
-                // Use warn instead of error to avoid triggering error monitors for polling
-                console.warn(`Polling fetch failed (attempt ${retryCount}):`, e.message);
-            }
-            // Silent fail after max retries to avoid console spam
+            console.error("Error fetching user templates:", e);
         }
     };
 
     fetchUserTemplates();
-    const interval = setInterval(fetchUserTemplates, 5000);
+    const interval = setInterval(fetchUserTemplates, 10000); // Poll every 10 seconds
     return { unsubscribe: () => clearInterval(interval) };
 };
 
-export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<void> => {
+export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<Template> => {
     if (!user || !user.email) throw new Error("Authentication required.");
 
     const dbPayload: any = {
@@ -543,13 +705,48 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         video_url: unfixUrl(templateData.videoUrl),
         gallery_images: (templateData.galleryImages || []).map(unfixUrl),
         source_code: templateData.sourceCode,
-        file_url: unfixUrl(templateData.fileUrl || templateData.externalLink)
+        file_url: unfixUrl(templateData.fileUrl || templateData.externalLink),
+        views: 0,
+        likes: 0,
+        sales: 0,
+        earnings: 0
     };
 
-    const attempt = async (retryCount = 0): Promise<void> => {
+    const attempt = async (retryCount = 0): Promise<Template> => {
         try {
-            const { error } = await supabase.from('templates').insert(dbPayload);
-            if (error) throw error;
+            const userEmail = user?.email || 'anonymous@templr.io';
+            const response = await fetch('/api/templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ template: dbPayload, userEmail: userEmail })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            const t = data.template;
+            
+            return {
+                id: t.id,
+                title: t.name || t.title,
+                author: t.creator || t.author_name,
+                imageUrl: fixUrl(t.image_preview || t.image_url),
+                bannerUrl: fixUrl(t.banner_url || t.image_preview),
+                category: t.category,
+                tags: t.tags || [],
+                createdAt: new Date(t.created_at).getTime(),
+                likes: 0,
+                views: 0,
+                isLiked: false,
+                description: t.description || '',
+                price: t.price || 'Free',
+                sourceCode: '',
+                status: 'approved',
+                sales: 0,
+                earnings: 0,
+                fileUrl: fixUrl(t.file_url || t.preview_url)
+            };
         } catch (error: any) {
             const msg = error.message?.toLowerCase() || '';
             if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
@@ -580,13 +777,15 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
 
     const attempt = async (retryCount = 0): Promise<void> => {
         try {
-            const { error } = await supabase
-                .from('templates')
-                .update(dbPayload)
-                .eq('id', id)
-                .eq('author_email', userEmail);
-            
-            if (error) throw error;
+            const response = await fetch(`/api/templates/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates: dbPayload, userEmail })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
         } catch (e: any) {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
@@ -627,7 +826,15 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
                 if (dbUpdates.banner_url) syncUpdates.author_banner = dbUpdates.banner_url;
                 
                 if (Object.keys(syncUpdates).length > 0) {
-                    await supabase.from('templates').update(syncUpdates).eq('author_email', data.user.email);
+                    const response = await fetch('/api/user/templates', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: data.user.email, updates: syncUpdates })
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
                 }
             } catch (e) {}
         }
@@ -703,8 +910,16 @@ export const updateTemplate = async (templateId: string, updates: Partial<Templa
             const dbUpdates: any = {};
             if (updates.views !== undefined) dbUpdates.views = updates.views;
             if (updates.likes !== undefined) dbUpdates.likes = updates.likes;
-            const { error } = await supabase.from('templates').update(dbUpdates).eq('id', templateId);
-            if (error) throw error;
+            
+            const response = await fetch(`/api/templates/${templateId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates: dbUpdates })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
         } catch(e: any) {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
@@ -720,10 +935,17 @@ export const updateTemplate = async (templateId: string, updates: Partial<Templa
 export const deleteTemplate = async (templateId: string): Promise<void> => {
     const attempt = async (retryCount = 0): Promise<void> => {
         try {
-            const { error } = await supabase.from('templates').delete().eq('id', templateId);
-            if (error) throw error;
+            const response = await fetch(`/api/templates/${templateId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
 
             if (typeof window !== 'undefined') {
+                deletedTemplateIds.add(templateId);
+                saveDeletedTemplateIds(deletedTemplateIds);
                 window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
             }
         } catch (e: any) {

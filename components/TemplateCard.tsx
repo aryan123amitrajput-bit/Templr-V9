@@ -401,6 +401,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'
                             }`}
                         >
+                            {/* @ts-ignore */}
                             <dotlottie-player
                                 ref={playerRef}
                                 src="https://lottie.host/c3e224ed-42e1-4283-96aa-2994ab046363/gMYruNTRma.lottie"
@@ -409,7 +410,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 loop={false} 
                                 playMode="normal"
                                 style={{ width: '100%', height: '100%' }}
-                            ></dotlottie-player>
+                            />
                         </div>
                      </button>
                      <button onClick={handleViewButton} className="group/btn w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:bg-slate-200 transition-all">
