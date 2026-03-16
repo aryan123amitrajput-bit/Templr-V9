@@ -53,7 +53,7 @@ export const isApiConfigured = config.url && config.url !== 'https://placeholder
 
 const GITHUB_OWNER = import.meta.env.VITE_GITHUB_OWNER || 'aryan123amitrajput-bit';
 const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || 'Templr-V9';
-const GITHUB_CDN_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main`;
+const GITHUB_CDN_BASE = `https://cdn.jsdelivr.net/gh/${GITHUB_OWNER}/${GITHUB_REPO}@main`;
 
 // Load deleted template IDs from localStorage to persist across reloads
 const getDeletedTemplateIds = (): Set<string> => {
@@ -627,7 +627,10 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
             // 1. Process GitHub Registry
             if (githubResult.status === 'fulfilled') {
                 const registry = githubResult.value;
-                const userTemplates = registry.filter((t: any) => t.author_email === userEmail || t.email === userEmail || t.creator_email === userEmail);
+                const userTemplates = registry.filter((t: any) => 
+                    (t.author_email === userEmail || t.email === userEmail || t.creator_email === userEmail) &&
+                    !deletedTemplateIds.has(t.id)
+                );
                 const githubTemplates = userTemplates.map((t: any) => ({
                     id: t.id,
                     title: t.title || t.name,
@@ -681,7 +684,16 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
 
     fetchUserTemplates();
     const interval = setInterval(fetchUserTemplates, 10000); // Poll every 10 seconds
-    return { unsubscribe: () => clearInterval(interval) };
+
+    const handleUpdate = () => fetchUserTemplates();
+    window.addEventListener('templr-data-update', handleUpdate);
+
+    return { 
+        unsubscribe: () => {
+            clearInterval(interval);
+            window.removeEventListener('templr-data-update', handleUpdate);
+        }
+    };
 };
 
 export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<Template> => {

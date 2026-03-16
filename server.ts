@@ -130,22 +130,44 @@ async function deleteTemplateFromGitHub(templateId: string) {
     // 2. Update registry
     const registryPath = 'registry.json';
     try {
+      console.log(`Fetching registry from ${registryPath}`);
       const { data: registryFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
       let registry = JSON.parse(Buffer.from(registryFile.content, 'base64').toString());
+      console.log(`Current registry size: ${registry.length}`);
       const newRegistry = registry.filter((t: any) => t.id !== templateId);
+      console.log(`New registry size: ${newRegistry.length}`);
       
       if (newRegistry.length !== registry.length) {
-        await octokit.rest.repos.createOrUpdateFileContents({
-          owner,
-          repo,
-          path: registryPath,
-          message: `Remove from registry: ${templateId}`,
-          content: Buffer.from(JSON.stringify(newRegistry, null, 2)).toString('base64'),
-          sha: registryFile.sha
-        });
+        console.log(`Updating registry.json to remove ${templateId}`);
+        
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            await octokit.rest.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path: registryPath,
+              message: `Remove from registry: ${templateId}`,
+              content: Buffer.from(JSON.stringify(newRegistry, null, 2)).toString('base64'),
+              sha: registryFile.sha
+            });
+            console.log(`Successfully updated registry.json`);
+            break;
+          } catch (e: any) {
+            retries--;
+            if (retries === 0) throw e;
+            console.warn(`Registry update failed, retrying... (${retries} attempts left)`);
+            // Refresh SHA
+            const { data: refreshedFile }: any = await octokit.rest.repos.getContent({ owner, repo, path: registryPath });
+            registryFile.sha = refreshedFile.sha;
+          }
+        }
+      } else {
+        console.log(`Template ${templateId} not found in registry`);
       }
     } catch (e) {
       console.error("Failed to update registry during deletion:", e);
+      throw e; // Throw to be caught by the caller
     }
   } catch (error) {
     console.error("GitHub deletion failed:", error);
@@ -902,8 +924,13 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       }
 
       // Delete from Supabase (legacy)
+      console.log(`Deleting template ${id} from Supabase`);
       const { error } = await supabase.from('templates').delete().eq('id', id);
-      if (error) console.error("Supabase deletion error:", error);
+      if (error) {
+        console.error("Supabase deletion error:", error);
+      } else {
+        console.log(`Successfully deleted template ${id} from Supabase`);
+      }
       
       res.json({ success: true });
     } catch (error: any) {
