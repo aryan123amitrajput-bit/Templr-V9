@@ -613,9 +613,19 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
 
             // Fetch from GitHub and Supabase simultaneously
             const [githubResult, supabaseResult] = await Promise.allSettled([
-                fetch(`${GITHUB_CDN_BASE}/registry.json?t=${Date.now()}`, { cache: 'no-store' }).then(res => {
+                fetch(`${GITHUB_CDN_BASE}/registry.json?t=${Date.now()}`, { 
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                }).then(res => {
                     if (!res.ok) throw new Error(`GitHub Registry returned ${res.status}`);
                     return res.json();
+                }).then(data => {
+                    console.log(`[Registry] Fetched registry.json (listenForUserTemplates), size: ${data.length}`);
+                    return data;
                 }),
                 isApiConfigured ? supabase
                     .from('templates')
