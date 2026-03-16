@@ -271,7 +271,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
               playSuccessSound();
           } catch (e: any) {
               playNotificationSound();
-              setDeleteError("Could not delete asset. Ensure you have ownership permissions.");
+              setDeleteError(e.message || "Could not delete asset. Ensure you have ownership permissions.");
           } finally {
               setIsProcessing(false);
           }

@@ -920,20 +920,30 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     try {
       const { id } = req.params;
       
-      // Delete from GitHub
+      // 1. Authoritative: Mark as deleted in Supabase
+      console.log(`Marking template ${id} as deleted in Supabase`);
+      const { error: insertError } = await supabase.from('deleted_templates').insert({ id });
+      if (insertError) {
+        console.error("Supabase deletion tracking failed:", insertError);
+        // Continue even if tracking fails, or should we stop?
+        // Let's stop if tracking fails to ensure consistency.
+        throw new Error(`Supabase deletion tracking failed: ${insertError.message}`);
+      }
+
+      // 2. Delete from GitHub
       try {
         await deleteTemplateFromGitHub(id);
       } catch (e) {
         console.warn("GitHub deletion failed or skipped:", e);
       }
 
-      // Delete from Supabase (legacy)
-      console.log(`Deleting template ${id} from Supabase`);
+      // 3. Delete from Supabase (legacy)
+      console.log(`Deleting template ${id} from Supabase legacy table`);
       const { error } = await supabase.from('templates').delete().eq('id', id);
       if (error) {
-        console.error("Supabase deletion error:", error);
+        console.error("Supabase legacy deletion error:", error);
       } else {
-        console.log(`Successfully deleted template ${id} from Supabase`);
+        console.log(`Successfully deleted template ${id} from Supabase legacy table`);
       }
       
       res.json({ success: true });

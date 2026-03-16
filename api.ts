@@ -611,6 +611,10 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
         try {
             let allTemplates: Template[] = [];
 
+            // Fetch deleted template IDs from Supabase
+            const { data: deletedTemplatesData } = await supabase.from('deleted_templates').select('id');
+            const deletedIds = new Set((deletedTemplatesData || []).map(t => t.id));
+
             // Fetch from GitHub and Supabase simultaneously
             const [githubResult, supabaseResult] = await Promise.allSettled([
                 fetch(`${GITHUB_CDN_BASE}/registry.json?t=${Date.now()}`, { 
@@ -639,7 +643,7 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
                 const registry = githubResult.value;
                 const userTemplates = registry.filter((t: any) => 
                     (t.author_email === userEmail || t.email === userEmail || t.creator_email === userEmail) &&
-                    !deletedTemplateIds.has(t.id)
+                    !deletedIds.has(t.id)
                 );
                 const githubTemplates = userTemplates.map((t: any) => ({
                     id: t.id,
@@ -669,7 +673,9 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
 
             // 2. Process Supabase Data
             if (supabaseResult.status === 'fulfilled' && !supabaseResult.value.error && supabaseResult.value.data) {
-                const mappedSupabase = supabaseResult.value.data.map(mapTemplate);
+                const mappedSupabase = supabaseResult.value.data
+                    .filter((t: any) => !deletedIds.has(t.id))
+                    .map(mapTemplate);
                 
                 // Merge, preferring Supabase data (which is more recent)
                 const supabaseIds = new Set(mappedSupabase.map(t => t.id));
@@ -679,9 +685,6 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
             } else if (supabaseResult.status === 'rejected' || (supabaseResult.status === 'fulfilled' && supabaseResult.value.error)) {
                 console.warn("Supabase fetch failed for user templates:", supabaseResult.status === 'rejected' ? supabaseResult.reason : supabaseResult.value.error);
             }
-
-            // Filter out deleted templates
-            allTemplates = allTemplates.filter(t => !deletedTemplateIds.has(t.id));
 
             // Sort newest first
             allTemplates.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
