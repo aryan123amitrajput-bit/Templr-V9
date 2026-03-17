@@ -12,6 +12,9 @@ import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import crypto from 'crypto';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -201,44 +204,59 @@ app.get('/sitemap.xml', async (req, res) => {
 // --- API Routes ---
 
 // Upload File Proxy (Transfer from Supabase to Permanent Storage)
-app.post('/api/upload', async (req, res) => {
+app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    const { supabaseUrl, path, contentType } = req.body;
+    const file = req.file;
+    const { path } = req.body;
     
-    if (!supabaseUrl || !path) {
-      return res.status(400).json({ error: "supabaseUrl and path are required" });
+    if (!file || !path) {
+      return res.status(400).json({ error: "file and path are required" });
     }
 
-    console.log(`[Upload Proxy] Transferring ${path} from Supabase to permanent storage...`);
+    console.log(`[Upload] Transferring ${path} to permanent storage...`);
 
-    // 1. Download from Supabase
-    const response = await fetch(supabaseUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download from Supabase: ${response.statusText}`);
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const mimeType = contentType || response.headers.get('content-type') || 'application/octet-stream';
+    const mimeType = file.mimetype || 'application/octet-stream';
 
-    // 2. Transfer to Permanent Storage (GitHub -> GitLab -> JsonHosting)
+    // Transfer to Permanent Storage (GitHub -> GitLab -> JsonHosting)
     try {
-      const permanentUrl = await repoManager.uploadAsset(buffer, path, mimeType);
+      const permanentUrl = await repoManager.uploadAsset(file.buffer, path, mimeType);
       console.log('Successfully uploaded to permanent storage:', permanentUrl);
       
-      // Optional: Delete from Supabase after successful transfer to save space
-      // We'll leave it for now as a temporary backup, or it can be cleaned up later.
-      
-      res.json({ url: permanentUrl, temporaryUrl: supabaseUrl });
+      res.json({ url: permanentUrl });
     } catch (storageErr: any) {
       console.error('Permanent storage failed:', storageErr);
-      // If permanent storage fails, return Supabase URL as fallback
-      res.json({ url: supabaseUrl, warning: 'Permanent storage failed, using temporary URL' });
+      res.status(500).json({ error: 'Permanent storage failed' });
     }
 
   } catch (error: any) {
-    console.error('Upload Proxy Error:', error);
+    console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
+  }
+});
+
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "image file is required" });
+    }
+
+    const apiKey = process.env.IMGBB_API_KEY || 'a7324da8420f04b2e6bae6035cf7e25d';
+    const formData = new URLSearchParams();
+    formData.append('key', apiKey);
+    formData.append('image', file.buffer.toString('base64'));
+    
+    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+    const data = await response.json();
+    
+    if (data.success && data.data && data.data.url) {
+      res.json({ url: data.data.url });
+    } else {
+      res.status(500).json({ error: 'ImgBB upload failed' });
+    }
+  } catch (error: any) {
+    console.error('ImgBB Upload Error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error during image upload' });
   }
 });
 
@@ -449,38 +467,6 @@ app.get('/api/templates/:id', async (req, res) => {
   }
 });
 
-// Helper: Upload image URL to ImgBB
-async function uploadToImgBB(imageUrl: string): Promise<string> {
-  if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl;
-  if (imageUrl.includes('i.ibb.co') || imageUrl.includes('imgbb.com')) return imageUrl;
-  const apiKey = process.env.IMGBB_API_KEY || 'a7324da8420f04b2e6bae6035cf7e25d';
-  try {
-    const formData = new URLSearchParams();
-    formData.append('key', apiKey);
-    formData.append('image', imageUrl);
-    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
-    const data = await response.json();
-    if (data.success && data.data && data.data.url) return data.data.url;
-    return imageUrl;
-  } catch (error) {
-    return imageUrl;
-  }
-}
-
-// Helper: Delete temporary file from Supabase Storage
-async function deleteFromSupabaseStorage(url: string) {
-  if (!url || !url.includes('supabase.co/storage/v1/object/public/')) return;
-  try {
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/storage/v1/object/public/')[1].split('/');
-    const bucket = pathParts[0];
-    const filePath = pathParts.slice(1).join('/');
-    if (bucket && filePath) {
-      await supabase.storage.from(bucket).remove([filePath]);
-    }
-  } catch (error) {}
-}
-
 app.post('/api/templates', async (req, res) => {
   try {
     const { template } = req.body;
@@ -489,29 +475,6 @@ app.post('/api/templates', async (req, res) => {
     let finalImageUrl = template.image_url || template.imageUrl || '';
     let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
     let finalGalleryImages = template.gallery_images || [];
-    const originalImageUrl = finalImageUrl;
-    const originalBannerUrl = finalBannerUrl;
-    const originalGalleryImages = [...finalGalleryImages];
-
-    if (finalImageUrl) finalImageUrl = await uploadToImgBB(finalImageUrl);
-    if (finalBannerUrl && finalBannerUrl !== originalImageUrl) {
-      finalBannerUrl = await uploadToImgBB(finalBannerUrl);
-    } else if (finalBannerUrl === originalImageUrl) {
-      finalBannerUrl = finalImageUrl;
-    }
-    if (Array.isArray(finalGalleryImages)) {
-      for (let i = 0; i < finalGalleryImages.length; i++) {
-        if (finalGalleryImages[i]) finalGalleryImages[i] = await uploadToImgBB(finalGalleryImages[i]);
-      }
-    }
-
-    setTimeout(async () => {
-      if (finalImageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-      if (finalBannerUrl !== originalBannerUrl && originalBannerUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-      for (let i = 0; i < originalGalleryImages.length; i++) {
-        if (finalGalleryImages[i] !== originalGalleryImages[i]) await deleteFromSupabaseStorage(originalGalleryImages[i]);
-      }
-    }, 1000);
 
     const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
     const metadata = {
@@ -564,31 +527,6 @@ app.put('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { updates } = req.body;
-    const originalImageUrl = updates.image_url || updates.imageUrl;
-    const originalBannerUrl = updates.banner_url || updates.bannerUrl;
-    const originalGalleryImages = updates.gallery_images ? [...updates.gallery_images] : null;
-
-    if (updates.image_url) updates.image_url = await uploadToImgBB(updates.image_url);
-    if (updates.imageUrl) updates.imageUrl = await uploadToImgBB(updates.imageUrl);
-    if (updates.banner_url) updates.banner_url = await uploadToImgBB(updates.banner_url);
-    if (updates.bannerUrl) updates.bannerUrl = await uploadToImgBB(updates.bannerUrl);
-    if (updates.gallery_images && Array.isArray(updates.gallery_images)) {
-      for (let i = 0; i < updates.gallery_images.length; i++) {
-        if (updates.gallery_images[i]) updates.gallery_images[i] = await uploadToImgBB(updates.gallery_images[i]);
-      }
-    }
-
-    setTimeout(async () => {
-      if (updates.image_url && updates.image_url !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-      if (updates.imageUrl && updates.imageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-      if (updates.banner_url && updates.banner_url !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-      if (updates.bannerUrl && updates.bannerUrl !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-      if (updates.gallery_images && originalGalleryImages) {
-        for (let i = 0; i < originalGalleryImages.length; i++) {
-          if (updates.gallery_images[i] !== originalGalleryImages[i]) await deleteFromSupabaseStorage(originalGalleryImages[i]);
-        }
-      }
-    }, 1000);
 
     try { await updateTemplateOnGitHub(id, updates); } catch (e) {}
     try { await freeHostService.updateTemplate(id, updates); } catch (e) {}

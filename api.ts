@@ -941,44 +941,43 @@ export const uploadFile = async (file: File, path: string): Promise<string> => {
 
     const attempt = async (retryCount = 0): Promise<string> => {
         try {
-            console.log(`[Upload] Starting upload to Supabase for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
+            console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
 
-            // 1. Upload to Supabase (temporary layer)
-            const uploadPromise = supabase.storage.from('assets').upload(safePath, file, { 
-                upsert: true,
-                contentType: file.type || 'application/octet-stream'
-            });
+            const formData = new FormData();
             
-            const { error } = await uploadPromise;
-            if (error) throw error;
-            
-            const { data: publicUrlData } = supabase.storage.from('assets').getPublicUrl(safePath);
-            const supabaseUrl = publicUrlData.publicUrl;
-            console.log(`[Upload] Supabase upload success. URL: ${supabaseUrl}`);
+            if (file.type.startsWith('image/')) {
+                formData.append('image', file);
+                const response = await fetch('/api/upload-image', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            // 2. Trigger server-side transfer to permanent storage
-            console.log(`[Upload] Triggering transfer to permanent storage...`);
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    supabaseUrl: supabaseUrl,
-                    path: safePath,
-                    contentType: file.type || 'application/octet-stream'
-                })
-            });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'Image upload failed');
+                }
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.warn(`[Upload] Transfer failed, falling back to Supabase URL. Error:`, errorData.error);
-                return fixUrl(supabaseUrl);
+                const data = await response.json();
+                console.log(`[Upload] Image upload success. URL: ${data.url}`);
+                return fixUrl(data.url);
+            } else {
+                formData.append('file', file);
+                formData.append('path', safePath);
+                
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || 'File upload failed');
+                }
+
+                const data = await response.json();
+                console.log(`[Upload] File upload success. URL: ${data.url}`);
+                return fixUrl(data.url);
             }
-
-            const data = await response.json();
-            console.log(`[Upload] Transfer success. Permanent URL: ${data.url}`);
-            return fixUrl(data.url);
         } catch (e: any) {
             console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
             
