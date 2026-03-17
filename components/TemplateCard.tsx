@@ -309,15 +309,13 @@ const CardContent: React.FC<TemplateCardProps> = ({
         <div className="absolute inset-0 z-0 bg-[#111]">
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">
-                {displayBanner ? (
+                {displayBanner && !imageError ? (
                     <img 
-                        src={`/api/image-proxy?url=${encodeURIComponent(displayBanner)}`}
+                        src={signedBanner || displayBanner}
                         alt={`${title} Preview`}
-                        referrerPolicy="strict-origin-when-cross-origin"
+                        referrerPolicy="no-referrer"
                         loading="lazy"
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=600&auto=format&fit=crop';
-                        }}
+                        onError={handleImageError}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                 ) : (

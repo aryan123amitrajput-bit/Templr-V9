@@ -271,6 +271,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                                 src={signedImage || displayImage} 
                                                 alt={`${template.title} - ${template.category} Landing Page Template Preview`} 
                                                 onError={handleImageError}
+                                                referrerPolicy="no-referrer"
                                                 className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
                                             />
                                         ) : (

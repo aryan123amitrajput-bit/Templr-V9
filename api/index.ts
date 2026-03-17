@@ -150,22 +150,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Image Proxy
-app.get('/api/image-proxy', async (req, res) => {
-    const url = req.query.url as string;
-    if (!url) return res.status(400).send('URL required');
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
-        const buffer = await response.arrayBuffer();
-        res.setHeader('Content-Type', response.headers.get('content-type') || 'image/jpeg');
-        res.send(Buffer.from(buffer));
-    } catch (e: any) {
-        console.error('[ImageProxy] Error:', e);
-        res.status(500).send(e.message);
-    }
-});
-
 // Registry Endpoint for dynamic template loading
 app.get('/api/registry', (req, res) => {
   res.json(freeHostService.getRegistry());
