@@ -1,0 +1,26 @@
+{
+  "id": "309daf23-400a-4a73-be69-54a15e1fcfab",
+  "title": "Upshu",
+  "author": "Lapis",
+  "thumbnail": "https://i.imghippo.com/files/ShnE2218TU.jpg",
+  "category": "Blog",
+  "created_at": "2026-03-17T12:20:43.541Z",
+  "tags": [],
+  "name": "Upshu",
+  "description": "",
+  "preview_url": "https://preview.templr.io/v/8ilhog9q",
+  "image_preview": "https://i.imghippo.com/files/ShnE2218TU.jpg",
+  "banner_url": "https://i.imghippo.com/files/ShnE2218TU.jpg",
+  "gallery_images": [
+    "https://i.imghippo.com/files/ShnE2218TU.jpg"
+  ],
+  "file_url": "",
+  "creator": "Lapis",
+  "creator_email": "templrsaas@gmail.com",
+  "creator_avatar": "https://risynxckpsgqgprnaccr.supabase.co/storage/v1/object/public/assets/avatars/533f120c-ef5b-417b-b591-a3d70164e962_1768222086088.png",
+  "price": "Free",
+  "stats": {
+    "likes": 0,
+    "views": 0
+  }
+}
