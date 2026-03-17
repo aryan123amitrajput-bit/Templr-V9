@@ -160,13 +160,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
         }
     }, 90000);
 
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        clearTimeout(safetyTimeout);
-        setIsLoading(false);
-        setErrors(prev => ({ ...prev, global: "You are offline. Please check your internet connection." }));
-        return;
-    }
-
     try {
       if (mode === 'signin') {
           console.log("[LoginModal] Calling onLogin...");

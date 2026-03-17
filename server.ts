@@ -131,7 +131,7 @@ async function saveTemplateToGitHub(template: any) {
     tags: template.tags || [],
     ...template // Keep everything else
   };
-  await repoManager.uploadTemplate(metadata);
+  return await repoManager.uploadTemplate(metadata);
 }
 
 async function startServer() {
@@ -488,7 +488,15 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.get('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      const content = await repoManager.getTemplateById(id);
+      
+      // 1. Check Git/Supabase
+      let content = await repoManager.getTemplateById(id);
+      
+      // 2. Check FreeHost (JSONHosting)
+      if (!content) {
+        content = await freeHostService.getTemplateById(id);
+      }
+
       if (content) {
         res.json({ data: content });
       } else {
@@ -636,13 +644,18 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         }
       };
 
-      // 6. Save to GitHub & Free Hosts
+      // 6. Save to GitHub/GitLab (Primary) & JSONHosting (Overflow)
       try {
-        // Legacy GitHub Save
-        await saveTemplateToGitHub(metadata);
+        // Try Primary Storage (GitHub/GitLab)
+        const savedToRepo = await saveTemplateToGitHub(metadata);
         
-        // New Free Host Batch Save
-        await freeHostService.addTemplate(metadata);
+        if (savedToRepo) {
+          console.log(`Template ${templateId} saved to Primary Storage (GitHub/GitLab).`);
+        } else {
+          console.log(`Primary Storage full. Archiving template ${templateId} to JSONHosting (Overflow).`);
+          // Overflow to JSONHosting
+          await freeHostService.addTemplate(metadata);
+        }
         
         // 7. Save to Supabase (Legacy / Fallback)
         try {
@@ -664,14 +677,14 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
           success: true, 
           id: templateId, 
           preview_url: cleanPreviewUrl,
-          message: "Saved to GitHub successfully.",
+          message: "Template saved successfully.",
           template: metadata
         });
-      } catch (githubError: any) {
-        console.error("GitHub Save Failed:", githubError);
+      } catch (saveError: any) {
+        console.error("Save Failed:", saveError);
         return res.status(500).json({ 
           success: false, 
-          error: `GitHub Save Failed: ${githubError.message || 'Unknown error'}`
+          error: `Save Failed: ${saveError.message || 'Unknown error'}`
         });
       }
     } catch (error: any) {
@@ -749,6 +762,13 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         await updateTemplateOnGitHub(id, updates);
       } catch (e) {
         console.warn("GitHub update failed or skipped:", e);
+      }
+
+      // Update Free Hosts
+      try {
+        await freeHostService.updateTemplate(id, updates);
+      } catch (e) {
+        console.error("Free host update failed:", e);
       }
 
       // Update Supabase (legacy)

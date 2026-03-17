@@ -25,6 +25,7 @@ interface TemplateMetadata {
 interface Batch {
   id: string;
   url: string;
+  editKey: string;
   provider: string;
   count: number;
 }
@@ -43,7 +44,7 @@ class FreeHostService {
   };
 
   private readonly BATCH_SIZE = 500;
-  private readonly PROVIDERS = ['JSONHosting', 'PlainRaw', 'StaticSave', 'TiinyHost'];
+  private readonly JSON_HOSTING_API = 'https://jsonhosting.com/api/json';
 
   constructor() {
     this.loadRegistry();
@@ -81,18 +82,15 @@ class FreeHostService {
 
     if (!lastBatch || lastBatch.count >= this.BATCH_SIZE) {
       // Create new batch
-      const provider = this.PROVIDERS[Math.floor(Math.random() * this.PROVIDERS.length)];
-      const batchId = `batch_${Date.now()}`;
-      
-      // Initial batch content
-      const batchContent = [template];
-      const url = await this.uploadToProvider(provider, batchContent);
+      const batchContent = { templates: [template] };
+      const result = await this.uploadToJSONHosting(batchContent);
 
-      if (url) {
+      if (result) {
         this.registry.batches.push({
-          id: batchId,
-          url,
-          provider,
+          id: result.id,
+          url: result.rawUrl,
+          editKey: result.editKey,
+          provider: 'JSONHosting',
           count: 1
         });
         this.registry.totalTemplates++;
@@ -101,12 +99,11 @@ class FreeHostService {
     } else {
       // Update existing batch
       const batchContent = await this.fetchBatchContent(lastBatch.url);
-      if (batchContent) {
-        batchContent.push(template);
-        const newUrl = await this.updateOnProvider(lastBatch.provider, lastBatch.url, batchContent);
+      if (batchContent && batchContent.templates) {
+        batchContent.templates.push(template);
+        const success = await this.updateOnJSONHosting(lastBatch.id, lastBatch.editKey, batchContent);
         
-        if (newUrl) {
-          lastBatch.url = newUrl;
+        if (success) {
           lastBatch.count++;
           this.registry.totalTemplates++;
           await this.saveRegistry();
@@ -120,20 +117,21 @@ class FreeHostService {
       const batch = this.registry.batches[i];
       const batchContent = await this.fetchBatchContent(batch.url);
       
-      if (batchContent) {
-        const index = batchContent.findIndex((t: any) => t.id === templateId);
+      if (batchContent && batchContent.templates) {
+        const index = batchContent.templates.findIndex((t: any) => t.id === templateId);
         if (index !== -1) {
-          batchContent.splice(index, 1);
+          batchContent.templates.splice(index, 1);
           
-          if (batchContent.length === 0) {
-            // Remove empty batch
+          if (batchContent.templates.length === 0) {
+            // Remove empty batch from host
+            await this.deleteFromJSONHosting(batch.id, batch.editKey);
+            // Remove empty batch from registry
             this.registry.batches.splice(i, 1);
           } else {
             // Update batch
-            const newUrl = await this.updateOnProvider(batch.provider, batch.url, batchContent);
-            if (newUrl) {
-              batch.url = newUrl;
-              batch.count = batchContent.length;
+            const success = await this.updateOnJSONHosting(batch.id, batch.editKey, batchContent);
+            if (success) {
+              batch.count = batchContent.templates.length;
             }
           }
           
@@ -146,10 +144,33 @@ class FreeHostService {
     return false;
   }
 
+  public async updateTemplate(templateId: string, updates: any) {
+    for (const batch of this.registry.batches) {
+      const batchContent = await this.fetchBatchContent(batch.url);
+      if (batchContent && batchContent.templates) {
+        const index = batchContent.templates.findIndex((t: any) => t.id === templateId);
+        if (index !== -1) {
+          batchContent.templates[index] = { ...batchContent.templates[index], ...updates };
+          const success = await this.updateOnJSONHosting(batch.id, batch.editKey, batchContent);
+          return success;
+        }
+      }
+    }
+    return false;
+  }
+
+  public async getTemplateById(templateId: string) {
+    for (const batch of this.registry.batches) {
+      const content = await this.fetchBatchContent(batch.url);
+      if (content && content.templates) {
+        const template = content.templates.find((t: any) => t.id === templateId);
+        if (template) return template;
+      }
+    }
+    return null;
+  }
+
   public async getTemplates(page: number, limit: number, category?: string, searchQuery?: string) {
-    // For now, we'll focus on pagination. Filtering across batches is expensive.
-    // We'll fetch the necessary batches to satisfy the page/limit.
-    
     const startIdx = page * limit;
     const endIdx = startIdx + limit;
     
@@ -163,9 +184,9 @@ class FreeHostService {
       // Check if this batch overlaps with our requested range
       if (batchEnd > startIdx && batchStart < endIdx) {
         const content = await this.fetchBatchContent(batch.url);
-        if (content) {
+        if (content && content.templates) {
           // Apply filters if any
-          let filtered = content;
+          let filtered = content.templates;
           if (category && category !== 'All') {
             filtered = filtered.filter((t: any) => t.category === category);
           }
@@ -179,42 +200,65 @@ class FreeHostService {
       }
       
       currentCount += batch.count;
-      if (currentCount >= endIdx && !category && !searchQuery) break; // Optimization for non-filtered requests
+      if (currentCount >= endIdx && !category && !searchQuery) break;
     }
     
-    // Final slice for the specific page
     return templates.slice(0, limit);
   }
 
-  private async uploadToProvider(provider: string, content: any[]): Promise<string | null> {
-    console.log(`Uploading batch to ${provider}...`);
-    const jsonStr = JSON.stringify(content);
-
+  private async uploadToJSONHosting(content: any): Promise<{ id: string, editKey: string, rawUrl: string } | null> {
+    console.log(`Uploading batch to JSONHosting...`);
     try {
-      switch (provider) {
-        case 'JSONHosting':
-          // Mocking JSONHosting API
-          // return await this.postToJSONHosting(jsonStr);
-          return `https://jsonhosting.com/raw/${Math.random().toString(36).substring(7)}.json`;
-        case 'PlainRaw':
-          return `https://plainraw.com/r/${Math.random().toString(36).substring(7)}`;
-        case 'StaticSave':
-          return `https://staticsave.com/raw/${Math.random().toString(36).substring(7)}`;
-        default:
-          return `https://freehost.com/${Math.random().toString(36).substring(7)}.json`;
+      const response = await fetch(this.JSON_HOSTING_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(content)
+      });
+
+      if (response.ok) {
+        return await response.json();
       }
     } catch (e) {
-      console.error(`Upload to ${provider} failed:`, e);
-      return null;
+      console.error(`Upload to JSONHosting failed:`, e);
     }
+    return null;
   }
 
-  private async updateOnProvider(provider: string, oldUrl: string, content: any[]): Promise<string | null> {
-    // Most free hosts don't support updates, so we just re-upload and get a new URL
-    return await this.uploadToProvider(provider, content);
+  private async updateOnJSONHosting(id: string, editKey: string, content: any): Promise<boolean> {
+    console.log(`Updating batch ${id} on JSONHosting...`);
+    try {
+      const response = await fetch(`${this.JSON_HOSTING_API}/${id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Edit-Key': editKey
+        },
+        body: JSON.stringify(content)
+      });
+
+      return response.ok;
+    } catch (e) {
+      console.error(`Update on JSONHosting failed:`, e);
+    }
+    return false;
   }
 
-  private async fetchBatchContent(url: string): Promise<any[] | null> {
+  private async deleteFromJSONHosting(id: string, editKey: string): Promise<boolean> {
+    console.log(`Deleting batch ${id} from JSONHosting...`);
+    try {
+      const response = await fetch(`${this.JSON_HOSTING_API}/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Edit-Key': editKey }
+      });
+
+      return response.ok;
+    } catch (e) {
+      console.error(`Delete from JSONHosting failed:`, e);
+    }
+    return false;
+  }
+
+  private async fetchBatchContent(url: string): Promise<any | null> {
     try {
       const response = await fetch(url);
       if (response.ok) {

@@ -120,10 +120,10 @@ export class RepoManager {
     return repos;
   }
 
-  async getActiveRepo(): Promise<RepoConfig> {
+  async getActiveRepo(): Promise<RepoConfig | null> {
     const repos = await this.getAllRepos();
     if (repos.length === 0) {
-      throw new Error("No repositories configured.");
+      return null;
     }
 
     // Iterate through repos to find the first one below threshold
@@ -134,8 +134,8 @@ export class RepoManager {
       }
     }
 
-    // Fallback to the last repo if all are full
-    return repos[repos.length - 1];
+    // All repos are full
+    return null;
   }
 
   private async getTemplateCount(repo: RepoConfig): Promise<number> {
@@ -224,8 +224,10 @@ export class RepoManager {
     return data;
   }
 
-  async uploadTemplate(template: TemplateMetadata): Promise<void> {
+  async uploadTemplate(template: TemplateMetadata): Promise<boolean> {
     const repo = await this.getActiveRepo();
+    if (!repo) return false;
+
     const templateId = template.id;
     const filePath = `templates/${templateId}.json`;
     const content = JSON.stringify(template, null, 2);
@@ -363,6 +365,7 @@ export class RepoManager {
         throw new Error(`GitLab registry update failed: ${err}`);
       }
     }
+    return true;
   }
 
   async getTemplateById(templateId: string): Promise<TemplateMetadata | null> {

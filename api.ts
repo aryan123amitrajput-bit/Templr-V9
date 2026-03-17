@@ -85,11 +85,6 @@ const retryingFetch = async (url: any, options: any) => {
 
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            // Check for network connectivity first if possible
-            if (typeof navigator !== 'undefined' && !navigator.onLine) {
-                throw new Error("Offline");
-            }
-            
             const response = await fetch(url, options);
             
             // If 5xx error, treat as retryable
@@ -275,7 +270,7 @@ const mapTemplate = (data: any): Template => {
         return {
             id: data.id?.toString() || Math.random().toString(),
             title: data.title || data.name || 'Untitled',
-            author: data.author_name || data.authorName || data.author || 'Anonymous', 
+            author: data.author_name || data.authorName || data.author || data.creator || 'Anonymous', 
             authorAvatar: fixUrl(rawAvatar),
             authorBanner: fixUrl(rawAuthorBanner),
             imageUrl: fixUrl(rawImage),
@@ -321,6 +316,8 @@ const mapTemplate = (data: any): Template => {
     }
 };
 
+let cachedRegistry: any = null;
+
 export const getPublicTemplates = async (
     page: number = 0, 
     limit: number = 6, 
@@ -331,6 +328,77 @@ export const getPublicTemplates = async (
     
     const attempt = async (retryCount = 0): Promise<any> => {
         try {
+            // 1. Try to fetch from Master Registry (JSONHosting batches)
+            if (!cachedRegistry) {
+                try {
+                    const regRes = await fetch('/api/registry');
+                    if (regRes.ok) {
+                        cachedRegistry = await regRes.json();
+                        console.log("[Registry] Loaded master registry:", cachedRegistry.totalTemplates, "templates");
+                    }
+                } catch (e) {
+                    console.warn("[Registry] Failed to load registry:", e);
+                }
+            }
+
+            if (cachedRegistry && cachedRegistry.batches && cachedRegistry.batches.length > 0) {
+                const startIdx = page * limit;
+                const endIdx = startIdx + limit;
+                
+                let currentCount = 0;
+                const allTemplates: any[] = [];
+                
+                // Fetch required batches
+                for (const batch of cachedRegistry.batches) {
+                    const batchStart = currentCount;
+                    const batchEnd = currentCount + batch.count;
+                    
+                    if (batchEnd > startIdx && batchStart < endIdx) {
+                        try {
+                            const batchRes = await fetch(batch.url);
+                            if (batchRes.ok) {
+                                const batchData = await batchRes.json();
+                                if (batchData && batchData.templates) {
+                                    let filtered = batchData.templates;
+                                    
+                                    // Apply filters
+                                    if (category && category !== 'All') {
+                                        filtered = filtered.filter((t: any) => t.category === category);
+                                    }
+                                    if (searchQuery) {
+                                        const q = searchQuery.toLowerCase();
+                                        filtered = filtered.filter((t: any) => 
+                                            (t.title || t.name || '').toLowerCase().includes(q) || 
+                                            (t.description || '').toLowerCase().includes(q)
+                                        );
+                                    }
+                                    allTemplates.push(...filtered);
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`[Registry] Failed to fetch batch ${batch.id}:`, e);
+                        }
+                    }
+                    currentCount += batch.count;
+                    // Optimization: if we have enough and no filters, we can stop
+                    if (allTemplates.length >= limit && !searchQuery && category === 'All') break;
+                }
+
+                if (allTemplates.length > 0) {
+                    // Sort if needed (though batches are usually chronological)
+                    if (sortBy === 'popular' || sortBy === 'likes') {
+                        allTemplates.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+                    }
+
+                    const mappedData = allTemplates.slice(0, limit).map(mapTemplate);
+                    return { 
+                        data: mappedData, 
+                        hasMore: currentCount < cachedRegistry.totalTemplates 
+                    };
+                }
+            }
+
+            // 2. Fallback to Backend API
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: limit.toString(),
@@ -345,15 +413,13 @@ export const getPublicTemplates = async (
             }
 
             const { data, hasMore } = await response.json();
-            
-            // Map the backend data to the Template interface
             const mappedData = (data || []).map(mapTemplate);
 
             return { data: mappedData, hasMore };
         } catch (e: any) {
             console.error("Error fetching public templates:", e);
             
-            // Fallback to Supabase directly if backend fails and it's configured
+            // 3. Fallback to Supabase directly
             if (isApiConfigured) {
                 try {
                     console.log("Attempting direct Supabase fallback...");
@@ -395,7 +461,23 @@ export const getPublicTemplates = async (
 export const getTemplateById = async (id: string): Promise<Template | null> => {
     const attempt = async (retryCount = 0): Promise<Template | null> => {
         try {
-            // Fetch from backend
+            // 1. Try JSONHosting batches first
+            if (cachedRegistry && cachedRegistry.batches) {
+                for (const batch of cachedRegistry.batches) {
+                    try {
+                        const batchRes = await fetch(batch.url);
+                        if (batchRes.ok) {
+                            const batchData = await batchRes.json();
+                            if (batchData && batchData.templates) {
+                                const template = batchData.templates.find((t: any) => t.id === id);
+                                if (template) return mapTemplate(template);
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            // 2. Fetch from backend (Git/Supabase)
             const response = await fetch(`/api/templates/${id}`);
             if (response.ok) {
                 const { data } = await response.json();
