@@ -55,7 +55,12 @@ class FreeHostService {
       // Try to load from GitHub repo first
       const content = await repoManager.getFile('master_registry.json');
       if (content) {
-        this.registry = JSON.parse(content);
+        const parsed = JSON.parse(content);
+        this.registry = {
+          batches: parsed.batches || [],
+          totalTemplates: parsed.totalTemplates || 0,
+          lastUpdated: parsed.lastUpdated || new Date().toISOString()
+        };
         console.log('Loaded master registry from GitHub');
       }
     } catch (e) {
