@@ -944,40 +944,22 @@ export const uploadFile = async (file: File, path: string): Promise<string> => {
             console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
 
             const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', safePath);
             
-            if (file.type.startsWith('image/')) {
-                formData.append('image', file);
-                const response = await fetch('/api/upload-image', {
-                    method: 'POST',
-                    body: formData
-                });
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || 'Image upload failed');
-                }
-
-                const data = await response.json();
-                console.log(`[Upload] Image upload success. URL: ${data.url}`);
-                return fixUrl(data.url);
-            } else {
-                formData.append('file', file);
-                formData.append('path', safePath);
-                
-                const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.error || 'File upload failed');
-                }
-
-                const data = await response.json();
-                console.log(`[Upload] File upload success. URL: ${data.url}`);
-                return fixUrl(data.url);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'File upload failed');
             }
+
+            const data = await response.json();
+            console.log(`[Upload] File upload success. URL: ${data.url}`);
+            return fixUrl(data.url);
         } catch (e: any) {
             console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
             

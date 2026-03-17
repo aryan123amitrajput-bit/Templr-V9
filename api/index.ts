@@ -203,93 +203,61 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
-// Upload File Proxy (New Workflow: ImgBB + Jsonhosting.com)
+// Upload File Proxy (New Workflow: ImgLink API)
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
     const { title, description } = req.body;
     
-    if (!file || !title) {
-      return res.status(400).json({ error: "file and title are required" });
+    if (!file) {
+      return res.status(400).json({ error: "file is required" });
     }
 
-    console.log(`[Upload] Processing template: ${title}`);
+    console.log(`[Upload] Processing file: ${file.originalname}`);
 
-    // 1. Upload image to ImgBB
-    const apiKey = 'a7324da8420f04b2e6bae6035cf7e25d'; // Using user-provided key
+    // 1. Upload image to ImgLink
+    const formData = new FormData();
+    formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
     
-    const formData = new URLSearchParams();
-    formData.append('key', apiKey);
-    formData.append('image', file.buffer.toString('base64'));
-    
-    console.log('[Upload] Sending request to ImgBB...');
-    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+    const response = await fetch('https://imglink.io/api/v1/upload', { 
+        method: 'POST', 
+        body: formData,
+        headers: {
+            // Include Authorization header if API key is provided
+            ...(process.env.IMGLINK_API_KEY ? { 'Authorization': `Bearer ${process.env.IMGLINK_API_KEY}` } : {})
+        }
+    });
     
     if (!response.ok) {
         const errorText = await response.text();
-        console.error('[Upload] ImgBB API error response:', response.status, errorText);
-        throw new Error(`ImgBB upload failed with status ${response.status}: ${errorText}`);
+        console.error('[Upload] ImgLink API error:', response.status, errorText);
+        throw new Error(`ImgLink upload failed with status ${response.status}`);
     }
     
     const imgData = await response.json();
     
-    if (!imgData.success) {
-        console.error('[Upload] ImgBB API error data:', imgData);
-        throw new Error(`ImgBB upload failed: ${imgData.error?.message || 'Unknown error'}`);
+    if (!imgData.success || !imgData.data?.links?.direct) {
+        console.error('[Upload] ImgLink API error data:', imgData);
+        throw new Error('ImgLink upload failed: Invalid response');
     }
-    const imageUrl = imgData.data.url;
+    const imageUrl = imgData.data.links.direct;
 
-    // 2. Save template text metadata to Jsonhosting.com (jsonbin.io)
-    const templateData = { 
-        title, 
-        description, 
-        image_url: imageUrl, 
-        created_at: new Date().toISOString() 
-    };
-    const templateBuffer = Buffer.from(JSON.stringify(templateData));
-    const jsonUrl = await repoManager.uploadAsset(templateBuffer, `templates/${Date.now()}.json`, 'application/json');
+    // 2. Save template metadata to Supabase if title is provided
+    if (title) {
+        const { data: dbData, error: dbError } = await supabase.from('templates').insert({
+            title,
+            description,
+            image_url: imageUrl,
+            created_at: new Date().toISOString()
+        });
 
-    res.json({ success: true, url: imageUrl, jsonUrl });
+        if (dbError) throw new Error(`Database save failed: ${dbError.message}`);
+    }
+
+    res.json({ success: true, url: imageUrl });
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
-  }
-});
-
-app.post('/api/upload-image', upload.single('image'), async (req, res) => {
-  try {
-    console.log('[UploadImage] Request file:', req.file ? req.file.originalname : 'no file');
-    const file = req.file;
-    if (!file) {
-      console.error('[UploadImage] Missing file');
-      return res.status(400).json({ error: "image file is required" });
-    }
-
-    const apiKey = 'a7324da8420f04b2e6bae6035cf7e25d'; // Using user-provided key
-    const formData = new URLSearchParams();
-    formData.append('key', apiKey);
-    formData.append('image', file.buffer.toString('base64'));
-    
-    console.log('[UploadImage] Sending request to ImgBB...');
-    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
-    
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[UploadImage] ImgBB API error response:', response.status, errorText);
-        throw new Error(`ImgBB upload failed with status ${response.status}: ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.success && data.data && data.data.url) {
-      res.json({ url: data.data.url });
-    } else {
-      console.error('[UploadImage] ImgBB API error data:', data);
-      res.status(500).json({ error: `ImgBB upload failed: ${data.error?.message || 'Unknown error'}` });
-    }
-  } catch (error: any) {
-    console.error('ImgBB Upload Error:', error);
-    res.status(500).json({ error: error.message || 'Internal Server Error during image upload' });
   }
 });
 
