@@ -8,6 +8,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager } from '../server/services/repoService';
 import { freeHostService } from '../server/services/freeHostService';
+import { traffService } from '../server/services/traffService';
+import { templrAuditor } from '../server/services/templrAuditor';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
@@ -153,6 +155,27 @@ app.use((req, res, next) => {
 // Registry Endpoint for dynamic template loading
 app.get('/api/registry', (req, res) => {
   res.json(freeHostService.getRegistry());
+});
+
+// --- Admin Engine Routes ---
+app.get('/api/admin/hosts', (req, res) => {
+  res.json(traffService.getHosts());
+});
+
+app.get('/api/admin/audit-reports', (req, res) => {
+  res.json(templrAuditor.getReports());
+});
+
+app.post('/api/admin/run-audit', async (req, res) => {
+  try {
+    const [hosts, reports] = await Promise.all([
+      traffService.auditHosts(),
+      templrAuditor.runFullAudit()
+    ]);
+    res.json({ hosts, reports });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // --- SEO Routes ---
