@@ -203,31 +203,43 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
-// Upload File Proxy (Transfer from Supabase to Permanent Storage)
+// Upload File Proxy (New Workflow: ImgBB + Jsonhosting.com)
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
-    const { path } = req.body;
+    const { title, description } = req.body;
     
-    if (!file || !path) {
-      return res.status(400).json({ error: "file and path are required" });
+    if (!file || !title) {
+      return res.status(400).json({ error: "file and title are required" });
     }
 
-    console.log(`[Upload] Transferring ${path} to permanent storage...`);
+    console.log(`[Upload] Processing template: ${title}`);
 
-    const mimeType = file.mimetype || 'application/octet-stream';
+    // 1. Upload image to ImgBB
+    const apiKey = process.env.IMGBB_API_KEY;
+    if (!apiKey) throw new Error('IMGBB_API_KEY is not configured');
+    
+    const formData = new URLSearchParams();
+    formData.append('key', apiKey);
+    formData.append('image', file.buffer.toString('base64'));
+    
+    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+    const imgData = await response.json();
+    
+    if (!imgData.success) throw new Error('ImgBB upload failed');
+    const imageUrl = imgData.data.url;
 
-    // Transfer to Permanent Storage (GitHub -> GitLab -> JsonHosting)
-    try {
-      const permanentUrl = await repoManager.uploadAsset(file.buffer, path, mimeType);
-      console.log('Successfully uploaded to permanent storage:', permanentUrl);
-      
-      res.json({ url: permanentUrl });
-    } catch (storageErr: any) {
-      console.error('Permanent storage failed:', storageErr);
-      res.status(500).json({ error: 'Permanent storage failed' });
-    }
+    // 2. Save template text metadata to Jsonhosting.com (jsonbin.io)
+    const templateData = { 
+        title, 
+        description, 
+        image_url: imageUrl, 
+        created_at: new Date().toISOString() 
+    };
+    const templateBuffer = Buffer.from(JSON.stringify(templateData));
+    const jsonUrl = await repoManager.uploadAsset(templateBuffer, `templates/${Date.now()}.json`, 'application/json');
 
+    res.json({ success: true, url: imageUrl, jsonUrl });
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
@@ -236,8 +248,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 app.post('/api/upload-image', upload.single('image'), async (req, res) => {
   try {
+    console.log('[UploadImage] Request file:', req.file ? req.file.originalname : 'no file');
     const file = req.file;
     if (!file) {
+      console.error('[UploadImage] Missing file');
       return res.status(400).json({ error: "image file is required" });
     }
 
