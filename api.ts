@@ -953,8 +953,14 @@ export const uploadFile = async (file: File, path: string): Promise<string> => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'File upload failed');
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'File upload failed');
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(`File upload failed: ${errorText.substring(0, 100)}`);
+                }
             }
 
             const data = await response.json();

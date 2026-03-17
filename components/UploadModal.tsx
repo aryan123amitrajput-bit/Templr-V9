@@ -105,6 +105,8 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
 
     const hasContent = !!file || !!initialUrl;
     const previewSrc = file ? URL.createObjectURL(file) : (initialUrl || null);
+    
+    console.log('[PreviewUploader] file:', file, 'initialUrl:', initialUrl, 'previewSrc:', previewSrc);
 
     return (
         <div 
@@ -252,9 +254,34 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [sourceCode, setSourceCode] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(''); // "Uploading Video...", "Saving..."
   const [errors, setErrors] = useState<any>({});
   const zipInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImmediateUpload = async (file: File) => {
+      setPreviewFile(file);
+      setIsUploadingImage(true);
+      try {
+          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const path = `${previewType}s/${Date.now()}_${safeName}`;
+          const url = await uploadFile(file, path);
+          
+          if (previewType === 'video') {
+              setExistingVideoUrl(url);
+              if (!existingImageUrl) setExistingImageUrl(DEFAULT_VIDEO_THUMB);
+          } else {
+              setExistingImageUrl(url);
+              setExistingVideoUrl('');
+          }
+          onShowNotification("Media uploaded!", 'success');
+      } catch (e: any) {
+          onShowNotification("Upload failed: " + e.message, 'error');
+          setPreviewFile(null);
+      } finally {
+          setIsUploadingImage(false);
+      }
+  };
 
   useEffect(() => {
       if (isOpen) {
@@ -277,7 +304,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingImageUrl(''); setExistingVideoUrl('');
               setCodeMode('zip'); setZipFile(null); setSourceCode('');
           }
-          setErrors({}); setIsSubmitting(false); setUploadStatus('');
+          setErrors({}); setIsSubmitting(false); setIsUploadingImage(false); setUploadStatus('');
       }
   }, [isOpen, isEditing, initialData]);
 
@@ -285,6 +312,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (type !== previewType) {
           setPreviewType(type);
           setPreviewFile(null);
+          setExistingImageUrl('');
+          setExistingVideoUrl('');
           playClickSound();
       }
   };
@@ -298,7 +327,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (!title.trim() || title.trim().length < 3) newErrors.title = true;
       if (!category) newErrors.category = true;
       
-      if (!previewFile && !existingImageUrl && !existingVideoUrl) {
+      if (!existingImageUrl && !existingVideoUrl) {
           newErrors.preview = true;
           onShowNotification("A preview is required.", 'error');
       }
@@ -310,26 +339,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
       }
 
       // Trigger instant navigation and notification
-      onShowNotification("Uploading Template...", 'info');
+      onShowNotification("Saving Template...", 'info');
       onDashboardClick();
 
-      // Continue upload in background
+      // Continue in background
       try {
-          let imageUrl = existingImageUrl;
-          let videoUrl = existingVideoUrl;
-
-          if (previewFile) {
-              if (previewType === 'video') {
-                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                  videoUrl = await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`);
-                  if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
-              } else {
-                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                  imageUrl = await uploadFile(previewFile, `images/${Date.now()}_${safeName}`);
-                  videoUrl = ''; 
-              }
-          }
-
           let zipUrl = '';
           if (zipFile) {
               const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -344,10 +358,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
               category,
               tags: tags || [],
               externalLink: link,
-              imageUrl,
-              videoUrl,
-              bannerUrl: imageUrl,
-              galleryImages: [imageUrl],
+              imageUrl: existingImageUrl,
+              videoUrl: existingVideoUrl,
+              bannerUrl: existingImageUrl,
+              galleryImages: [existingImageUrl],
               price: 'Free', 
               fileUrl: zipUrl, 
               sourceCode: codeMode === 'paste' ? sourceCode : '',
@@ -404,9 +418,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         type={previewType}
                         file={previewFile} 
                         initialUrl={previewType === 'image' ? existingImageUrl : existingVideoUrl}
-                        onSelect={(f) => { setPreviewFile(f); playClickSound(); }} 
+                        onSelect={handleImmediateUpload} 
                         error={errors.preview}
-                        isUploading={isSubmitting && !!previewFile}
+                        isUploading={isUploadingImage}
                     />
                 </section>
 

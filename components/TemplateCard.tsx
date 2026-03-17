@@ -309,21 +309,20 @@ const CardContent: React.FC<TemplateCardProps> = ({
         <div className="absolute inset-0 z-0 bg-[#111]">
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">
-                {(signedBanner || displayBanner) && !imageError ? (
+                {displayBanner ? (
                     <img 
-                        src={signedBanner || displayBanner!} 
-                        alt={`${title} - ${category} Landing Page Template Preview`}
-                        referrerPolicy="no-referrer"
+                        src={`/api/image-proxy?url=${encodeURIComponent(displayBanner)}`}
+                        alt={`${title} Preview`}
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        loading="lazy"
                         onError={(e) => {
-                            // Silently retry to avoid console spam
-                            handleImageError();
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=600&auto=format&fit=crop';
                         }}
-                        onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                 ) : (
                     // Fallback Gradient - Only if no image
-                    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+                    <div className="w-full h-full flex items-center justify-center bg-red-500">
                         <div className="text-center p-4 opacity-10">
                             <LayersIcon className="w-12 h-12 text-white mx-auto mb-2" />
                         </div>

@@ -150,9 +150,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health Check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Image Proxy
+app.get('/api/image-proxy', async (req, res) => {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).send('URL required');
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        res.setHeader('Content-Type', response.headers.get('content-type') || 'image/jpeg');
+        res.send(Buffer.from(buffer));
+    } catch (e: any) {
+        console.error('[ImageProxy] Error:', e);
+        res.status(500).send(e.message);
+    }
 });
 
 // Registry Endpoint for dynamic template loading
@@ -215,32 +226,59 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     console.log(`[Upload] Processing file: ${file.originalname}`);
 
-    // 1. Upload image to ImgLink
-    const formData = new FormData();
-    formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
-    
-    const response = await fetch('https://imglink.io/api/v1/upload', { 
-        method: 'POST', 
-        body: formData,
-        headers: {
-            // Include Authorization header if API key is provided
-            ...(process.env.IMGLINK_API_KEY ? { 'Authorization': `Bearer ${process.env.IMGLINK_API_KEY}` } : {})
+    // 1. Upload image to ImgHippo with retry mechanism
+    const maxRetries = 3;
+    let response;
+    let lastError;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const formData = new FormData();
+            formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+            formData.append('api_key', '0bd1d234918f906d353775d006d2b771');
+            
+            // ImgHippo API usually expects the file field to be named 'file'
+            response = await fetch('https://api.imghippo.com/v1/upload', { 
+                method: 'POST', 
+                body: formData
+            });
+            
+            if (response.ok) break;
+            
+            const errorText = await response.text();
+            console.error(`[Upload] ImgHippo API error (attempt ${i + 1}):`, response.status, errorText);
+            throw new Error(`ImgHippo upload failed with status ${response.status}: ${errorText}`);
+        } catch (e: any) {
+            lastError = e;
+            console.warn(`[Upload] Attempt ${i + 1} failed: ${e.message}`);
+            if (i < maxRetries - 1) {
+                await new Promise(r => setTimeout(r, 2000 * (i + 1))); // Exponential backoff
+            }
         }
-    });
+    }
+
+    if (!response || !response.ok) {
+        throw lastError || new Error('ImgHippo upload failed after retries');
+    }
     
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Upload] ImgLink API error:', response.status, errorText);
-        throw new Error(`ImgLink upload failed with status ${response.status}`);
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error('[Upload] ImgHippo API returned non-JSON:', text);
+        return res.status(500).json({ error: 'ImgHippo upload failed: Received non-JSON response from server' });
     }
     
     const imgData = await response.json();
     
-    if (!imgData.success || !imgData.data?.links?.direct) {
-        console.error('[Upload] ImgLink API error data:', imgData);
-        throw new Error('ImgLink upload failed: Invalid response');
+    console.log('[Upload] ImgHippo API response data:', JSON.stringify(imgData, null, 2));
+    
+    // Assuming ImgHippo response structure: { success: true, data: { url: "..." } }
+    if (!imgData.success || !imgData.data?.url) {
+        console.error('[Upload] ImgHippo API error data:', imgData);
+        return res.status(500).json({ error: `ImgHippo upload failed: Invalid response format. Data: ${JSON.stringify(imgData)}` });
     }
-    const imageUrl = imgData.data.links.direct;
+    const imageUrl = imgData.data.url;
+    console.log('[Upload] ImgHippo URL extracted:', imageUrl);
 
     // 2. Save template metadata to Supabase if title is provided
     if (title) {
