@@ -223,10 +223,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     formData.append('key', apiKey);
     formData.append('image', file.buffer.toString('base64'));
     
+    console.log('[Upload] Sending request to ImgBB...');
     const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Upload] ImgBB API error response:', response.status, errorText);
+        throw new Error(`ImgBB upload failed with status ${response.status}: ${errorText}`);
+    }
+    
     const imgData = await response.json();
     
-    if (!imgData.success) throw new Error('ImgBB upload failed');
+    if (!imgData.success) {
+        console.error('[Upload] ImgBB API error data:', imgData);
+        throw new Error(`ImgBB upload failed: ${imgData.error?.message || 'Unknown error'}`);
+    }
     const imageUrl = imgData.data.url;
 
     // 2. Save template text metadata to Jsonhosting.com (jsonbin.io)
