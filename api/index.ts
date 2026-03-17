@@ -216,8 +216,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     console.log(`[Upload] Processing template: ${title}`);
 
     // 1. Upload image to ImgBB
-    const apiKey = process.env.IMGBB_API_KEY;
-    if (!apiKey) throw new Error('IMGBB_API_KEY is not configured');
+    const apiKey = 'a7324da8420f04b2e6bae6035cf7e25d'; // Using user-provided key
     
     const formData = new URLSearchParams();
     formData.append('key', apiKey);
@@ -266,18 +265,27 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: "image file is required" });
     }
 
-    const apiKey = process.env.IMGBB_API_KEY || 'a7324da8420f04b2e6bae6035cf7e25d';
+    const apiKey = 'a7324da8420f04b2e6bae6035cf7e25d'; // Using user-provided key
     const formData = new URLSearchParams();
     formData.append('key', apiKey);
     formData.append('image', file.buffer.toString('base64'));
     
+    console.log('[UploadImage] Sending request to ImgBB...');
     const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[UploadImage] ImgBB API error response:', response.status, errorText);
+        throw new Error(`ImgBB upload failed with status ${response.status}: ${errorText}`);
+    }
+    
     const data = await response.json();
     
     if (data.success && data.data && data.data.url) {
       res.json({ url: data.data.url });
     } else {
-      res.status(500).json({ error: 'ImgBB upload failed' });
+      console.error('[UploadImage] ImgBB API error data:', data);
+      res.status(500).json({ error: `ImgBB upload failed: ${data.error?.message || 'Unknown error'}` });
     }
   } catch (error: any) {
     console.error('ImgBB Upload Error:', error);
