@@ -200,48 +200,45 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
-// Upload File Proxy
+// Upload File Proxy (Transfer from Supabase to Permanent Storage)
 app.post('/api/upload', async (req, res) => {
   try {
-    const { file, path } = req.body;
-    if (!file || !path) throw new Error("File and path are required");
-
-    const matches = file.match(/^data:([A-Za-z-+\/]*);base64,(.+)$/);
-    let buffer;
-    let contentType = 'application/octet-stream';
-
-    if (matches && matches.length === 3) {
-      contentType = matches[1] || 'application/octet-stream';
-      buffer = Buffer.from(matches[2], 'base64');
-    } else {
-      buffer = Buffer.from(file.split(',')[1] || file, 'base64');
+    const { supabaseUrl, path, contentType } = req.body;
+    
+    if (!supabaseUrl || !path) {
+      return res.status(400).json({ error: "supabaseUrl and path are required" });
     }
 
-    if (contentType === 'application/octet-stream' || !contentType) {
-        const ext = path.split('.').pop()?.toLowerCase();
-        if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
-        else if (ext === 'png') contentType = 'image/png';
-        else if (ext === 'gif') contentType = 'image/gif';
-        else if (ext === 'webp') contentType = 'image/webp';
-        else if (ext === 'svg') contentType = 'image/svg+xml';
-        else if (ext === 'mp4') contentType = 'video/mp4';
-        else if (ext === 'webm') contentType = 'video/webm';
+    console.log(`[Upload Proxy] Transferring ${path} from Supabase to permanent storage...`);
+
+    // 1. Download from Supabase
+    const response = await fetch(supabaseUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download from Supabase: ${response.statusText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = contentType || response.headers.get('content-type') || 'application/octet-stream';
+
+    // 2. Transfer to Permanent Storage (GitHub -> GitLab -> JsonHosting)
+    try {
+      const permanentUrl = await repoManager.uploadAsset(buffer, path, mimeType);
+      console.log('Successfully uploaded to permanent storage:', permanentUrl);
+      
+      // Optional: Delete from Supabase after successful transfer to save space
+      // We'll leave it for now as a temporary backup, or it can be cleaned up later.
+      
+      res.json({ url: permanentUrl, temporaryUrl: supabaseUrl });
+    } catch (storageErr: any) {
+      console.error('Permanent storage failed:', storageErr);
+      // If permanent storage fails, return Supabase URL as fallback
+      res.json({ url: supabaseUrl, warning: 'Permanent storage failed, using temporary URL' });
     }
 
-    const { data, error } = await supabase.storage
-      .from('assets')
-      .upload(path, buffer, {
-        contentType: contentType,
-        upsert: true
-      });
-
-    if (error) throw error;
-
-    const { data: publicUrlData } = supabase.storage.from('assets').getPublicUrl(path);
-    res.json({ url: publicUrlData.publicUrl });
   } catch (error: any) {
     console.error('Upload Proxy Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
   }
 });
 
