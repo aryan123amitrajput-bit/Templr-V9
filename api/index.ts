@@ -202,7 +202,8 @@ app.get('/api/proxy', async (req, res) => {
         res.send(Buffer.from(buffer));
     } catch (e: any) {
         console.error(`[Proxy] Failed to fetch ${url}:`, e);
-        res.status(500).json({ error: e.message });
+        console.log(`[Proxy] Redirecting to images.weserv.nl for ${url}`);
+        res.redirect(`https://images.weserv.nl/?url=${encodeURIComponent(url)}`);
     }
 });
 

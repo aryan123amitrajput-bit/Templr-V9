@@ -370,6 +370,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         crossOrigin="anonymous"
                         alt={`${title} Preview`}
                         referrerPolicy="strict-origin-when-cross-origin"
+                        onLoad={() => {
+                            console.log(`[TemplateCard] Image loaded for ${title}:`, signedBanner || proxiedBanner);
+                        }}
                         onError={() => {
                             console.log(`[TemplateCard] Image load error for ${title}:`, signedBanner || proxiedBanner);
                             handleImageError();
@@ -378,7 +381,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     />
                 ) : (
                     // Fallback Gradient - Only if no image or error
-                    <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
+                    <div className="w-full h-full flex items-center justify-center bg-red-500">
                         <div className="text-center p-4 opacity-40">
                             <LayersIcon className="w-10 h-10 text-zinc-500 mx-auto mb-2" />
                             <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{imageError ? 'Load Error' : 'No Preview'}</p>
