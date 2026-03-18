@@ -186,10 +186,14 @@ app.get('/api/proxy', async (req, res) => {
         });
         clearTimeout(timeoutId);
         
+        console.log(`[Proxy] Fetched ${url}, status: ${response.status}, contentType: ${response.headers.get('content-type')}`);
+        
         if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
         
         const buffer = await response.arrayBuffer();
         const contentType = response.headers.get('content-type');
+        
+        console.log(`[Proxy] Buffer size: ${buffer.byteLength} bytes`);
         
         if (contentType) res.setHeader('Content-Type', contentType);
         res.setHeader('Access-Control-Allow-Origin', '*');

@@ -135,7 +135,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const fixedVideoUrl = videoUrl && videoUrl.startsWith('/') ? `https://img.remit.ee${videoUrl}` : videoUrl;
   const [displayVideoUrl, setDisplayVideoUrl] = useState(fixedVideoUrl);
   const [imageError, setImageError] = useState(false);
-  const [isImageLoading, setIsImageLoading] = useState(true);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -146,6 +145,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
   // Fix relative URLs from Remit that were saved in the database before the fix
   const fixedBanner = rawBanner && rawBanner.startsWith('/') ? `https://img.remit.ee${rawBanner}` : rawBanner;
   const displayBanner = getOptimizedImageUrl(fixedBanner);
+  const proxiedBanner = displayBanner ? `/api/proxy?url=${encodeURIComponent(displayBanner)}` : null;
+  console.log(`[TemplateCard] displayBanner for ${title}:`, displayBanner);
+  console.log(`[TemplateCard] proxiedBanner for ${title}:`, proxiedBanner);
   const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
 
   // Check if image is already loaded (from cache)
@@ -153,10 +155,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
     if (displayBanner) {
         // console.log(`[TemplateCard] Loading preview for ${title}:`, signedBanner || displayBanner);
         if (imgRef.current?.complete) {
-            setIsImageLoading(false);
         }
     } else {
-        setIsImageLoading(false);
     }
   }, [signedBanner, displayBanner, title]);
 
@@ -251,7 +251,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
   // Reset error state if the image URL changes (e.g., component reused)
   useEffect(() => {
       setImageError(false);
-      setIsImageLoading(true);
       setSignedBanner(null);
   }, [displayBanner]);
 
@@ -277,7 +276,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
               return;
           }
           setImageError(true);
-          setIsImageLoading(false);
           return;
       }
 
@@ -333,13 +331,12 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
 
       // 4. Try proxy as a last resort
-      if (displayBanner && !displayBanner.includes('/api/proxy')) {
+      if (displayBanner && !(signedBanner || '').includes('/api/proxy')) {
           setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
           return;
       }
 
       setImageError(true);
-      setIsImageLoading(false);
   };
 
   const cardVariants = {
@@ -363,31 +360,20 @@ const CardContent: React.FC<TemplateCardProps> = ({
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
         <div className="absolute inset-0 bg-[#050505]">
-            {/* Shimmer/Loading State - Brighter with Spinner at z-20 to ensure visibility */}
-            {isImageLoading && !imageError && displayBanner && (
-                <div className="absolute inset-0 z-20 overflow-hidden bg-zinc-800">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer-slide"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-6 h-6 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin opacity-40"></div>
-                    </div>
-                </div>
-            )}
-
             {/* Background Image - z-10 to be above shimmer */}
             <div className="absolute inset-0 z-10">
                 {displayBanner && !imageError ? (
                     <img 
-                        key={signedBanner || displayBanner}
+                        key={signedBanner || proxiedBanner}
                         ref={imgRef}
-                        src={signedBanner || displayBanner}
+                        src={signedBanner || proxiedBanner}
                         alt={`${title} Preview`}
-                        referrerPolicy="no-referrer"
-                        onLoad={() => {
-                            // console.log(`[TemplateCard] Image loaded successfully for ${title}`);
-                            setIsImageLoading(false);
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        onError={() => {
+                            console.log(`[TemplateCard] Image load error for ${title}:`, signedBanner || proxiedBanner);
+                            handleImageError();
                         }}
-                        onError={handleImageError}
-                        className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 opacity-100"
                     />
                 ) : (
                     // Fallback Gradient - Only if no image or error
