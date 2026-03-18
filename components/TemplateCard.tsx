@@ -367,6 +367,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         key={signedBanner || proxiedBanner}
                         ref={imgRef}
                         src={signedBanner || proxiedBanner}
+                        crossOrigin="anonymous"
                         alt={`${title} Preview`}
                         referrerPolicy="strict-origin-when-cross-origin"
                         onError={() => {
