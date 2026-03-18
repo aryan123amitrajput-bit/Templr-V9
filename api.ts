@@ -76,6 +76,19 @@ export const testConnection = async (url: string, key: string): Promise<{ succes
     }
 };
 
+export const fetchWithTimeout = async (url: string, options: any = {}) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (e: any) {
+        clearTimeout(timeoutId);
+        throw e;
+    }
+};
+
 // Robust fetch wrapper with retries for the Supabase client
 const retryingFetch = async (url: any, options: any) => {
     const MAX_RETRIES = 2;
@@ -85,7 +98,7 @@ const retryingFetch = async (url: any, options: any) => {
 
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-            const response = await fetch(url, options);
+            const response = await fetchWithTimeout(url, options);
             
             // If 5xx error, treat as retryable
             if (response.status >= 500 && response.status < 600) {
@@ -407,7 +420,7 @@ export const getPublicTemplates = async (
                 sortBy: sortBy
             });
 
-            const response = await fetch(`/api/templates?${params.toString()}`);
+            const response = await fetchWithTimeout(`/api/templates?${params.toString()}`, {});
             if (!response.ok) {
                 throw new Error(`Backend returned ${response.status}`);
             }
@@ -478,7 +491,7 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
             }
 
             // 2. Fetch from backend (Git/Supabase)
-            const response = await fetch(`/api/templates/${id}`);
+            const response = await fetchWithTimeout(`/api/templates/${id}`, {});
             if (response.ok) {
                 const { data } = await response.json();
                 if (data) return mapTemplate(data);
@@ -511,7 +524,7 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
 
             // 1. Fetch from GitHub (via backend /api/creators)
             try {
-                const response = await fetch('/api/creators');
+                const response = await fetchWithTimeout('/api/creators', {});
                 if (response.ok) {
                     const { data } = await response.json();
                     (data || []).forEach((t: any) => {
@@ -602,7 +615,7 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
 
     const fetchUserTemplates = async () => {
         try {
-            const response = await fetch(`/api/user/templates?email=${encodeURIComponent(userEmail)}`);
+            const response = await fetchWithTimeout(`/api/user/templates?email=${encodeURIComponent(userEmail)}`, {});
             if (!response.ok) throw new Error(`Backend returned ${response.status}`);
             
             const { data } = await response.json();
@@ -676,7 +689,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
     const attempt = async (retryCount = 0): Promise<Template> => {
         try {
             const userEmail = user?.email || 'anonymous@templr.io';
-            const response = await fetch('/api/templates', {
+            const response = await fetchWithTimeout('/api/templates', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ template: dbPayload, userEmail: userEmail })
@@ -738,7 +751,7 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
 
     const attempt = async (retryCount = 0): Promise<void> => {
         try {
-            const response = await fetch(`/api/templates/${id}`, {
+            const response = await fetchWithTimeout(`/api/templates/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ updates: dbPayload, userEmail })
@@ -787,7 +800,7 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
                 if (dbUpdates.banner_url) syncUpdates.author_banner = dbUpdates.banner_url;
                 
                 if (Object.keys(syncUpdates).length > 0) {
-                    const response = await fetch('/api/user/templates', {
+                    const response = await fetchWithTimeout('/api/user/templates', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email: data.user.email, updates: syncUpdates })

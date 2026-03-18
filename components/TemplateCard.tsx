@@ -132,10 +132,33 @@ const CardContent: React.FC<TemplateCardProps> = ({
 }) => {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const fixedVideoUrl = videoUrl && videoUrl.startsWith('/') ? `https://img.remit.ee${videoUrl}` : videoUrl;
+  const [displayVideoUrl, setDisplayVideoUrl] = useState(fixedVideoUrl);
   const [imageError, setImageError] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(true);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const playerRef = useRef<any>(null); // Lottie ref
+
+  const rawBanner = (bannerUrl && bannerUrl.trim() !== '') ? bannerUrl : (imageUrl && imageUrl.trim() !== '' ? imageUrl : null);
+  
+  // Fix relative URLs from Remit that were saved in the database before the fix
+  const fixedBanner = rawBanner && rawBanner.startsWith('/') ? `https://img.remit.ee${rawBanner}` : rawBanner;
+  const displayBanner = getOptimizedImageUrl(fixedBanner);
+  const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
+
+  // Check if image is already loaded (from cache)
+  useEffect(() => {
+    if (displayBanner) {
+        // console.log(`[TemplateCard] Loading preview for ${title}:`, signedBanner || displayBanner);
+        if (imgRef.current?.complete) {
+            setIsImageLoading(false);
+        }
+    } else {
+        setIsImageLoading(false);
+    }
+  }, [signedBanner, displayBanner, title]);
 
   const isZip = fileType === 'zip';
   const hasCode = (sourceCode && sourceCode.trim().length > 0) || isZip;
@@ -225,52 +248,62 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
   };
 
-  const rawBanner = bannerUrl || imageUrl;
-  const displayBanner = getOptimizedImageUrl(rawBanner);
-  const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
-
   // Reset error state if the image URL changes (e.g., component reused)
   useEffect(() => {
       setImageError(false);
+      setIsImageLoading(true);
       setSignedBanner(null);
   }, [displayBanner]);
 
+  // Update video URL if the prop changes
+  useEffect(() => {
+      const fixedVideoUrl = videoUrl && videoUrl.startsWith('/') ? `https://img.remit.ee${videoUrl}` : videoUrl;
+      setDisplayVideoUrl(fixedVideoUrl);
+      setVideoError(false);
+      setVideoReady(false);
+  }, [videoUrl]);
+
   const handleImageError = async () => {
+      if (imageError) return;
+      
+      console.log('[TemplateCard] handleImageError, displayBanner:', displayBanner, 'signedBanner:', signedBanner);
+
+      // If we've already tried a fallback, give up
       if (signedBanner) {
-          // Already tried signed URL, give up
+          // If we haven't tried the proxy yet, try it as a last resort
+          if (!signedBanner.includes('/api/proxy') && displayBanner && !displayBanner.includes('/api/proxy')) {
+              console.log('[TemplateCard] Trying proxy fallback');
+              setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
+              return;
+          }
           setImageError(true);
+          setIsImageLoading(false);
           return;
       }
 
-      // console.warn(`[TemplateCard] Image load failed for ${title}:`, displayBanner);
-
+      // 1. Try Supabase signed URL fallback if it's a Supabase URL
       if (displayBanner && displayBanner.includes('/storage/v1/object/public/')) {
           try {
               const pathParts = displayBanner.split('/storage/v1/object/public/')[1].split('/');
               const bucket = pathParts[0];
               const path = pathParts.slice(1).join('/');
               if (bucket && path) {
-                  // Dynamically import api to avoid circular dependencies if any
                   const api = await import('../api');
-                  const { data, error } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
+                  const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
                   if (data?.signedUrl) {
-                      // console.log("[TemplateCard] Attempting signed URL fallback for:", title);
                       setSignedBanner(data.signedUrl);
                       return;
                   } else {
                       // Try download as last resort
                       const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
                       if (blobData) {
-                          // Fix for "application/octet-stream" issues on old uploads
                           let mimeType = blobData.type;
                           if (!mimeType || mimeType === 'application/octet-stream') {
                               const ext = path.split('.').pop()?.toLowerCase();
                               if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
                               else if (ext === 'png') mimeType = 'image/png';
                               else if (ext === 'webp') mimeType = 'image/webp';
-                              else if (ext === 'gif') mimeType = 'image/gif';
                           }
-                          
                           const correctedBlob = blobData.slice(0, blobData.size, mimeType);
                           const objectUrl = URL.createObjectURL(correctedBlob);
                           setSignedBanner(objectUrl);
@@ -279,11 +312,34 @@ const CardContent: React.FC<TemplateCardProps> = ({
                   }
               }
           } catch (e) {
-              // console.warn("[TemplateCard] Signed URL fallback failed:", e);
+              console.warn("[TemplateCard] Fallback failed:", e);
           }
       }
+
+      // 2. Try the alternative URL if available
+      const currentUrl = signedBanner || displayBanner;
+      const altUrl = (currentUrl === bannerUrl) ? imageUrl : (currentUrl === imageUrl ? bannerUrl : null);
       
+      if (altUrl && altUrl !== currentUrl && altUrl.trim() !== '') {
+          setSignedBanner(altUrl);
+          return;
+      }
+
+      // 3. Cache-busting retry for external hosting
+      if (displayBanner && !displayBanner.includes('retry=')) {
+          const separator = displayBanner.includes('?') ? '&' : '?';
+          setSignedBanner(`${displayBanner}${separator}retry=${Date.now()}`);
+          return;
+      }
+
+      // 4. Try proxy as a last resort
+      if (displayBanner && !displayBanner.includes('/api/proxy')) {
+          setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
+          return;
+      }
+
       setImageError(true);
+      setIsImageLoading(false);
   };
 
   const cardVariants = {
@@ -306,32 +362,49 @@ const CardContent: React.FC<TemplateCardProps> = ({
     >
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
-        <div className="absolute inset-0 z-0 bg-[#111]">
-            {/* Background Image (Always present as fallback/base) */}
-            <div className="absolute inset-0 z-0 bg-zinc-900">
+        <div className="absolute inset-0 bg-[#050505]">
+            {/* Shimmer/Loading State - Brighter with Spinner at z-20 to ensure visibility */}
+            {isImageLoading && !imageError && displayBanner && (
+                <div className="absolute inset-0 z-20 overflow-hidden bg-zinc-800">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer-slide"></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin opacity-40"></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Background Image - z-10 to be above shimmer */}
+            <div className="absolute inset-0 z-10">
                 {displayBanner && !imageError ? (
                     <img 
+                        key={signedBanner || displayBanner}
+                        ref={imgRef}
                         src={signedBanner || displayBanner}
                         alt={`${title} Preview`}
                         referrerPolicy="no-referrer"
-                        loading="lazy"
+                        onLoad={() => {
+                            // console.log(`[TemplateCard] Image loaded successfully for ${title}`);
+                            setIsImageLoading(false);
+                        }}
                         onError={handleImageError}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
                     />
                 ) : (
-                    // Fallback Gradient - Only if no image
-                    <div className="w-full h-full flex items-center justify-center bg-red-500">
-                        <div className="text-center p-4 opacity-10">
-                            <LayersIcon className="w-12 h-12 text-white mx-auto mb-2" />
+                    // Fallback Gradient - Only if no image or error
+                    <div className="w-full h-full flex items-center justify-center bg-zinc-800/50">
+                        <div className="text-center p-4 opacity-40">
+                            <LayersIcon className="w-10 h-10 text-zinc-500 mx-auto mb-2" />
+                            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{imageError ? 'Load Error' : 'No Preview'}</p>
                         </div>
                     </div>
                 )}
             </div>
 
             {/* Video Layer - Only show if valid AND ready */}
-            {videoUrl && videoUrl.trim() !== '' && !videoError && (
+            {displayVideoUrl && displayVideoUrl.trim() !== '' && !videoError && (
                 <div className={`absolute inset-0 z-10 bg-black transition-opacity duration-500 ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <video 
+                        key={displayVideoUrl}
                         ref={videoRef}
                         className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
                         poster={signedBanner || displayBanner || undefined}
@@ -344,11 +417,15 @@ const CardContent: React.FC<TemplateCardProps> = ({
                             setVideoReady(true);
                         }}
                         onError={(e) => {
-                            console.error(`[TemplateCard] Video error for ${title}:`, videoUrl, e);
-                            setVideoError(true);
+                            console.error(`[TemplateCard] Video error for ${title}:`, displayVideoUrl, e);
+                            if (!displayVideoUrl.includes('/api/proxy')) {
+                                setDisplayVideoUrl(`/api/proxy?url=${encodeURIComponent(displayVideoUrl)}`);
+                            } else {
+                                setVideoError(true);
+                            }
                         }}
                     >
-                        <source src={videoUrl} type="video/mp4" />
+                        <source src={displayVideoUrl} type="video/mp4" />
                     </video>
                 </div>
             )}
@@ -474,7 +551,7 @@ const TemplateCard: React.FC<TemplateCardProps> = (props) => {
             className="w-full aspect-[4/3] min-h-[280px] rounded-[24px] relative bg-[#050505] border border-white/5 overflow-hidden"
             style={{ contain: 'content' }} // Performance optimization hint
         >
-            <CardContent {...props} />
+            {inView ? <CardContent {...props} /> : <div className="w-full h-full bg-[#050505] rounded-[24px]"></div>}
         </div>
     );
 };

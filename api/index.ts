@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { getSupabase } from '../server/services/supabaseService';
+import { getSupabase, uploadPreviewImage } from '../server/services/supabaseService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -152,9 +152,52 @@ app.use((req, res, next) => {
   next();
 });
 
+// Global Error Handler for JSON responses
+const errorHandler: express.ErrorRequestHandler = (err, req, res, next) => {
+  console.error('Global Error Handler:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error',
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+};
+
 // Registry Endpoint for dynamic template loading
 app.get('/api/registry', (req, res) => {
   res.json(freeHostService.getRegistry());
+});
+
+// Asset Proxy for CORS bypass
+app.get('/api/proxy', async (req, res) => {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            },
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+        
+        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.send(Buffer.from(buffer));
+    } catch (e: any) {
+        console.error(`[Proxy] Failed to fetch ${url}:`, e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // --- Admin Engine Routes ---
@@ -221,7 +264,7 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
-// Upload File Proxy (New Workflow: ImgLink API)
+// Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     const file = req.file;
@@ -231,63 +274,69 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: "file is required" });
     }
 
-    console.log(`[Upload] Processing file: ${file.originalname}`);
+    console.log(`[Upload] Processing file: ${file.originalname}, Mime: ${file.mimetype}`);
 
-    // 1. Upload image to ImgHippo with retry mechanism
-    const maxRetries = 3;
-    let response;
-    let lastError;
+    const isVideo = file.mimetype.startsWith('video/');
+    let imageUrl = '';
 
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            const formData = new FormData();
-            formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
-            formData.append('api_key', '0bd1d234918f906d353775d006d2b771');
-            
-            // ImgHippo API usually expects the file field to be named 'file'
-            response = await fetch('https://api.imghippo.com/v1/upload', { 
-                method: 'POST', 
-                body: formData
-            });
-            
-            if (response.ok) break;
-            
-            const errorText = await response.text();
-            console.error(`[Upload] ImgHippo API error (attempt ${i + 1}):`, response.status, errorText);
-            throw new Error(`ImgHippo upload failed with status ${response.status}: ${errorText}`);
-        } catch (e: any) {
-            lastError = e;
-            console.warn(`[Upload] Attempt ${i + 1} failed: ${e.message}`);
-            if (i < maxRetries - 1) {
-                await new Promise(r => setTimeout(r, 2000 * (i + 1))); // Exponential backoff
+    if (isVideo) {
+        // 1. For videos, always use Supabase Storage
+        console.log('[Upload] Video detected, using Supabase Storage');
+        imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+    } else {
+        // 2. For images, try ImgHippo first with retry mechanism
+        const maxRetries = 2;
+        let response;
+        let lastError;
+
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                const formData = new FormData();
+                formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+                formData.append('api_key', '0bd1d234918f906d353775d006d2b771');
+                
+                response = await fetch('https://api.imghippo.com/v1/upload', { 
+                    method: 'POST', 
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("application/json")) {
+                        const imgData = await response.json();
+                        if (imgData.success && imgData.data?.url) {
+                            imageUrl = imgData.data.url;
+                            break;
+                        }
+                    }
+                }
+                
+                const errorText = await response.text();
+                console.warn(`[Upload] ImgHippo API error (attempt ${i + 1}):`, response.status, errorText);
+            } catch (e: any) {
+                lastError = e;
+                console.warn(`[Upload] ImgHippo attempt ${i + 1} failed: ${e.message}`);
+                if (i < maxRetries - 1) {
+                    await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                }
+            }
+        }
+
+        // 3. Fallback to Supabase if ImgHippo failed for images
+        if (!imageUrl) {
+            console.log('[Upload] ImgHippo failed or returned no URL, falling back to Supabase Storage');
+            try {
+                imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+            } catch (fallbackError: any) {
+                console.error('[Upload] Supabase fallback also failed:', fallbackError);
+                throw lastError || fallbackError;
             }
         }
     }
 
-    if (!response || !response.ok) {
-        throw lastError || new Error('ImgHippo upload failed after retries');
-    }
-    
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error('[Upload] ImgHippo API returned non-JSON:', text);
-        return res.status(500).json({ error: 'ImgHippo upload failed: Received non-JSON response from server' });
-    }
-    
-    const imgData = await response.json();
-    
-    console.log('[Upload] ImgHippo API response data:', JSON.stringify(imgData, null, 2));
-    
-    // Assuming ImgHippo response structure: { success: true, data: { url: "..." } }
-    if (!imgData.success || !imgData.data?.url) {
-        console.error('[Upload] ImgHippo API error data:', imgData);
-        return res.status(500).json({ error: `ImgHippo upload failed: Invalid response format. Data: ${JSON.stringify(imgData)}` });
-    }
-    const imageUrl = imgData.data.url;
-    console.log('[Upload] ImgHippo URL extracted:', imageUrl);
+    console.log('[Upload] Final URL extracted:', imageUrl);
 
-    // 2. Save template metadata to Supabase if title is provided
+    // 4. Save template metadata to Supabase if title is provided
     if (title) {
         const { data: dbData, error: dbError } = await supabase.from('templates').insert({
             title,
@@ -614,6 +663,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+    app.use(errorHandler);
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
@@ -630,6 +680,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
+  app.use(errorHandler);
   app.listen(PORT, '0.0.0.0');
 }
 

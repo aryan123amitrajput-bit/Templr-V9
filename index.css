@@ -143,3 +143,12 @@
     from { opacity: 0.2; filter: blur(20px); }
     to { opacity: 0.5; filter: blur(35px); }
 }
+
+@keyframes shimmer-slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.animate-shimmer-slide {
+    animation: shimmer-slide 2s infinite;
+}

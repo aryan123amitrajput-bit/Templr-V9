@@ -55,7 +55,12 @@ const uploadToRemit = async (file: Blob): Promise<UploadResult> => {
     const response = await fetch(endpoint, { method: 'POST', body: formData });
     if (!response.ok) throw new Error('Remit upload failed');
     const data = await response.json();
-    return { url: data.url, platformUsed: 'Remit.ee', endpoint };
+    console.log('[Remit Upload] Response:', data);
+    let url = data.url;
+    if (url && url.startsWith('/')) {
+        url = `https://img.remit.ee${url}`;
+    }
+    return { url, platformUsed: 'Remit.ee', endpoint };
 };
 
 const uploadToCatbox = async (file: Blob): Promise<UploadResult> => {
