@@ -176,7 +176,7 @@ app.get('/api/proxy', async (req, res) => {
     
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         
         const response = await fetch(url, {
             headers: {

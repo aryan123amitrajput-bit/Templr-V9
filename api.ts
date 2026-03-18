@@ -78,7 +78,7 @@ export const testConnection = async (url: string, key: string): Promise<{ succes
 
 export const fetchWithTimeout = async (url: string, options: any = {}) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
         const response = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(timeoutId);
