@@ -33,10 +33,29 @@ export function getSupabase() {
  */
 export async function uploadPreviewImage(fileBuffer: Buffer, originalName: string, mimetype: string): Promise<string> {
   const supabase = getSupabase();
-  const bucketName = process.env.SUPABASE_BUCKET || 'templates';
+  
+  // Resilient bucket name resolution
+  let bucketName = 'templates';
+  const envBucket = process.env.SUPABASE_BUCKET;
+  console.log(`[Supabase] Raw SUPABASE_BUCKET from env: "${envBucket ? (envBucket.length > 20 ? envBucket.substring(0, 10) + '...' : envBucket) : 'Not Set'}"`);
+  if (envBucket) {
+    // Remove quotes, trim, remove trailing slashes, replace underscores with hyphens, and lowercase
+    const cleaned = envBucket.replace(/['"]/g, '').trim().split('/')[0].replace(/_/g, '-').toLowerCase();
+    // Remove leading/trailing hyphens and any other invalid characters (only lowercase, numbers, hyphens allowed)
+    const finalCleaned = cleaned.replace(/^-+|-+$/g, '').replace(/[^a-z0-9-]/g, '');
+    
+    // Validate bucket name: must be 3-63 chars, not a token (doesn't start with eyJ), and not empty
+    if (finalCleaned.length >= 3 && finalCleaned.length <= 63 && !finalCleaned.startsWith('eyj')) {
+      bucketName = finalCleaned;
+    } else {
+      console.warn(`[Supabase] Invalid bucket name provided in env ("${envBucket.substring(0, 10)}..."), falling back to default "templates"`);
+    }
+  }
+  
+  console.log(`[Supabase] Using bucket: "${bucketName}" for upload`);
   
   // Generate a unique filename to prevent collisions
-  const fileExt = originalName.split('.').pop();
+  const fileExt = originalName.split('.').pop() || 'bin';
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
   const filePath = `previews/${fileName}`;
 
@@ -45,10 +64,12 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
     .from(bucketName)
     .upload(filePath, fileBuffer, {
       contentType: mimetype,
+      cacheControl: '3600',
       upsert: false
     });
 
   if (error) {
+    console.error(`[Supabase] Upload failed for bucket "${bucketName}":`, error);
     throw new Error(`Supabase upload failed: ${error.message}`);
   }
 

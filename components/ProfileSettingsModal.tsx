@@ -5,6 +5,7 @@ import { XIcon, CameraIcon, CheckCircleIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 import { updateUserProfile, uploadFile, Session } from '../api';
 import { NotificationType } from './Notification';
+import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -77,13 +78,15 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           // 1. Upload new avatar if selected
           if (avatarFile) {
               const path = `avatars/${session.user.id}_${Date.now()}.png`;
-              avatarUrl = await uploadFile(avatarFile, path);
+              const { url } = await uploadFile(avatarFile, path);
+              avatarUrl = url;
           }
 
           // 2. Upload new banner if selected
           if (bannerFile) {
               const path = `avatars/${session.user.id}_banner_${Date.now()}.png`;
-              bannerUrl = await uploadFile(bannerFile, path);
+              const { url } = await uploadFile(bannerFile, path);
+              bannerUrl = url;
           }
 
           // 3. Update Profile
@@ -140,8 +143,10 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             <div className="relative w-full h-48 sm:h-56 bg-zinc-900 group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
                 {bannerPreview ? (
                     <img 
-                        src={bannerPreview} 
+                        src={getProxiedImageUrl(bannerPreview)} 
                         alt="Banner" 
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                     />
                 ) : (
@@ -178,8 +183,10 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     >
                         {avatarPreview ? (
                             <img 
-                                src={avatarPreview} 
+                                src={getProxiedImageUrl(avatarPreview)} 
                                 alt="Avatar" 
+                                crossOrigin="anonymous"
+                                referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                             />
                         ) : (

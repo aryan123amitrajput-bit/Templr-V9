@@ -1,5 +1,14 @@
 /* Tailwind is loaded via CDN in index.html */
 
+:root {
+  --error: #ef4444;
+}
+
+.error {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 /* Container to manage stacking context for the glow */
 .button-container {
     position: relative;

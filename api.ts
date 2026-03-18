@@ -1,5 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
+import { uploadImage } from './src/services/imageUploadService';
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v9.37
@@ -943,16 +944,27 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
-export const uploadFile = async (file: File, path: string): Promise<string> => {
+export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
     if (!file) throw new Error("No file provided for upload.");
+    
+    // Use specialized image upload service for images to ensure iimg.live prioritization and verification
+    if (file.type.startsWith('image/')) {
+        try {
+            const result = await uploadImage(file);
+            return { url: result.url, host: result.platformUsed };
+        } catch (err) {
+            console.warn("[Upload] Specialized image upload service failed, falling back to basic upload:", err);
+        }
+    }
+
     if (!isApiConfigured) {
-        return URL.createObjectURL(file);
+        return { url: URL.createObjectURL(file), host: 'Local/Mock' };
     }
     
     // Sanitize path just in case
     const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
 
-    const attempt = async (retryCount = 0): Promise<string> => {
+    const attempt = async (retryCount = 0): Promise<{ url: string; host: string }> => {
         try {
             console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
 
@@ -977,8 +989,8 @@ export const uploadFile = async (file: File, path: string): Promise<string> => {
             }
 
             const data = await response.json();
-            console.log(`[Upload] File upload success. URL: ${data.url}`);
-            return fixUrl(data.url);
+            console.log(`[Upload] File upload success. URL: ${data.url}, Host: ${data.host}`);
+            return { url: fixUrl(data.url), host: data.host || 'Supabase Storage' };
         } catch (e: any) {
             console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
             

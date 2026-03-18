@@ -265,7 +265,7 @@ class FreeHostService {
 
   private async fetchBatchContent(url: string): Promise<any | null> {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (response.ok) {
         return await response.json();
       }

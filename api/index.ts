@@ -146,6 +146,17 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Middleware to strip trailing slashes from /api/ routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/') && req.path.endsWith('/') && req.path.length > 5) {
+    const query = req.url.slice(req.path.length);
+    const safepath = req.path.slice(0, -1);
+    res.redirect(301, safepath + query);
+  } else {
+    next();
+  }
+});
+
 // Request Logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
@@ -174,36 +185,58 @@ app.get('/api/proxy', async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: 'Missing url' });
     
-    try {
+    const fetchWithFallback = async (targetUrl: string): Promise<{ buffer: ArrayBuffer, contentType: string | null }> => {
+        const urlObj = new URL(targetUrl);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
         
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Referer': 'https://remit.co/'
-            },
-            signal: controller.signal,
-            redirect: 'follow'
-        });
-        clearTimeout(timeoutId);
+        try {
+            const response = await fetch(targetUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Referer': `${urlObj.protocol}//${urlObj.hostname}/`
+                },
+                signal: controller.signal,
+                redirect: 'follow'
+            });
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            return {
+                buffer: await response.arrayBuffer(),
+                contentType: response.headers.get('content-type')
+            };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            throw e;
+        }
+    };
+
+    try {
+        let result;
+        try {
+            result = await fetchWithFallback(url);
+        } catch (e) {
+            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback...`);
+            const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+            result = await fetchWithFallback(fallbackUrl);
+        }
         
-        console.log(`[Proxy] Fetched ${url}, status: ${response.status}, contentType: ${response.headers.get('content-type')}`);
+        const { buffer, contentType } = result;
+        console.log(`[Proxy] Successfully fetched ${url}, size: ${buffer.byteLength} bytes`);
         
-        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
-        
-        const buffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type');
-        
-        console.log(`[Proxy] Buffer size: ${buffer.byteLength} bytes`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
         
         if (contentType) res.setHeader('Content-Type', contentType);
-        res.setHeader('Access-Control-Allow-Origin', '*');
         res.send(Buffer.from(buffer));
-    } catch (e: any) {
-        console.error(`[Proxy] Failed to fetch ${url}:`, e);
-        console.log(`[Proxy] Redirecting to images.weserv.nl for ${url}`);
-        res.redirect(`https://images.weserv.nl/?url=${encodeURIComponent(url)}`);
+    } catch (error: any) {
+        console.error(`[Proxy] Error fetching ${url}:`, error.message);
+        res.status(500).json({ error: `Proxy failed: ${error.message}` });
     }
 });
 
@@ -271,77 +304,324 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
+// Facebook Image Hosting Proxy
+app.get('/api/fb-image', async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter is required' });
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image from Facebook CDN: ${response.statusText}`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Content-Type', contentType);
+    
+    res.send(Buffer.from(buffer));
+  } catch (error: any) {
+    console.error('[FB Proxy] Error fetching image:', error.message);
+    res.status(500).json({ error: `Proxy failed: ${error.message}` });
+  }
+});
+
+app.post('/api/fb-upload', upload.single('file'), async (req, res) => {
+  console.log(`[FB Upload Request] Received POST /api/fb-upload`);
+  try {
+    const file = req.file;
+    if (!file) {
+      console.warn(`[FB Upload Request] No file provided`);
+      return res.status(400).json({ error: "file is required" });
+    }
+    console.log(`[FB Upload Request] File: ${file.originalname}, Size: ${file.size}`);
+
+    const pageIdEnv = process.env.FB_PAGE_ID;
+    const accessTokenEnv = process.env.FB_ACCESS_TOKEN || 'EAANkafEnFlUBQ1rKMcKFn8xZCLwFML1nSnmkuTtGwp5sCrvmcyRg6CfB7v8L4mFrBMX6KYciZCIDzrZAJSHEUSOZCVSaFd18l4f5lbo3ZAJrBu9JlsZAyv77A0CLvB6pDyEcZC8kbkWwROBS0LONb8MeINbhnOP0rnmsZAZAZBSHVkLwPgl5uO78xb8DCzxgZCZCNWBIPY8bIHfyQega6vwIzXZAqG6seZCSACMB31EJgGZBgZDZD';
+
+    console.log(`[FB Upload] Starting Facebook upload process...`);
+    
+    // Step 1: Discover the "Proper" Page ID and Page Token
+    let targetPageId = pageIdEnv || 'me';
+    let targetAccessToken = accessTokenEnv;
+
+    try {
+      console.log(`[FB Upload] Attempting to discover pages for the provided token...`);
+      const accountsResponse = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${accessTokenEnv}`, { signal: AbortSignal.timeout(5000) });
+      const accountsData = await accountsResponse.json() as any;
+
+      if (accountsData.data && accountsData.data.length > 0) {
+        // Use the first page found
+        const firstPage = accountsData.data[0];
+        targetPageId = firstPage.id;
+        targetAccessToken = firstPage.access_token;
+        console.log(`[FB Upload] Discovered Page: ${firstPage.name} (${targetPageId})`);
+      } else {
+        console.log(`[FB Upload] No pages found for this token. Checking if token is already a Page Token...`);
+        const debugResponse = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${accessTokenEnv}&access_token=${accessTokenEnv}`, { signal: AbortSignal.timeout(5000) });
+        const debugData = await debugResponse.json() as any;
+        if (debugData.data?.type === 'PAGE') {
+            console.log(`[FB Upload] Token is already a Page Token for ID: ${debugData.data.profile_id}`);
+            targetPageId = debugData.data.profile_id;
+        }
+      }
+    } catch (discoveryError) {
+      console.warn(`[FB Upload] Page discovery failed, falling back to original credentials:`, discoveryError);
+    }
+
+    const formData = new FormData();
+    formData.append('source', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+    formData.append('published', 'false'); // Don't publish to timeline, just host
+    formData.append('access_token', targetAccessToken);
+
+    let uploadResponse;
+    let retries = 2;
+    
+    while (retries >= 0) {
+      // Try different endpoints/parameters for Facebook
+      const endpoints = [
+        { url: `https://graph.facebook.com/v19.0/${targetPageId}/photos`, params: { temporary: 'true' } },
+        { url: `https://graph.facebook.com/v19.0/${targetPageId}/photos`, params: { published: 'false' } },
+        { url: `https://graph.facebook.com/v19.0/me/photos`, params: { temporary: 'true' } },
+        { url: `https://graph.facebook.com/v19.0/me/photos`, params: { published: 'false' } }
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+            const fbFormData = new FormData();
+            fbFormData.append('source', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+            fbFormData.append('access_token', targetAccessToken);
+            Object.entries(endpoint.params).forEach(([key, val]) => fbFormData.append(key, val));
+
+            console.log(`[FB Upload] Trying endpoint: ${endpoint.url} with params: ${JSON.stringify(endpoint.params)}`);
+            uploadResponse = await fetch(endpoint.url, {
+              method: 'POST',
+              body: fbFormData,
+              signal: AbortSignal.timeout(15000)
+            });
+
+            if (uploadResponse.ok) {
+                console.log(`[FB Upload] Success with endpoint: ${endpoint.url}`);
+                break;
+            } else {
+                const errData = await uploadResponse.json().catch(() => null);
+                console.warn(`[FB Upload] Endpoint ${endpoint.url} failed:`, errData?.error?.message || uploadResponse.statusText);
+                
+                // If it's a deprecation error, skip this endpoint and try next
+                if (errData?.error?.code === 200 || errData?.error?.message?.includes('deprecated')) {
+                    continue;
+                }
+            }
+        } catch (e) {
+            console.warn(`[FB Upload] Fetch error for ${endpoint.url}:`, e);
+        }
+      }
+      
+      if (uploadResponse?.ok) break;
+      
+      if (retries === 0) {
+        throw new Error(`Facebook upload failed after all attempts. This is likely due to deprecated permissions (publish_actions) or invalid token. Please use a different hosting provider.`);
+      }
+      
+      retries--;
+      await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+    }
+
+    const uploadData = await uploadResponse!.json();
+    const photoId = uploadData.id;
+
+    if (!photoId) {
+      throw new Error('Failed to get photo ID from Facebook');
+    }
+
+    console.log(`[FB Upload] Photo uploaded. ID: ${photoId}. Fetching CDN URL...`);
+
+    const photoResponse = await fetch(`https://graph.facebook.com/v19.0/${photoId}?fields=images&access_token=${targetAccessToken}`);
+    if (!photoResponse.ok) {
+      const errData = await photoResponse.json().catch(() => null);
+      throw new Error(`Failed to fetch photo details: ${errData?.error?.message || photoResponse.statusText}`);
+    }
+
+    const photoData = await photoResponse.json();
+    const images = photoData.images;
+
+    if (!images || images.length === 0) {
+      throw new Error('No images returned from Facebook');
+    }
+
+    // Get highest resolution image (usually first in the array)
+    const cdnUrl = images[0].source;
+    
+    console.log(`[FB Upload] Success! CDN URL: ${cdnUrl}`);
+
+    res.json({ success: true, url: cdnUrl, host: 'Facebook CDN' });
+  } catch (error: any) {
+    console.error('[FB Upload] Error:', error);
+    
+    // Server-side fallback if Facebook is deprecated or fails
+    if (error.message.includes('deprecated') || error.message.includes('permission')) {
+      console.log('[FB Upload] Facebook is deprecated. Falling back to General uploader internally...');
+      try {
+        // We can't easily "call" the other route, but we can call a shared function or just duplicate the logic
+        // For simplicity and reliability, let's use the Supabase fallback directly here as a last resort
+        const file = req.file!;
+        const imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+        return res.json({ 
+          success: true, 
+          url: imageUrl, 
+          host: 'Supabase Storage (FB Fallback)',
+          notice: 'Facebook hosting is deprecated, used Supabase instead.'
+        });
+      } catch (fallbackErr: any) {
+        console.error('[FB Upload] Internal fallback also failed:', fallbackErr);
+      }
+    }
+    
+    res.status(500).json({ error: error.message || 'Internal Server Error during FB upload' });
+  }
+});
+
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 app.post('/api/upload', upload.single('file'), async (req, res) => {
+  console.log(`[General Upload Request] Received POST /api/upload`);
   try {
     const file = req.file;
     const { title, description } = req.body;
-    
     if (!file) {
+      console.warn(`[General Upload Request] No file provided`);
       return res.status(400).json({ error: "file is required" });
     }
+    console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}`);
 
     console.log(`[Upload] Processing file: ${file.originalname}, Mime: ${file.mimetype}`);
 
     const isVideo = file.mimetype.startsWith('video/');
     let imageUrl = '';
+    let hostUsed = 'Supabase Storage';
 
     if (isVideo) {
         // 1. For videos, always use Supabase Storage
         console.log('[Upload] Video detected, using Supabase Storage');
         imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+        hostUsed = 'Supabase Storage';
     } else {
-        // 2. For images, try ImgHippo first with retry mechanism
-        const maxRetries = 2;
-        let response;
-        let lastError;
+        // 2. For images, try ImgHippo
+        const requestedHost = req.query.host as string;
+        let hosts = [
+            { 
+                name: 'ImgHippo', 
+                url: 'https://api.imghippo.com/v1/upload', 
+                key: process.env.IMGHIPPO_API_KEY || '0bd1d234918f906d353775d006d2b771',
+                paramName: 'file'
+            },
+            {
+                name: 'ImgBB',
+                url: 'https://api.imgbb.com/1/upload',
+                key: process.env.IMGBB_API_KEY || '3b9d0d0e0e0e0e0e0e0e0e0e0e0e0e0e', // Placeholder, will use env if set
+                paramName: 'image'
+            },
+            {
+                name: 'iimg.live',
+                url: 'https://iimg.live/api/v1/upload',
+                key: process.env.IIMG_LIVE_API_KEY || 'pk_7b0d0efe2149cace9421be28c007011d',
+                paramName: 'file'
+            }
+        ];
 
-        for (let i = 0; i < maxRetries; i++) {
-            try {
-                const formData = new FormData();
-                formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
-                formData.append('api_key', '0bd1d234918f906d353775d006d2b771');
-                
-                response = await fetch('https://api.imghippo.com/v1/upload', { 
-                    method: 'POST', 
-                    body: formData
-                });
-                
-                if (response.ok) {
-                    const contentType = response.headers.get("content-type");
-                    if (contentType && contentType.includes("application/json")) {
-                        const imgData = await response.json();
-                        if (imgData.success && imgData.data?.url) {
-                            imageUrl = imgData.data.url;
-                            break;
-                        }
-                    }
-                }
-                
-                const errorText = await response.text();
-                console.warn(`[Upload] ImgHippo API error (attempt ${i + 1}):`, response.status, errorText);
-            } catch (e: any) {
-                lastError = e;
-                console.warn(`[Upload] ImgHippo attempt ${i + 1} failed: ${e.message}`);
-                if (i < maxRetries - 1) {
-                    await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-                }
+        // If a specific host is requested, ONLY try that host
+        if (requestedHost) {
+            const host = hosts.find(h => h.name.toLowerCase() === requestedHost.toLowerCase());
+            if (host) {
+                hosts = [host];
             }
         }
 
-        // 3. Fallback to Supabase if ImgHippo failed for images
+        for (const host of hosts) {
+            if (!host.key) {
+                console.warn(`[Upload] Skipping ${host.name} because API key is not set.`);
+                continue;
+            }
+
+            console.log(`[Upload] Attempting upload to ${host.name}...`);
+            const maxRetries = 2;
+            let lastError;
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const formData = new FormData();
+                    formData.append(host.paramName, new Blob([file.buffer], { type: file.mimetype }), file.originalname);
+                    
+                    // ImgHippo specifically uses 'api_key'
+                    if (host.name === 'ImgHippo') {
+                        formData.append('api_key', host.key!);
+                    } else {
+                        formData.append('key', host.key!);
+                    }
+
+                    const response = await fetch(host.url, { 
+                        method: 'POST', 
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        let data;
+                        const text = await response.text();
+                        try {
+                            data = JSON.parse(text);
+                        } catch (e) {
+                            console.warn(`[Upload] ${host.name} API returned non-JSON:`, text.substring(0, 100));
+                            throw new Error(`Invalid response from ${host.name}`);
+                        }
+                        
+                        // ImgHippo response structure: { success: true, data: { url: '...' } }
+                        
+                        if (host.name === 'ImgHippo' && data.success && data.data?.url) {
+                            imageUrl = data.data.url;
+                            hostUsed = 'ImgHippo';
+                            break;
+                        } else if (data.error) {
+                            throw new Error(data.error.message || JSON.stringify(data.error));
+                        }
+                    } else {
+                        const errorText = await response.text();
+                        console.warn(`[Upload] ${host.name} API error (attempt ${i + 1}):`, response.status, errorText);
+                        throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 100)}`);
+                    }
+                } catch (e: any) {
+                    lastError = e;
+                    console.warn(`[Upload] ${host.name} attempt ${i + 1} failed: ${e.message}`);
+                    if (i < maxRetries - 1) {
+                        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                    }
+                }
+            }
+
+            if (imageUrl) {
+                console.log(`[Upload] Successfully uploaded to ${host.name}: ${imageUrl}`);
+                break;
+            }
+        }
+
+        // 3. Fallback to Supabase if all external hosts failed for images
         if (!imageUrl) {
-            console.log('[Upload] ImgHippo failed or returned no URL, falling back to Supabase Storage');
+            console.log('[Upload] All external hosts failed, falling back to Supabase Storage');
             try {
                 imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+                hostUsed = 'Supabase Storage';
             } catch (fallbackError: any) {
                 console.error('[Upload] Supabase fallback also failed:', fallbackError);
-                throw lastError || fallbackError;
+                throw new Error('All upload methods failed');
             }
         }
     }
 
     console.log('[Upload] Final URL extracted:', imageUrl);
+    console.log('[Upload] Host used:', hostUsed);
 
     // 4. Save template metadata to Supabase if title is provided
     if (title) {
@@ -355,7 +635,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         if (dbError) throw new Error(`Database save failed: ${dbError.message}`);
     }
 
-    res.json({ success: true, url: imageUrl });
+    res.json({ success: true, url: imageUrl, host: hostUsed });
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
@@ -364,6 +644,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 // Get Public Templates
 app.get('/api/templates', async (req, res) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
   try {
     const page = parseInt(req.query.page as string) || 0;
     const limit = parseInt(req.query.limit as string) || 6;
@@ -375,6 +658,8 @@ app.get('/api/templates', async (req, res) => {
       repoManager.getMergedRegistry(),
       supabase.from('templates').select('*').order('created_at', { ascending: false })
     ]);
+
+    clearTimeout(timeoutId);
 
     const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
     
@@ -440,6 +725,8 @@ app.get('/api/templates', async (req, res) => {
   } catch (error: any) {
     console.error('API Error:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    clearTimeout(timeoutId);
   }
 });
 

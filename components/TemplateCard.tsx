@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
+import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface TemplateCardProps {
   id: string;
@@ -132,7 +133,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 }) => {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const fixedVideoUrl = videoUrl && videoUrl.startsWith('/') ? `https://img.remit.ee${videoUrl}` : videoUrl;
+  const fixedVideoUrl = videoUrl;
   const [displayVideoUrl, setDisplayVideoUrl] = useState(fixedVideoUrl);
   const [imageError, setImageError] = useState(false);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
@@ -142,10 +143,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const rawBanner = (bannerUrl && bannerUrl.trim() !== '') ? bannerUrl : (imageUrl && imageUrl.trim() !== '' ? imageUrl : null);
   
-  // Fix relative URLs from Remit that were saved in the database before the fix
-  const fixedBanner = rawBanner && rawBanner.startsWith('/') ? `https://img.remit.ee${rawBanner}` : rawBanner;
+  const fixedBanner = rawBanner;
   const displayBanner = getOptimizedImageUrl(fixedBanner);
-  const proxiedBanner = displayBanner ? `/api/proxy?url=${encodeURIComponent(displayBanner)}` : null;
+  const proxiedBanner = displayBanner ? getProxiedImageUrl(displayBanner) : null;
   console.log(`[TemplateCard] displayBanner for ${title}:`, displayBanner);
   console.log(`[TemplateCard] proxiedBanner for ${title}:`, proxiedBanner);
   const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
@@ -256,7 +256,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   // Update video URL if the prop changes
   useEffect(() => {
-      const fixedVideoUrl = videoUrl && videoUrl.startsWith('/') ? `https://img.remit.ee${videoUrl}` : videoUrl;
+      const fixedVideoUrl = videoUrl;
       setDisplayVideoUrl(fixedVideoUrl);
       setVideoError(false);
       setVideoReady(false);
@@ -369,7 +369,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         src={signedBanner || proxiedBanner}
                         crossOrigin="anonymous"
                         alt={`${title} Preview`}
-                        referrerPolicy="strict-origin-when-cross-origin"
+                        referrerPolicy="no-referrer"
                         onLoad={() => {
                             console.log(`[TemplateCard] Image loaded for ${title}:`, signedBanner || proxiedBanner);
                         }}
@@ -440,9 +440,10 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
                          <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
                              <img 
-                                src={displayAvatar} 
+                                src={displayAvatar ? getProxiedImageUrl(displayAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`} 
                                 className="w-full h-full object-cover" 
                                 alt={author} 
+                                crossOrigin="anonymous"
                                 onError={(e) => { 
                                     const target = e.target as HTMLImageElement;
                                     if (!target.src.includes('ui-avatars.com')) {

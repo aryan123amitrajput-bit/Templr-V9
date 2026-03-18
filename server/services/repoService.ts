@@ -169,7 +169,7 @@ export class RepoManager {
       // Use jsDelivr CDN for faster public access
       const url = `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`;
       try {
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
         if (response.ok) {
           data = await response.json();
         } else if (response.status === 404) {
@@ -203,7 +203,8 @@ export class RepoManager {
       const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json/raw?ref=main`;
       try {
         const response = await fetch(url, {
-          headers: { 'PRIVATE-TOKEN': repo.token }
+          headers: { 'PRIVATE-TOKEN': repo.token },
+          signal: AbortSignal.timeout(10000)
         });
         if (response.ok) {
           data = await response.json();

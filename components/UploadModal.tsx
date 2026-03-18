@@ -5,6 +5,7 @@ import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeI
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
 import { uploadFile, NewTemplateData, Template } from '../api';
 import { NotificationType } from './Notification';
+import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -93,7 +94,7 @@ const TagInput = ({ value, onChange, placeholder, maxTags = 5 }: { value: string
     );
 };
 
-const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean }) => {
+const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading, host }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean, host?: string }) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +105,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
     };
 
     const hasContent = !!file || !!initialUrl;
-    const previewSrc = file ? URL.createObjectURL(file) : (initialUrl || null);
+    const previewSrc = file ? URL.createObjectURL(file) : (initialUrl ? getProxiedImageUrl(initialUrl) : null);
     
     console.log('[PreviewUploader] file:', file, 'initialUrl:', initialUrl, 'previewSrc:', previewSrc);
 
@@ -132,8 +133,10 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                     {type === 'image' ? (
                         <img 
                             key={previewSrc || 'empty'}
-                            src={previewSrc || undefined} 
+                            src={previewSrc ? getProxiedImageUrl(previewSrc) : undefined} 
                             alt="Preview" 
+                            crossOrigin="anonymous"
+                            referrerPolicy="no-referrer"
                             onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
                             className="w-full h-full object-contain" 
                         />
@@ -153,6 +156,16 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                         <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center">
                             <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                             <p className="text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">Uploading Media...</p>
+                        </div>
+                    )}
+
+                    {/* Host Badge */}
+                    {!isUploading && hasContent && (
+                        <div className="absolute top-4 left-4 z-20">
+                            <div className="px-3 py-1 bg-black/60 backdrop-blur border border-white/10 rounded-full text-[9px] font-bold text-blue-400 uppercase tracking-widest shadow-lg flex items-center gap-1.5">
+                                <GlobeIcon className="w-3 h-3" />
+                                {type === 'video' ? 'Supabase Storage' : (host || 'External Host')}
+                            </div>
                         </div>
                     )}
 
@@ -255,17 +268,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadHost, setUploadHost] = useState('');
   const [uploadStatus, setUploadStatus] = useState(''); // "Uploading Video...", "Saving..."
   const [errors, setErrors] = useState<any>({});
   const zipInputRef = useRef<HTMLInputElement>(null);
 
   const handleImmediateUpload = async (file: File) => {
+      if (previewType === 'image' && !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+          onShowNotification('Please select an image file (JPEG, PNG, GIF, WebP)', 'error');
+          return;
+      }
+      
       setPreviewFile(file);
       setIsUploadingImage(true);
+      setUploadHost('');
       try {
           const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
           const path = `${previewType}s/${Date.now()}_${safeName}`;
-          const url = await uploadFile(file, path);
+          const { url, host } = await uploadFile(file, path);
           
           if (previewType === 'video') {
               setExistingVideoUrl(url);
@@ -274,7 +294,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingImageUrl(url);
               setExistingVideoUrl('');
           }
-          onShowNotification("Media uploaded!", 'success');
+          setUploadHost(host);
+          onShowNotification(`Media uploaded via ${host}!`, 'success');
       } catch (e: any) {
           onShowNotification("Upload failed: " + e.message, 'error');
           setPreviewFile(null);
@@ -347,7 +368,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
           let zipUrl = '';
           if (zipFile) {
               const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-              zipUrl = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
+              const { url } = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
+              zipUrl = url;
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
               zipUrl = initialData.fileUrl;
           }
@@ -421,6 +443,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         onSelect={handleImmediateUpload} 
                         error={errors.preview}
                         isUploading={isUploadingImage}
+                        host={uploadHost}
                     />
                 </section>
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface SafePageProps {
   error?: Error;
@@ -12,8 +13,9 @@ const SafePage: React.FC<SafePageProps> = ({ error, resetErrorBoundary }) => {
       {/* Mobile Background Image */}
       <div className="block md:hidden absolute inset-0 z-0">
         <img 
-          src="https://i.ibb.co/G4b0j4FM/1773488950133-019cec2d-33f7-7f07-8fec-cfb7474cd0d1.png" 
+          src={getProxiedImageUrl("https://i.ibb.co/G4b0j4FM/1773488950133-019cec2d-33f7-7f07-8fec-cfb7474cd0d1.png")} 
           alt="Network Error" 
+          crossOrigin="anonymous"
           className="w-full h-full object-cover object-center"
           referrerPolicy="no-referrer"
         />
@@ -22,8 +24,9 @@ const SafePage: React.FC<SafePageProps> = ({ error, resetErrorBoundary }) => {
       {/* PC Background Image */}
       <div className="hidden md:block absolute inset-0 z-0">
         <img 
-          src="https://i.ibb.co/39cPTf3X/1773488596042.png" 
+          src={getProxiedImageUrl("https://i.ibb.co/39cPTf3X/1773488596042.png")} 
           alt="Network Error" 
+          crossOrigin="anonymous"
           className="w-full h-full object-cover object-center"
           referrerPolicy="no-referrer"
         />
