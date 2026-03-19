@@ -70,6 +70,7 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
 
   if (error) {
     console.error(`[Supabase] Upload failed for bucket "${bucketName}":`, error);
+    await listBuckets(); // Debugging: List buckets on failure
     throw new Error(`Supabase upload failed: ${error.message}`);
   }
 
@@ -79,4 +80,15 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
     .getPublicUrl(filePath);
 
   return publicUrlData.publicUrl;
+}
+
+export async function listBuckets() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.listBuckets();
+  if (error) {
+    console.error('[Supabase] Error listing buckets:', error);
+    return [];
+  }
+  console.log('[Supabase] Available buckets:', data.map(b => b.name));
+  return data;
 }

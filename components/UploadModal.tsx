@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
-import { uploadFile, NewTemplateData, Template } from '../api';
+import { uploadFile, uploadFileFromUrl, NewTemplateData, Template } from '../api';
 import { NotificationType } from './Notification';
 import { getProxiedImageUrl } from '../lib/imageUtils';
 
@@ -258,6 +258,8 @@ const UploadModal: React.FC<UploadModalProps> = ({
   
   const [previewType, setPreviewType] = useState<'image' | 'video'>('image');
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [urlInput, setUrlInput] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
   
   const [existingImageUrl, setExistingImageUrl] = useState('');
   const [existingVideoUrl, setExistingVideoUrl] = useState('');
@@ -299,6 +301,32 @@ const UploadModal: React.FC<UploadModalProps> = ({
       } catch (e: any) {
           onShowNotification("Upload failed: " + e.message, 'error');
           setPreviewFile(null);
+      } finally {
+          setIsUploadingImage(false);
+      }
+  };
+
+  const handleUrlUpload = async () => {
+      if (!urlInput.trim()) return;
+      
+      setIsUploadingImage(true);
+      setUploadHost('');
+      try {
+          const { url, host } = await uploadFileFromUrl(urlInput);
+          
+          if (previewType === 'video') {
+              setExistingVideoUrl(url);
+              if (!existingImageUrl) setExistingImageUrl(DEFAULT_VIDEO_THUMB);
+          } else {
+              setExistingImageUrl(url);
+              setExistingVideoUrl('');
+          }
+          setUploadHost(host);
+          onShowNotification(`Media uploaded via ${host}!`, 'success');
+          setShowUrlInput(false);
+          setUrlInput('');
+      } catch (e: any) {
+          onShowNotification("URL Upload failed: " + e.message, 'error');
       } finally {
           setIsUploadingImage(false);
       }
@@ -430,12 +458,49 @@ const UploadModal: React.FC<UploadModalProps> = ({
                 <section>
                     <div className="flex items-center justify-between mb-3">
                         <SectionLabel required>Preview Media</SectionLabel>
-                        <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
-                            <button onClick={() => !isSubmitting && togglePreviewType('image')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
-                            <button onClick={() => !isSubmitting && togglePreviewType('video')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setShowUrlInput(!showUrlInput)}
+                                className={`p-1.5 rounded-lg border transition-all ${showUrlInput ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-[#121214] border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
+                                title="Upload from URL"
+                            >
+                                <LinkIcon className="w-4 h-4" />
+                            </button>
+                            <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
+                                <button onClick={() => !isSubmitting && togglePreviewType('image')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
+                                <button onClick={() => !isSubmitting && togglePreviewType('video')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
+                            </div>
                         </div>
                     </div>
                     
+                    <AnimatePresence>
+                        {showUrlInput && (
+                            <motion.div 
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="mb-4 overflow-hidden"
+                            >
+                                <div className="flex gap-2">
+                                    <StyledInput 
+                                        placeholder="Paste image/video URL here..." 
+                                        value={urlInput}
+                                        onChange={e => setUrlInput(e.target.value)}
+                                        disabled={isUploadingImage}
+                                        onKeyDown={e => e.key === 'Enter' && handleUrlUpload()}
+                                    />
+                                    <button 
+                                        onClick={handleUrlUpload}
+                                        disabled={isUploadingImage || !urlInput.trim()}
+                                        className="px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-colors whitespace-nowrap"
+                                    >
+                                        {isUploadingImage ? '...' : 'Fetch'}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     <PreviewUploader 
                         type={previewType}
                         file={previewFile} 

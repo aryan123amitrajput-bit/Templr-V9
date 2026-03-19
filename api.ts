@@ -345,10 +345,13 @@ export const getPublicTemplates = async (
             // 1. Try to fetch from Master Registry (JSONHosting batches)
             if (!cachedRegistry) {
                 try {
-                    const regRes = await fetch('/api/registry');
+                    console.log("[Registry] Fetching master registry...");
+                    const regRes = await fetchWithTimeout('/api/registry', {});
                     if (regRes.ok) {
                         cachedRegistry = await regRes.json();
                         console.log("[Registry] Loaded master registry:", cachedRegistry.totalTemplates, "templates");
+                    } else {
+                        console.warn("[Registry] Failed to fetch registry, status:", regRes.status);
                     }
                 } catch (e) {
                     console.warn("[Registry] Failed to load registry:", e);
@@ -369,7 +372,7 @@ export const getPublicTemplates = async (
                     
                     if (batchEnd > startIdx && batchStart < endIdx) {
                         try {
-                            const batchRes = await fetch(batch.url);
+                            const batchRes = await fetchWithTimeout(batch.url, {});
                             if (batchRes.ok) {
                                 const batchData = await batchRes.json();
                                 if (batchData && batchData.templates) {
@@ -413,6 +416,7 @@ export const getPublicTemplates = async (
             }
 
             // 2. Fallback to Backend API
+            console.log("[Backend] Fetching templates from backend API...");
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: limit.toString(),
@@ -423,6 +427,7 @@ export const getPublicTemplates = async (
 
             const response = await fetchWithTimeout(`/api/templates?${params.toString()}`, {});
             if (!response.ok) {
+                console.warn("[Backend] Backend API returned status:", response.status);
                 throw new Error(`Backend returned ${response.status}`);
             }
 
@@ -944,6 +949,20 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
+export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
+    if (!url) throw new Error("No URL provided for upload.");
+    
+    try {
+        const { uploadFromUrl } = await import('./src/services/imageUploadService');
+        const result = await uploadFromUrl(url);
+        if (!result) throw new Error("Upload from URL failed");
+        return { url: result.direct_url, host: result.provider };
+    } catch (err: any) {
+        console.error("[Upload] Upload from URL failed:", err);
+        throw new Error("Upload from URL failed: " + err.message);
+    }
+};
+
 export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
     if (!file) throw new Error("No file provided for upload.");
     
@@ -951,7 +970,7 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
     if (file.type.startsWith('image/')) {
         try {
             const result = await uploadImage(file);
-            return { url: result.url, host: result.platformUsed };
+            return { url: result.direct_url, host: result.provider };
         } catch (err) {
             console.warn("[Upload] Specialized image upload service failed, falling back to basic upload:", err);
         }
