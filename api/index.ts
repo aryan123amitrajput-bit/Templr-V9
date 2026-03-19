@@ -495,61 +495,6 @@ app.delete('/api/upload/i111666/:imagePath', async (req, res) => {
   }
 });
 
-// Catbox Upload Proxy (Reliable Fallback)
-app.post('/api/upload/catbox', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('[Catbox Upload] Multer error:', err);
-      return res.status(400).json({ error: err.message });
-    }
-    next();
-  });
-}, async (req, res) => {
-  console.log(`[Catbox Upload] Received POST /api/upload/catbox`);
-  try {
-    const file = req.file;
-    const { url } = req.body;
-
-    if (!file && !url) {
-      return res.status(400).json({ error: "file or url is required" });
-    }
-
-    const formData = new FormData();
-    formData.append('reqtype', 'fileupload');
-    
-    if (url) {
-      formData.append('url', url);
-    } else if (file) {
-      const blob = new Blob([file.buffer], { type: file.mimetype });
-      formData.append('fileToUpload', blob, file.originalname);
-    }
-
-    const response = await fetch('https://catbox.moe/user/api.php', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Catbox API failed: ${response.status} ${errorText}`);
-    }
-
-    const directUrl = (await response.text()).trim();
-    
-    res.json({
-      success: true,
-      provider: 'catbox',
-      direct_url: directUrl
-    });
-  } catch (error: any) {
-    console.error('Catbox Upload Error:', error);
-    res.status(500).json({ error: error.message || 'Internal Server Error during Catbox upload' });
-  }
-});
-
 // ImgHippo Upload Proxy (Reliable Fallback)
 app.post('/api/upload/imghippo', (req, res, next) => {
   upload.single('file')(req, res, (err) => {

@@ -69,7 +69,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   // Sync initial templates if provided
   useEffect(() => {
       if (initialTemplates) {
-          console.log(`[Gallery] Received ${initialTemplates.length} templates from parent`);
           setData(initialTemplates);
           // If we receive a fresh batch (likely page 0), reset pagination state for consistency
           if (initialTemplates.length <= 6) {
@@ -109,7 +108,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
           const msg = error?.toLowerCase() || '';
           if (error && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) && retryCount < 2) {
-              console.warn(`Gallery fetch failed, retrying... (${retryCount + 1})`);
               setTimeout(() => fetchData(reset, retryCount + 1), 1000);
               return;
           }
@@ -128,14 +126,9 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       } catch (e: any) {
           const msg = e.message?.toLowerCase() || '';
           if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-              console.warn(`Gallery fetch exception, retrying... (${retryCount + 1})`);
               setTimeout(() => fetchData(reset, retryCount + 1), 1000);
           } else {
-              if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
-                  console.warn("Gallery Fetch Error:", e.message);
-              } else {
-                  console.error("Gallery Fetch Error", e);
-              }
+              // Fetch error
           }
       } finally {
           setIsFetching(false);

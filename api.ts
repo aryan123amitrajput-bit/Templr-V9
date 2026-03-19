@@ -20,8 +20,8 @@ const getSupabaseConfig = () => {
             url = import.meta.env.VITE_SUPABASE_URL || '';
             key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
             
-            if (url) console.log("[Config] Found VITE_SUPABASE_URL in env");
-            if (key) console.log("[Config] Found VITE_SUPABASE_ANON_KEY in env");
+            if (url) {}
+            if (key) {}
         }
     } catch (e) {}
 
@@ -31,12 +31,10 @@ const getSupabaseConfig = () => {
             if (typeof window !== 'undefined') {
                 url = localStorage.getItem('templr_project_url') || '';
                 key = localStorage.getItem('templr_anon_key') || '';
-                if (url) console.log("[Config] Found credentials in LocalStorage");
+                if (url) {}
             }
         } catch(e) {}
     }
-
-    console.log(`[Config] Final URL: ${url ? url.substring(0, 15) + '...' : 'NONE'}`);
 
     let finalUrl = url;
     if (finalUrl && finalUrl.endsWith('/')) {
@@ -95,8 +93,6 @@ const retryingFetch = async (url: any, options: any) => {
     const MAX_RETRIES = 2;
     let lastError;
     
-    console.log(`[Fetch] Request to: ${url.toString().substring(0, 50)}...`);
-
     for (let i = 0; i < MAX_RETRIES; i++) {
         try {
             const response = await fetchWithTimeout(url, options);
@@ -113,7 +109,6 @@ const retryingFetch = async (url: any, options: any) => {
             
             if (i < MAX_RETRIES - 1) {
                 const delay = 1000 * Math.pow(2, i); // 1s, 2s
-                console.warn(`[Network] Fetch failed (${msg}), retrying in ${delay}ms...`);
                 await new Promise(r => setTimeout(r, delay));
             }
         }
@@ -309,7 +304,6 @@ const mapTemplate = (data: any): Template => {
             createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now()
         };
     } catch (e) {
-        console.error("Error mapping template:", e, data);
         return {
             id: 'error-' + Math.random(),
             title: 'Error Loading Template',
@@ -345,16 +339,12 @@ export const getPublicTemplates = async (
             // 1. Try to fetch from Master Registry (JSONHosting batches)
             if (!cachedRegistry) {
                 try {
-                    console.log("[Registry] Fetching master registry...");
                     const regRes = await fetchWithTimeout('/api/registry', {});
                     if (regRes.ok) {
                         cachedRegistry = await regRes.json();
-                        console.log("[Registry] Loaded master registry:", cachedRegistry.totalTemplates, "templates");
                     } else {
-                        console.warn("[Registry] Failed to fetch registry, status:", regRes.status);
                     }
                 } catch (e) {
-                    console.warn("[Registry] Failed to load registry:", e);
                 }
             }
 
@@ -393,7 +383,6 @@ export const getPublicTemplates = async (
                                 }
                             }
                         } catch (e) {
-                            console.error(`[Registry] Failed to fetch batch ${batch.id}:`, e);
                         }
                     }
                     currentCount += batch.count;
@@ -416,7 +405,6 @@ export const getPublicTemplates = async (
             }
 
             // 2. Fallback to Backend API
-            console.log("[Backend] Fetching templates from backend API...");
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: limit.toString(),
@@ -427,7 +415,6 @@ export const getPublicTemplates = async (
 
             const response = await fetchWithTimeout(`/api/templates?${params.toString()}`, {});
             if (!response.ok) {
-                console.warn("[Backend] Backend API returned status:", response.status);
                 throw new Error(`Backend returned ${response.status}`);
             }
 
@@ -436,12 +423,10 @@ export const getPublicTemplates = async (
 
             return { data: mappedData, hasMore };
         } catch (e: any) {
-            console.error("Error fetching public templates:", e);
             
             // 3. Fallback to Supabase directly
             if (isApiConfigured) {
                 try {
-                    console.log("Attempting direct Supabase fallback...");
                     let query = supabase
                         .from('templates')
                         .select('*')
@@ -466,7 +451,6 @@ export const getPublicTemplates = async (
                         };
                     }
                 } catch (fallbackErr) {
-                    console.error("Supabase fallback failed:", fallbackErr);
                 }
             }
 
@@ -516,7 +500,6 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
             
             return null;
         } catch (e: any) {
-            console.error("Error fetching template:", e);
             return null;
         }
     };
@@ -550,7 +533,6 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
                     });
                 }
             } catch (githubErr) {
-                console.warn("GitHub creators fetch failed:", githubErr);
             }
 
             // 2. Fetch from Supabase
@@ -584,7 +566,6 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
                         });
                     }
                 } catch (supabaseErr) {
-                    console.warn("Supabase creators fetch failed:", supabaseErr);
                 }
             }
 
@@ -605,7 +586,6 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
                 const delay = 2000 * Math.pow(1.5, retryCount);
-                console.warn(`Featured creators fetch failed, retrying... (${retryCount + 1}) in ${delay}ms`);
                 await new Promise(r => setTimeout(r, delay));
                 return attempt(retryCount + 1);
             }
@@ -629,7 +609,6 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
             
             callback(mappedTemplates);
         } catch (e: any) {
-            console.error("Error fetching user templates:", e);
             
             // Fallback to Supabase directly
             if (isApiConfigured) {
@@ -644,7 +623,6 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
                         callback(data.map(mapTemplate));
                     }
                 } catch (sbErr) {
-                    console.error("Supabase user templates fallback failed:", sbErr);
                 }
             }
         }
@@ -731,7 +709,6 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
             const msg = error.message?.toLowerCase() || '';
             if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
                 const delay = 2000 * Math.pow(1.5, retryCount);
-                console.warn(`Add template failed, retrying... (${retryCount + 1}) in ${delay}ms`);
                 await new Promise(r => setTimeout(r, delay));
                 return attempt(retryCount + 1);
             }
@@ -769,7 +746,6 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
         } catch (e: any) {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-                console.warn(`Update template failed, retrying... (${retryCount + 1})`);
                 await new Promise(r => setTimeout(r, 1000));
                 return attempt(retryCount + 1);
             }
@@ -822,7 +798,6 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
     } catch (e: any) {
         const msg = e.message?.toLowerCase() || '';
         if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-            console.warn(`Update profile failed, retrying... (${retryCount + 1})`);
             await new Promise(r => setTimeout(r, 1000));
             return attempt(retryCount + 1);
         }
@@ -847,11 +822,6 @@ export const updateUserUsage = async (count: number) => {
             await new Promise(r => setTimeout(r, 1000));
             return attempt(retryCount + 1);
         }
-        if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
-            console.warn("Sync usage error:", e.message);
-        } else {
-            console.error("Sync usage error:", e);
-        }
     }
   };
 
@@ -870,11 +840,6 @@ export const setProStatus = async (status: boolean) => {
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
                 await new Promise(r => setTimeout(r, 1000));
                 return attempt(retryCount + 1);
-            }
-            if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
-                console.warn("Pro Status update failed:", e.message);
-            } else {
-                console.error("Pro Status update failed:", e);
             }
         }
     };
@@ -929,7 +894,6 @@ export const deleteTemplate = async (templateId: string): Promise<void> => {
         } catch (e: any) {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-                console.warn(`Delete template failed, retrying... (${retryCount + 1})`);
                 await new Promise(r => setTimeout(r, 1000));
                 return attempt(retryCount + 1);
             }
@@ -958,7 +922,6 @@ export const uploadFileFromUrl = async (url: string): Promise<{ url: string; hos
         if (!result) throw new Error("Upload from URL failed");
         return { url: result.direct_url, host: result.provider };
     } catch (err: any) {
-        console.error("[Upload] Upload from URL failed:", err);
         throw new Error("Upload from URL failed: " + err.message);
     }
 };
@@ -972,7 +935,6 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
             const result = await uploadImage(file);
             return { url: result.direct_url, host: result.provider };
         } catch (err) {
-            console.warn("[Upload] Specialized image upload service failed, falling back to basic upload:", err);
         }
     }
 
@@ -985,8 +947,6 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
 
     const attempt = async (retryCount = 0): Promise<{ url: string; host: string }> => {
         try {
-            console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
-
             const formData = new FormData();
             formData.append('file', file);
             formData.append('path', safePath);
@@ -1008,11 +968,8 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
             }
 
             const data = await response.json();
-            console.log(`[Upload] File upload success. URL: ${data.url}, Host: ${data.host}`);
             return { url: fixUrl(data.url), host: data.host || 'Supabase Storage' };
         } catch (e: any) {
-            console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
-            
             if (retryCount < 2) {
                 await new Promise(r => setTimeout(r, 1000));
                 return attempt(retryCount + 1);
@@ -1031,7 +988,6 @@ export const getSession = async (): Promise<Session | null> => {
         
         if (error) {
             if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
-                console.warn("[Auth] Invalid Refresh Token detected in getSession. Clearing session.");
                 await supabase.auth.signOut();
                 return null;
             }
@@ -1051,7 +1007,6 @@ export const getSession = async (): Promise<Session | null> => {
             }
         };
     } catch (e: any) {
-        console.warn("getSession failed (likely network error to Supabase):", e.message);
         return null;
     }
 };
@@ -1067,7 +1022,6 @@ export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Se
 
             // Handle token refresh errors that might come through as events or session updates
             if (event === 'TOKEN_REFRESHED') {
-                console.log("[Auth] Token refreshed successfully");
             }
 
             const mappedSession = session ? {
@@ -1085,7 +1039,6 @@ export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Se
         });
         return subscription;
     } catch (e: any) {
-        console.warn("Auth listener failed (likely network error to Supabase):", e.message);
         return { unsubscribe: () => {} };
     }
 };
@@ -1093,10 +1046,7 @@ export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Se
 
 
 export const signInWithEmail = async (email: string, pass: string) => {
-    console.log("Attempting sign in for:", email);
-    
     if (!isApiConfigured) {
-        console.warn("API not configured, using mock login");
         return { 
             session: { 
                 user: { 
@@ -1113,7 +1063,7 @@ export const signInWithEmail = async (email: string, pass: string) => {
         // Force sign out first to clear any stale state that might cause "Refresh Token Not Found"
         // This is a nuclear fix for the specific error the user is seeing.
         const { error: signOutError } = await supabase.auth.signOut();
-        if (signOutError) console.warn("Pre-login signout warning:", signOutError.message);
+        if (signOutError) {}
 
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
@@ -1142,15 +1092,12 @@ export const signInWithEmail = async (email: string, pass: string) => {
         return { session: null, error: "No session returned" };
 
     } catch (e: any) {
-        console.error("Sign in failed:", e.message);
         throw e;
     }
 };
 
 
 export const signUpWithEmail = async (email: string, pass: string, name: string) => {
-    console.log("Attempting sign up for:", email);
-    
     if (!isApiConfigured) {
         throw new Error("Supabase is not configured. Please check your environment variables.");
     }
@@ -1169,10 +1116,8 @@ export const signUpWithEmail = async (email: string, pass: string, name: string)
 
         if (error) throw error;
         
-        console.log("Sign up success, session received:", !!data.session);
         return data;
     } catch (e: any) {
-        console.error("Sign up exception:", e);
         throw new Error(e.message || "Signup failed");
     }
 };

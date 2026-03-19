@@ -159,15 +159,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
                         </div>
                     )}
 
-                    {/* Host Badge */}
-                    {!isUploading && hasContent && (
-                        <div className="absolute top-4 left-4 z-20">
-                            <div className="px-3 py-1 bg-black/60 backdrop-blur border border-white/10 rounded-full text-[9px] font-bold text-blue-400 uppercase tracking-widest shadow-lg flex items-center gap-1.5">
-                                <GlobeIcon className="w-3 h-3" />
-                                {type === 'video' ? 'Supabase Storage' : (host || 'External Host')}
-                            </div>
-                        </div>
-                    )}
+
 
                     {/* Change Button (Only when not uploading) */}
                     {!isUploading && (
@@ -297,7 +289,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingVideoUrl('');
           }
           setUploadHost(host);
-          onShowNotification(`Media uploaded via ${host}!`, 'success');
+          onShowNotification("Media uploaded successfully!", 'success');
       } catch (e: any) {
           onShowNotification("Upload failed: " + e.message, 'error');
           setPreviewFile(null);
@@ -322,7 +314,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingVideoUrl('');
           }
           setUploadHost(host);
-          onShowNotification(`Media uploaded via ${host}!`, 'success');
+          onShowNotification("Media uploaded successfully!", 'success');
           setShowUrlInput(false);
           setUrlInput('');
       } catch (e: any) {

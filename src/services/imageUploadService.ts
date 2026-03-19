@@ -109,26 +109,6 @@ const uploadToImgLink = async (file: Blob): Promise<Partial<UploadResult>> => {
     };
 };
 
-const uploadToCatbox = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[Catbox] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/catbox', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Catbox upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'catbox',
-        direct_url: data.direct_url,
-        thumbnail_url: data.direct_url,
-        viewer_url: data.direct_url
-    };
-};
-
 const uploadToImgHippo = async (file: Blob): Promise<Partial<UploadResult>> => {
     console.log('[ImgHippo] Attempting upload via server proxy...');
     const formData = new FormData();
@@ -169,8 +149,7 @@ const uploadToGitHub = async (file: Blob): Promise<Partial<UploadResult>> => {
 // 3. Main Upload Orchestrator
 export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
     const providers = [
-        { name: 'i111666', endpoint: '/api/upload/i111666' },
-        { name: 'catbox', endpoint: '/api/upload/catbox' }
+        { name: 'i111666', endpoint: '/api/upload/i111666' }
     ];
 
     let lastError = '';
@@ -212,7 +191,6 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     
     const providers = [
         { name: 'i111666', fn: uploadToI111666 },
-        { name: 'catbox', fn: uploadToCatbox },
         { name: 'imghippo', fn: uploadToImgHippo },
         { name: 'pixhost', fn: uploadToPixhost },
         { name: 'github', fn: uploadToGitHub }

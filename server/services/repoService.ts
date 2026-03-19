@@ -46,7 +46,6 @@ export class RepoManager {
             repo = parts[1];
           }
         } catch (e) {
-          console.error(`Invalid GitHub URL in GITHUB_REPO_LIST: ${trimmed}`);
         }
       } else {
         // Handle owner/repo format
@@ -93,7 +92,6 @@ export class RepoManager {
           }
           return projectPath;
         } catch (e) {
-          console.error(`Invalid GitLab URL in GITLAB_PROJECT_LIST: ${trimmed}`);
         }
       }
 
@@ -152,7 +150,6 @@ export class RepoManager {
 
   async getRegistry(repo: RepoConfig, useCache = true): Promise<TemplateMetadata[]> {
     if (repo.type === 'github' && (!repo.owner || !repo.repo)) {
-      console.error('GitHub repo config missing owner or repo:', repo);
       return [];
     }
     const cacheKey = repo.type === 'github' ? `${repo.owner}/${repo.repo}` : repo.projectId!;
@@ -195,7 +192,6 @@ export class RepoManager {
           }
         }
       } catch (e: any) {
-        console.error(`GitHub registry fetch error for ${cacheKey}:`, e);
         return [];
       }
     } else {
@@ -214,7 +210,6 @@ export class RepoManager {
           throw new Error(`GitLab error: ${response.statusText}`);
         }
       } catch (e) {
-        console.error(`GitLab registry fetch error for ${cacheKey}:`, e);
         return [];
       }
     }
@@ -371,7 +366,6 @@ export class RepoManager {
           return true; // Success
         }
       } catch (error) {
-        console.error(`Failed to upload template to ${repo.type} repo:`, error);
         // Continue to the next repo
       }
     }
@@ -419,7 +413,6 @@ export class RepoManager {
     // Fetch all registries in parallel
     const registryPromises = repos.map(repo => 
       this.getRegistry(repo).catch(e => {
-        console.error(`Failed to fetch registry for ${repo.type}:`, e);
         return [] as TemplateMetadata[];
       })
     );
@@ -674,7 +667,6 @@ export class RepoManager {
         // Return jsDelivr CDN URL for public access
         return `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/${path}`;
       } catch (e) {
-        console.error(`GitHub upload failed for ${repo.owner}/${repo.repo}:`, e);
         lastError = e;
       }
     }
@@ -711,14 +703,12 @@ export class RepoManager {
         // Return GitLab raw URL
         return `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(path)}/raw?ref=main`;
       } catch (e) {
-        console.error(`GitLab upload failed for ${repo.projectId}:`, e);
         lastError = e;
       }
     }
 
     // 3. Final Fallback: JsonHosting (jsonbin.io)
     try {
-      console.log('Falling back to JsonHosting (jsonbin.io)...');
       const response = await fetch('https://api.jsonbin.io/v3/b', {
         method: 'POST',
         headers: {
@@ -741,7 +731,6 @@ export class RepoManager {
       // Since jsonbin returns JSON, we might need a proxy or just return the bin URL
       return `https://api.jsonbin.io/v3/b/${data.metadata.id}`;
     } catch (e) {
-      console.error('JsonHosting upload failed:', e);
       lastError = e;
     }
 

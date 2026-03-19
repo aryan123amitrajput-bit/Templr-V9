@@ -22,14 +22,9 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
         } catch (e: any) {
             const msg = e.message?.toLowerCase() || '';
             if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
-                console.warn(`Featured creators fetch failed, retrying... (${retryCount + 1})`);
                 setTimeout(() => fetchCreators(retryCount + 1), 1500);
             } else {
-                if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
-                    console.warn("Featured creators fetch failed:", e.message);
-                } else {
-                    console.error(e);
-                }
+                // Featured creators fetch failed
             }
         } finally {
             setLoading(false);

@@ -20,7 +20,7 @@ class SafeBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
+    // Uncaught error
   }
 
   private handleGlobalError = (event: ErrorEvent | PromiseRejectionEvent) => {

@@ -160,7 +160,6 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                   const api = await import('../api');
                   const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
                   if (data?.signedUrl) {
-                      console.log("Using signed URL fallback for modal:", template.title);
                       setSignedImage(data.signedUrl);
                       return;
                   } else {
@@ -185,7 +184,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                   }
               }
           } catch (e) {
-              console.warn("Signed URL fallback failed:", e);
+              // Signed URL fallback failed
           }
       }
       

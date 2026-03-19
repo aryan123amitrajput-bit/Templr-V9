@@ -140,21 +140,17 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("[LoginModal] Submit triggered. Mode:", mode);
     playClickSound();
     setErrors({});
     if (!validateForm()) {
-        console.log("[LoginModal] Validation failed");
         return;
     }
 
     setIsLoading(true);
-    console.log("[LoginModal] Loading state set to true");
     
     // Safety timeout to prevent infinite loading
     const safetyTimeout = setTimeout(() => {
         if (mounted.current) {
-            console.warn("[LoginModal] Safety timeout triggered (90s)");
             setIsLoading(false);
             setErrors(prev => ({ ...prev, global: "Request is taking longer than expected. Please try again." }));
         }
@@ -162,18 +158,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
 
     try {
       if (mode === 'signin') {
-          console.log("[LoginModal] Calling onLogin...");
           await onLogin(email, password);
-          console.log("[LoginModal] onLogin resolved");
           if (mounted.current) {
               setSuccess(true);
               playSuccessSound();
               setTimeout(onClose, 2500); // Extended for cinematic feel
           }
       } else {
-          console.log("[LoginModal] Calling onSignup...");
           const data = await onSignup(email, password, name);
-          console.log("[LoginModal] onSignup resolved", data);
           if (mounted.current && data && (data.session || data.user)) {
               if (!data.session) {
                   try {
@@ -186,7 +178,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
           }
       }
     } catch (err: any) {
-      console.error("[LoginModal] Login Error caught:", err);
       playNotificationSound();
       let displayError = err.message || "An unexpected error occurred.";
       const rawMsg = displayError.toLowerCase();
@@ -206,7 +197,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
           setErrors(prev => ({ ...prev, global: displayError }));
       }
     } finally {
-      console.log("[LoginModal] Finally block reached. Clearing timeout.");
       clearTimeout(safetyTimeout);
       if (mounted.current) {
           setIsLoading(false);

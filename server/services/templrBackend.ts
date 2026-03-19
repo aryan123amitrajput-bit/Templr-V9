@@ -20,7 +20,6 @@ class TemplrBackend {
 
   public async syncAll() {
     // Logic to sync between GitHub and GitLab if needed
-    console.log("Syncing Templr Backend...");
   }
 }
 

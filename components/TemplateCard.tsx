@@ -146,14 +146,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const fixedBanner = rawBanner;
   const displayBanner = getOptimizedImageUrl(fixedBanner);
   const proxiedBanner = displayBanner ? getProxiedImageUrl(displayBanner) : null;
-  console.log(`[TemplateCard] displayBanner for ${title}:`, displayBanner);
-  console.log(`[TemplateCard] proxiedBanner for ${title}:`, proxiedBanner);
   const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
 
   // Check if image is already loaded (from cache)
   useEffect(() => {
     if (displayBanner) {
-        // console.log(`[TemplateCard] Loading preview for ${title}:`, signedBanner || displayBanner);
         if (imgRef.current?.complete) {
         }
     } else {
@@ -265,13 +262,10 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const handleImageError = async () => {
       if (imageError) return;
       
-      console.log('[TemplateCard] handleImageError, displayBanner:', displayBanner, 'signedBanner:', signedBanner);
-
       // If we've already tried a fallback, give up
       if (signedBanner) {
           // If we haven't tried the proxy yet, try it as a last resort
           if (!signedBanner.includes('/api/proxy') && displayBanner && !displayBanner.includes('/api/proxy')) {
-              console.log('[TemplateCard] Trying proxy fallback');
               setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
               return;
           }
@@ -310,7 +304,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                   }
               }
           } catch (e) {
-              console.warn("[TemplateCard] Fallback failed:", e);
+              // Fallback failed
           }
       }
 
@@ -371,10 +365,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         alt={`${title} Preview`}
                         referrerPolicy="no-referrer"
                         onLoad={() => {
-                            console.log(`[TemplateCard] Image loaded for ${title}:`, signedBanner || proxiedBanner);
                         }}
                         onError={() => {
-                            console.log(`[TemplateCard] Image load error for ${title}:`, signedBanner || proxiedBanner);
                             handleImageError();
                         }}
                         className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 opacity-100"
@@ -403,11 +395,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         playsInline
                         preload="auto"
                         onLoadedData={() => {
-                            console.log(`[TemplateCard] Video loaded for ${title}`);
                             setVideoReady(true);
                         }}
                         onError={(e) => {
-                            console.error(`[TemplateCard] Video error for ${title}:`, displayVideoUrl, e);
                             if (!displayVideoUrl.includes('/api/proxy')) {
                                 setDisplayVideoUrl(`/api/proxy?url=${encodeURIComponent(displayVideoUrl)}`);
                             } else {

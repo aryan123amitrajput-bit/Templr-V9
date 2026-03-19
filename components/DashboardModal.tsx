@@ -126,7 +126,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                     }
                 }
             } catch (e) {
-                console.warn("Signed URL fallback failed:", e);
+                // Signed URL fallback failed
             }
         }
         
