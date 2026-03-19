@@ -1,0 +1,26 @@
+{
+  "id": "c81c9bd6-aa6f-4eb1-b080-c99361a8908b",
+  "title": "MobiFlix ",
+  "author": "Lapis",
+  "thumbnail": "https://i.ibb.co/PsHccMs7/image-webp.webp",
+  "category": "Landing Page",
+  "created_at": "2026-03-19T09:44:14.093Z",
+  "tags": [],
+  "name": "MobiFlix ",
+  "description": "",
+  "preview_url": "https://preview.templr.io/v/0sglal56",
+  "image_preview": "https://i.ibb.co/PsHccMs7/image-webp.webp",
+  "banner_url": "https://i.ibb.co/PsHccMs7/image-webp.webp",
+  "gallery_images": [
+    "https://i.ibb.co/PsHccMs7/image-webp.webp"
+  ],
+  "file_url": "https://www.figma.com/design/0EtCXmvcdT2K1AZqPZcypJ/giveaway-03?node-id=0-1&t=i8NsTK9OhSRg9YUl-1",
+  "creator": "Lapis",
+  "creator_email": "templrsaas@gmail.com",
+  "creator_avatar": "https://risynxckpsgqgprnaccr.supabase.co/storage/v1/object/public/assets/avatars/533f120c-ef5b-417b-b591-a3d70164e962_1768222086088.png",
+  "price": "Free",
+  "stats": {
+    "likes": 0,
+    "views": 0
+  }
+}
