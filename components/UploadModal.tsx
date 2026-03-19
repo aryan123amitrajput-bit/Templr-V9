@@ -137,7 +137,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
                             alt="Preview" 
                             crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
+                            onError={(e) => { (e.target as HTMLImageElement).src = getProxiedImageUrl(DEFAULT_VIDEO_THUMB); }}
                             className="w-full h-full object-contain" 
                         />
                     ) : (

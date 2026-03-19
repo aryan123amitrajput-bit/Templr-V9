@@ -160,6 +160,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                   const api = await import('../api');
                   const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
                   if (data?.signedUrl) {
+                      console.log("Using signed URL fallback for modal:", template.title);
                       setSignedImage(data.signedUrl);
                       return;
                   } else {
@@ -184,7 +185,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                   }
               }
           } catch (e) {
-              // Signed URL fallback failed
+              console.warn("Signed URL fallback failed:", e);
           }
       }
       
@@ -328,7 +329,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                         </div>
                         <h1 className="text-2xl font-bold text-white mb-4 line-clamp-2">{template.title}</h1>
                         <div className="flex items-center gap-3">
-                            <img src={template.authorAvatar ? getProxiedImageUrl(template.authorAvatar) : `https://ui-avatars.com/api/?name=${template.author}&background=333&color=fff`} crossOrigin="anonymous" alt={`${template.author} avatar`} className="w-8 h-8 rounded-full" />
+                            <img src={template.authorAvatar ? getProxiedImageUrl(template.authorAvatar) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${template.author}&background=333&color=fff`)} crossOrigin="anonymous" referrerPolicy="no-referrer" alt={`${template.author} avatar`} className="w-8 h-8 rounded-full" />
                             <div className="flex flex-col"><span className="text-[10px] text-slate-500 font-bold uppercase">Creator</span><span className="text-sm font-bold text-white">{template.author}</span></div>
                         </div>
                     </div>
