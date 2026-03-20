@@ -1,6 +1,9 @@
 
 import { Octokit } from 'octokit';
 
+import { uploadToPasteRs } from './pasteService';
+export { uploadToPasteRs };
+
 export interface RepoConfig {
   type: 'github' | 'gitlab';
   owner?: string;
@@ -370,7 +373,15 @@ export class RepoManager {
       }
     }
     
-    // If all repos fail, return false so the caller can fallback to freeHostService
+    // If all repos fail, try Paste.rs as a final backup
+    try {
+      const pasteUrl = await uploadToPasteRs(content);
+      console.log(`[Backup] Template ${templateId} hosted on paste.rs: ${pasteUrl}`);
+      return true; // Consider it a success if backup works
+    } catch (e) {
+      console.error('Paste.rs backup failed:', e);
+    }
+
     return false;
   }
 
@@ -731,7 +742,17 @@ export class RepoManager {
       // Since jsonbin returns JSON, we might need a proxy or just return the bin URL
       return `https://api.jsonbin.io/v3/b/${data.metadata.id}`;
     } catch (e) {
-      lastError = e;
+      console.warn('JsonHosting fallback failed, trying paste.rs...', e);
+    }
+
+    // 4. Ultimate Backup: Paste.rs (for text-based content)
+    if (contentType.startsWith('text/') || contentType === 'application/json' || path.endsWith('.json') || path.endsWith('.txt')) {
+      try {
+        const pasteUrl = await uploadToPasteRs(buffer.toString('utf-8'));
+        return pasteUrl;
+      } catch (e) {
+        lastError = e;
+      }
     }
 
     throw new Error(`All storage backends failed. Last error: ${lastError?.message || 'Unknown'}`);

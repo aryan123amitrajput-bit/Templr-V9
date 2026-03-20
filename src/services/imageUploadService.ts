@@ -64,7 +64,7 @@ const uploadToI111666 = async (file: Blob): Promise<Partial<UploadResult>> => {
     
     const data = await response.json();
     return {
-        provider: 'i111666',
+        provider: '0008888',
         direct_url: data.direct_url,
         thumbnail_url: data.direct_url,
         viewer_url: data.direct_url,
@@ -149,7 +149,7 @@ const uploadToGitHub = async (file: Blob): Promise<Partial<UploadResult>> => {
 // 3. Main Upload Orchestrator
 export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
     const providers = [
-        { name: 'i111666', endpoint: '/api/upload/i111666' }
+        { name: '0008888', endpoint: '/api/upload/i111666' }
     ];
 
     let lastError = '';
@@ -190,7 +190,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     const optimizedBlob = await optimizeImage(file);
     
     const providers = [
-        { name: 'i111666', fn: uploadToI111666 },
+        { name: '0008888', fn: uploadToI111666 },
         { name: 'imghippo', fn: uploadToImgHippo },
         { name: 'pixhost', fn: uploadToPixhost },
         { name: 'github', fn: uploadToGitHub }

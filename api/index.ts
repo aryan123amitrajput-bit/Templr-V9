@@ -5,10 +5,11 @@ import { createServer as createViteServer } from 'vite';
 import { getSupabase, uploadPreviewImage } from '../server/services/supabaseService';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
+import { uploadToI111666 } from '../server/services/i111666Service';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager } from '../server/services/repoService';
+import { repoManager, uploadToPasteRs } from '../server/services/repoService';
 import { freeHostService } from '../server/services/freeHostService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
@@ -310,6 +311,18 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
+// Paste.rs Upload Proxy (Backup Text Hosting)
+app.post('/api/upload/pastesrs', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Content is required' });
+    const url = await uploadToPasteRs(content);
+    res.json({ success: true, url });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 app.post('/api/upload', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
@@ -339,15 +352,29 @@ app.post('/api/upload', (req, res, next) => {
         imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
         hostUsed = 'Supabase Storage';
     } else {
-        console.log('[Upload] Image detected, using ImgBB');
+        console.log('[Upload] Image detected, trying 0008888 -> GitHub -> ImgHippo');
         try {
-            const imgbbResult = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);
-            imageUrl = imgbbResult.direct_url;
-            hostUsed = 'ImgBB';
+            const result = await uploadToI111666(file.buffer, file.originalname, file.mimetype);
+            imageUrl = result.direct_url;
+            hostUsed = '0008888';
         } catch (error: any) {
-            console.error('[Upload] ImgBB failed, falling back to Supabase:', error.message);
-            imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
-            hostUsed = 'Supabase Storage (Fallback)';
+            console.error('[Upload] 0008888 failed, trying GitHub:', error.message);
+            try {
+                const path = `assets/${file.originalname}`;
+                imageUrl = await repoManager.uploadAsset(file.buffer, path, file.mimetype);
+                hostUsed = 'GitHub';
+            } catch (error: any) {
+                console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
+                try {
+                    const result = await uploadToImgHippo(file.buffer, file.originalname);
+                    imageUrl = result.direct_url;
+                    hostUsed = 'ImgHippo';
+                } catch (error: any) {
+                    console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
+                    imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+                    hostUsed = 'Supabase Storage (Fallback)';
+                }
+            }
         }
     }
 

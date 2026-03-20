@@ -289,7 +289,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingVideoUrl('');
           }
           setUploadHost(host);
-          onShowNotification("Media uploaded successfully!", 'success');
+          onShowNotification(`Media uploaded successfully via ${host}!`, 'success');
       } catch (e: any) {
           onShowNotification("Upload failed: " + e.message, 'error');
           setPreviewFile(null);
@@ -314,7 +314,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingVideoUrl('');
           }
           setUploadHost(host);
-          onShowNotification("Media uploaded successfully!", 'success');
+          onShowNotification(`Media uploaded successfully via ${host}!`, 'success');
           setShowUrlInput(false);
           setUrlInput('');
       } catch (e: any) {

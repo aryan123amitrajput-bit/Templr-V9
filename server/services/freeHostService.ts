@@ -1,4 +1,4 @@
-import { repoManager } from './repoService';
+import { repoManager, uploadToPasteRs } from './repoService';
 
 interface TemplateMetadata {
   id: string;
@@ -224,7 +224,18 @@ class FreeHostService {
         return await response.json();
       }
     } catch (e) {
-      console.error(`Upload to JSONHosting failed:`, e);
+      console.error(`Upload to JSONHosting failed, trying paste.rs...`, e);
+      try {
+        const pasteUrl = await uploadToPasteRs(JSON.stringify(content));
+        // Return a mock object that matches the expected structure
+        return {
+          id: `paste_${Date.now()}`,
+          editKey: 'none',
+          rawUrl: pasteUrl
+        };
+      } catch (pasteError) {
+        console.error('Paste.rs backup failed:', pasteError);
+      }
     }
     return null;
   }
