@@ -447,7 +447,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 referrerPolicy="no-referrer"
                                 onError={(e) => { 
                                     const target = e.target as HTMLImageElement;
-                                    if (!target.src.includes('ui-avatars.com')) {
+                                    if (target.getAttribute('data-fallbackTried') !== 'true') {
+                                        target.setAttribute('data-fallbackTried', 'true');
                                         target.src = getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`); 
                                     }
                                 }}
