@@ -135,7 +135,6 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
                             key={previewSrc || 'empty'}
                             src={previewSrc ? getProxiedImageUrl(previewSrc) : undefined} 
                             alt="Preview" 
-                            crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
                             onError={(e) => { (e.target as HTMLImageElement).src = getProxiedImageUrl(DEFAULT_VIDEO_THUMB); }}
                             className="w-full h-full object-contain" 

@@ -6,6 +6,7 @@ import { getSupabase, uploadPreviewImage } from '../server/services/supabaseServ
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToI111666 } from '../server/services/i111666Service';
+import { uploadToGifyu } from '../server/services/gifyuService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -352,27 +353,41 @@ app.post('/api/upload', (req, res, next) => {
         imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
         hostUsed = 'Supabase Storage';
     } else {
-        console.log('[Upload] Image detected, trying 0008888 -> GitHub -> ImgHippo');
+        console.log('[Upload] Image detected, trying 0008888 -> Gifyu -> ImgBB -> GitHub -> ImgHippo');
         try {
             const result = await uploadToI111666(file.buffer, file.originalname, file.mimetype);
             imageUrl = result.direct_url;
-            hostUsed = '0008888';
+            hostUsed = '0008888 (Primary)';
         } catch (error: any) {
-            console.error('[Upload] 0008888 failed, trying GitHub:', error.message);
+            console.error('[Upload] 0008888 failed, trying Gifyu:', error.message);
             try {
-                const path = `assets/${file.originalname}`;
-                imageUrl = await repoManager.uploadAsset(file.buffer, path, file.mimetype);
-                hostUsed = 'GitHub';
+                const result = await uploadToGifyu(file.buffer, file.originalname, file.mimetype);
+                imageUrl = result.direct_url;
+                hostUsed = 'Gifyu (Secondary)';
             } catch (error: any) {
-                console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
+                console.error('[Upload] Gifyu failed, trying ImgBB:', error.message);
                 try {
-                    const result = await uploadToImgHippo(file.buffer, file.originalname);
+                    const result = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);
                     imageUrl = result.direct_url;
-                    hostUsed = 'ImgHippo';
+                    hostUsed = 'ImgBB';
                 } catch (error: any) {
-                    console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
-                    imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
-                    hostUsed = 'Supabase Storage (Fallback)';
+                    console.error('[Upload] ImgBB failed, trying GitHub:', error.message);
+                    try {
+                        const path = `assets/${file.originalname}`;
+                        imageUrl = await repoManager.uploadAsset(file.buffer, path, file.mimetype);
+                        hostUsed = 'GitHub';
+                    } catch (error: any) {
+                        console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
+                        try {
+                            const result = await uploadToImgHippo(file.buffer, file.originalname);
+                            imageUrl = result.direct_url;
+                            hostUsed = 'ImgHippo';
+                        } catch (error: any) {
+                            console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
+                            imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
+                            hostUsed = 'Supabase Storage (Fallback)';
+                        }
+                    }
                 }
             }
         }
@@ -406,6 +421,58 @@ app.post('/api/upload', (req, res, next) => {
 });
 
 // Upload File Proxy (GitHub Fallback)
+app.post('/api/upload/gifyu', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+    console.log(`[Gifyu Upload] Received POST /api/upload/gifyu`);
+    const result = await uploadToGifyu(file.buffer, file.originalname, file.mimetype);
+    
+    res.json({
+      url: result.direct_url,
+      direct_url: result.direct_url,
+      thumbnail_url: result.thumbnail_url,
+      viewer_url: result.viewer_url,
+      host: 'Gifyu'
+    });
+  } catch (error: any) {
+    console.error('[Gifyu Upload Error]:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error during Gifyu upload' });
+  }
+});
+
+app.post('/api/upload/imgbb', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+    console.log(`[ImgBB Upload] Received POST /api/upload/imgbb`);
+    const result = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);
+    
+    res.json({
+      url: result.direct_url,
+      direct_url: result.direct_url,
+      thumbnail_url: result.thumbnail_url,
+      viewer_url: result.viewer_url,
+      host: 'ImgBB'
+    });
+  } catch (error: any) {
+    console.error('[ImgBB Upload Error]:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error during ImgBB upload' });
+  }
+});
+
 app.post('/api/upload/github', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {

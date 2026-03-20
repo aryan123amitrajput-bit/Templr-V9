@@ -101,7 +101,6 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                                         <img 
                                             src={creator.avatarUrl ? getProxiedImageUrl(creator.avatarUrl) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`)} 
                                             alt={creator.name} 
-                                            crossOrigin="anonymous"
                                             referrerPolicy="no-referrer"
                                             onError={(e) => { 
                                                 const target = e.target as HTMLImageElement;

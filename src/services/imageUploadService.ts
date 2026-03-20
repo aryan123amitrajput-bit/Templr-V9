@@ -72,40 +72,43 @@ const uploadToI111666 = async (file: Blob): Promise<Partial<UploadResult>> => {
     };
 };
 
-const uploadToPixhost = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[Pixhost] Attempting upload via server proxy...');
+const uploadToGifyu = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[Gifyu] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
-    const response = await fetch('/api/upload/pixhost', { method: 'POST', body: formData });
+    const response = await fetch('/api/upload/gifyu', { method: 'POST', body: formData });
     if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || 'Pixhost upload failed');
+        throw new Error(err.error || 'Gifyu upload failed');
     }
     
     const data = await response.json();
     return {
-        provider: 'pixhost',
+        provider: 'gifyu',
         direct_url: data.direct_url,
-        thumbnail_url: data.thumbnail_url,
-        viewer_url: data.viewer_url
+        thumbnail_url: data.thumbnail_url || data.direct_url,
+        viewer_url: data.viewer_url || data.direct_url
     };
 };
 
-const uploadToImgLink = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[ImgLink] Attempting upload...');
+const uploadToImgBB = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[ImgBB] Attempting upload via server proxy...');
     const formData = new FormData();
-    formData.append('source', file, 'image.webp');
+    formData.append('file', file, 'image.webp');
     
-    const response = await fetch('https://imglink.io/api/upload', { method: 'POST', body: formData });
-    if (!response.ok) throw new Error('ImgLink upload failed');
+    const response = await fetch('/api/upload/imgbb', { method: 'POST', body: formData });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'ImgBB upload failed');
+    }
     
     const data = await response.json();
     return {
-        provider: 'imglink',
-        direct_url: data.image.url,
-        thumbnail_url: data.image.thumb.url,
-        viewer_url: data.image.url_viewer
+        provider: 'imgbb',
+        direct_url: data.direct_url,
+        thumbnail_url: data.thumbnail_url || data.direct_url,
+        viewer_url: data.viewer_url || data.direct_url
     };
 };
 
@@ -191,9 +194,10 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     
     const providers = [
         { name: '0008888', fn: uploadToI111666 },
-        { name: 'imghippo', fn: uploadToImgHippo },
-        { name: 'pixhost', fn: uploadToPixhost },
-        { name: 'github', fn: uploadToGitHub }
+        { name: 'gifyu', fn: uploadToGifyu },
+        { name: 'imgbb', fn: uploadToImgBB },
+        { name: 'github', fn: uploadToGitHub },
+        { name: 'imghippo', fn: uploadToImgHippo }
     ];
 
     let lastError = '';

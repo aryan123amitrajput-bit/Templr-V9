@@ -269,12 +269,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
       // If we've already tried a fallback, give up
       if (signedBanner) {
-          // If we haven't tried the proxy yet, try it as a last resort
-          if (!signedBanner.includes('/api/proxy') && displayBanner && !displayBanner.includes('/api/proxy')) {
-              console.log('[TemplateCard] Trying proxy fallback');
-              setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
-              return;
-          }
           setImageError(true);
           return;
       }
@@ -330,12 +324,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
           return;
       }
 
-      // 4. Try proxy as a last resort
-      if (displayBanner && !(signedBanner || '').includes('/api/proxy')) {
-          setSignedBanner(`/api/proxy?url=${encodeURIComponent(displayBanner)}`);
-          return;
-      }
-
       setImageError(true);
   };
 
@@ -367,7 +355,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         key={signedBanner || proxiedBanner}
                         ref={imgRef}
                         src={signedBanner || proxiedBanner}
-                        crossOrigin="anonymous"
                         alt={`${title} Preview`}
                         referrerPolicy="no-referrer"
                         onLoad={() => {
@@ -408,11 +395,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         }}
                         onError={(e) => {
                             console.error(`[TemplateCard] Video error for ${title}:`, displayVideoUrl, e);
-                            if (!displayVideoUrl.includes('/api/proxy')) {
-                                setDisplayVideoUrl(`/api/proxy?url=${encodeURIComponent(displayVideoUrl)}`);
-                            } else {
-                                setVideoError(true);
-                            }
+                            setVideoError(true);
                         }}
                     >
                         <source src={displayVideoUrl} type="video/mp4" />
@@ -443,7 +426,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 src={displayAvatar ? getProxiedImageUrl(displayAvatar) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`)} 
                                 className="w-full h-full object-cover" 
                                 alt={author} 
-                                crossOrigin="anonymous"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => { 
                                     const target = e.target as HTMLImageElement;

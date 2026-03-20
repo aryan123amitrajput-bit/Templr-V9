@@ -47,7 +47,6 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
         <img 
           src={getProxiedImageUrl("https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/17531a40-abc9-4446-abb5-e95e7e7e81c4.png")} 
           alt="Footer Background" 
-          crossOrigin="anonymous"
           className="w-full h-full object-cover object-top opacity-100"
           referrerPolicy="no-referrer"
           style={{ 

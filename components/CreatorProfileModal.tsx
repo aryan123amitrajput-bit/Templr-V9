@@ -87,7 +87,6 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         <img 
                             src={getProxiedImageUrl(banner_url)} 
                             alt={`${creatorName} banner`}
-                            crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-60"
                         />
@@ -115,7 +114,6 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     <img 
                                         src={getProxiedImageUrl(avatar_url)} 
                                         alt={creatorName}
-                                        crossOrigin="anonymous"
                                         referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover border border-white/10"
                                     />

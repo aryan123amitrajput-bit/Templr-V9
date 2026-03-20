@@ -165,7 +165,6 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                         <img 
                             src={getProxiedImageUrl(signedBanner || template.bannerUrl)} 
                             onError={handleImageError}
-                            crossOrigin="anonymous"
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                         />

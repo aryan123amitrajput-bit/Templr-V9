@@ -145,7 +145,6 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     <img 
                         src={getProxiedImageUrl(bannerPreview)} 
                         alt="Banner" 
-                        crossOrigin="anonymous"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                     />
@@ -185,7 +184,6 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                             <img 
                                 src={getProxiedImageUrl(avatarPreview)} 
                                 alt="Avatar" 
-                                crossOrigin="anonymous"
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                             />

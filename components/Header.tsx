@@ -148,7 +148,6 @@ const Header: React.FC<HeaderProps> = ({
                                     <img 
                                         src={session.user.user_metadata?.avatar_url ? getProxiedImageUrl(session.user.user_metadata.avatar_url) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(session.user.email || 'U')}&background=333&color=fff`)} 
                                         alt="User" 
-                                        crossOrigin="anonymous"
                                         referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover"
                                     />
