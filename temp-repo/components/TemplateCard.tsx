@@ -274,11 +274,24 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
 
       // 1. Try Supabase signed URL fallback if it's a Supabase URL
-      if (displayBanner && displayBanner.includes('/storage/v1/object/public/')) {
+      const isSupabaseUrl = displayBanner && (displayBanner.includes('/storage/v1/object/public/') || displayBanner.includes('supabase.co'));
+      if (isSupabaseUrl) {
           try {
-              const pathParts = displayBanner.split('/storage/v1/object/public/')[1].split('/');
-              const bucket = pathParts[0];
-              const path = pathParts.slice(1).join('/');
+              let path = '';
+              let bucket = '';
+              
+              if (displayBanner.includes('/storage/v1/object/public/')) {
+                  const pathParts = displayBanner.split('/storage/v1/object/public/')[1].split('/');
+                  bucket = pathParts[0];
+                  path = pathParts.slice(1).join('/');
+              } else {
+                  // Attempt to extract from proxied URL
+                  const urlObj = new URL(displayBanner.includes('http') ? displayBanner : decodeURIComponent(displayBanner.split('url=')[1]));
+                  const pathParts = urlObj.pathname.split('/storage/v1/object/public/')[1].split('/');
+                  bucket = pathParts[0];
+                  path = pathParts.slice(1).join('/');
+              }
+              
               if (bucket && path) {
                   const api = await import('../api');
                   const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
