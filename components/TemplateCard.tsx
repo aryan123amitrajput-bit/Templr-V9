@@ -348,6 +348,10 @@ const CardContent: React.FC<TemplateCardProps> = ({
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
         <div className="absolute inset-0 bg-[#050505]">
+            {/* Technical Grid Overlay */}
+            <div className="absolute inset-0 z-20 opacity-[0.03] pointer-events-none" 
+                 style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+            
             {/* Background Image - z-10 to be above shimmer */}
             <div className="absolute inset-0 z-10">
                 {displayBanner && !imageError ? (
@@ -412,6 +416,13 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     {category}
                  </div>
              </div>
+             <div className="flex flex-col items-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity duration-300">
+                <div className="text-[8px] font-mono text-white/50 uppercase tracking-tighter">ID: {id.slice(0, 8)}</div>
+                <div className="flex items-center gap-1">
+                    <div className="w-1 h-1 rounded-full bg-cyan-500 animate-pulse"></div>
+                    <div className="text-[8px] font-mono text-cyan-500/80 uppercase tracking-tighter">Status: Active</div>
+                </div>
+             </div>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-5 z-30 translate-y-2 group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none">
@@ -440,11 +451,23 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
-                     <button 
-                        onClick={handleLike} 
-                        className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
-                     >
+                 <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                      {hasLink && (
+                        <a 
+                          href={fileUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="group/btn w-11 h-11 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 backdrop-blur-md border border-cyan-500/20 flex items-center justify-center transition-all text-cyan-400"
+                          title="Live Preview"
+                        >
+                          <GlobeIcon className="w-5 h-5" />
+                        </a>
+                      )}
+                      <button 
+                         onClick={handleLike} 
+                         className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
+                      >
                         <div 
                             className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
                                 isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'

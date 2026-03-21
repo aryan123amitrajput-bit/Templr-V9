@@ -11,6 +11,7 @@ import ImageViewerModal from './components/ImageViewerModal';
 import DashboardModal from './components/DashboardModal';
 import LoginModal from './components/LoginModal';
 import CreatorProfileModal from './components/CreatorProfileModal';
+import DesignPrinciples from './components/DesignPrinciples';
 import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
 import SubscriptionModal from './components/SubscriptionModal';
@@ -614,6 +615,17 @@ const App: React.FC = () => {
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}
             />
+          </motion.div>
+        </LazySection>
+        
+        <LazySection minHeight="600px">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <DesignPrinciples />
           </motion.div>
         </LazySection>
         

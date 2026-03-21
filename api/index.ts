@@ -85,12 +85,14 @@ try {
 }
 
 // GitHub Configuration
-const GITHUB_REPO_DEFAULT = 'Templr-V9';
+const GITHUB_REPO_DEFAULT = 'Fluid-Fitness';
 
 function getGitHubConfig() {
   let owner = process.env.GITHUB_OWNER || 'aryan123amitrajput-bit';
   let repo = process.env.GITHUB_REPO || GITHUB_REPO_DEFAULT;
   const token = process.env.GITHUB_TOKEN;
+
+  console.log(`[GitHub Config] Initial: owner=${owner}, repo=${repo}`);
 
   if (repo && repo.includes('github.com')) {
     try {
@@ -98,9 +100,10 @@ function getGitHubConfig() {
       if (urlParts.length >= 2) {
         owner = urlParts[0];
         repo = urlParts[1];
+        console.log(`[GitHub Config] Parsed from URL: owner=${owner}, repo=${repo}`);
       }
     } catch (e) {
-      console.error("Failed to parse GitHub URL from GITHUB_REPO variable");
+      console.error("[GitHub Config] Failed to parse GitHub URL from GITHUB_REPO variable");
     }
   }
 
@@ -182,8 +185,8 @@ const errorHandler: express.ErrorRequestHandler = (err, req, res, next) => {
 };
 
 // Registry Endpoint for dynamic template loading
-app.get('/api/registry', (req, res) => {
-  res.json(freeHostService.getRegistry());
+app.get('/api/registry', async (req, res) => {
+  res.json(await freeHostService.getRegistry());
 });
 
 // Asset Proxy for CORS bypass
@@ -418,7 +421,6 @@ app.post('/api/upload', (req, res, next) => {
     const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
-    console.log('[Upload] Host used:', hostUsed);
 
     if (title) {
         console.log('[Upload] Saving to database...');
@@ -467,7 +469,6 @@ app.post('/api/upload/url', async (req, res) => {
         const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
 
         console.log('[URL Upload] Final URL extracted:', imageUrl);
-        console.log('[URL Upload] Host used:', hostUsed);
 
         res.json({ success: true, url: imageUrl, host: hostUsed });
     } catch (error: any) {
@@ -701,12 +702,20 @@ app.post('/api/upload/i111666', (req, res, next) => {
       body: formData,
       headers: {
         'Auth-Token': authToken,
+        'Referer': 'https://i.111666.best/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const contentType = response.headers.get('content-type');
+      let errorText = '';
+      if (contentType && contentType.includes('application/json')) {
+        const errorJson = await response.json();
+        errorText = JSON.stringify(errorJson);
+      } else {
+        errorText = await response.text();
+      }
       throw new Error(`i111666 API failed: ${response.status} ${errorText}`);
     }
 
@@ -898,40 +907,55 @@ app.get('/api/templates', async (req, res) => {
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
-    const [gitRegistry, { data: supabaseData }] = await Promise.all([
+    console.log(`[API] Fetching templates: page=${page}, limit=${limit}, category=${category}, sortBy=${sortBy}`);
+
+    const [gitRegistry, supabaseResult] = await Promise.all([
       repoManager.getMergedRegistry(),
       supabase.from('templates').select('*').order('created_at', { ascending: false })
     ]);
 
+    console.log(`[API] Fetched gitRegistry: ${gitRegistry.length} templates, supabaseData: ${supabaseResult.data?.length || 0} templates, error: ${supabaseResult.error}`);
+
     clearTimeout(timeoutId);
+    
+    const supabaseData = supabaseResult.data;
 
     const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
     
     const templatesMap = new Map();
     gitRegistry.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, { ...t, _source: 'git' });
+      const id = String(t.id);
+      if (!templatesMap.has(id)) {
+        templatesMap.set(id, { ...t, id, _source: 'git' });
       }
     });
     mappedSupabase.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, t);
+      const id = String(t.id);
+      if (!templatesMap.has(id)) {
+        templatesMap.set(id, { ...t, id });
       }
     });
 
     let registry = Array.from(templatesMap.values());
+    console.log(`[API] Combined registry count: ${registry.length}`);
 
     const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
-    const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
-    registry = registry.filter((t: any) => !deletedIds.has(t.id));
+    const deletedIds = new Set((deletedTemplates || []).map((t: any) => String(t.id)));
+    registry = registry.filter((t: any) => !deletedIds.has(String(t.id)));
+    console.log(`[API] Registry count after deleted filter: ${registry.length}`);
 
     if (category && category !== 'All') {
       registry = registry.filter((t: any) => t.category === category);
+      console.log(`[API] Registry count after category filter (${category}): ${registry.length}`);
     }
     
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
+      registry = registry.filter((t: any) => 
+        (t.name?.toLowerCase().includes(q) || t.title?.toLowerCase().includes(q)) || 
+        t.description?.toLowerCase().includes(q)
+      );
+      console.log(`[API] Registry count after search filter (${searchQuery}): ${registry.length}`);
     }
     
     if (sortBy === 'popular') {
@@ -944,23 +968,41 @@ app.get('/api/templates', async (req, res) => {
 
     const start = page * limit;
     const gitSupabaseCount = registry.length;
+    console.log(`[API] Pagination: page=${page}, limit=${limit}, start=${start}, gitSupabaseCount=${gitSupabaseCount}`);
     
     let paginatedData = [];
     if (start < gitSupabaseCount) {
       paginatedData = registry.slice(start, start + limit);
       if (paginatedData.length < limit) {
         const needed = limit - paginatedData.length;
-        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-        paginatedData.push(...extra);
+        console.log(`[API] Fetching extra from freeHostService: needed=${needed}`);
+        try {
+          // Fetch from the beginning of freeHostService since we just crossed the boundary
+          const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
+          paginatedData.push(...extra);
+        } catch (e) {
+          console.error(`[API] freeHostService.getTemplates failed:`, e);
+        }
       }
     } else {
       const freeHostOffset = start - gitSupabaseCount;
-      const freeHostPage = Math.floor(freeHostOffset / limit);
-      const freeHostLimit = limit;
-      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+      // Calculate which page and how many items to fetch to cover the offset
+      // A more robust way is to fetch a bit more and slice
+      const fetchLimit = freeHostOffset + limit;
+      console.log(`[API] Fetching from freeHostService with offset: offset=${freeHostOffset}, limit=${limit}`);
+      try {
+        // Fetch from page 0 with a larger limit to cover the offset, then slice
+        // This is simpler than calculating complex page/offset logic
+        const allFreeHost = await freeHostService.getTemplates(0, fetchLimit, category, searchQuery);
+        paginatedData = allFreeHost.slice(freeHostOffset, freeHostOffset + limit);
+      } catch (e) {
+        console.error(`[API] freeHostService.getTemplates failed:`, e);
+      }
     }
 
-    const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
+    const freeHostRegistry = await freeHostService.getRegistry();
+    const totalCount = gitSupabaseCount + freeHostRegistry.totalTemplates;
+    console.log(`[API] Pagination: gitSupabaseCount=${gitSupabaseCount}, freeHostTotal=${freeHostRegistry.totalTemplates}, totalCount=${totalCount}, hasMore=${start + limit < totalCount}`);
 
     res.json({ 
       data: paginatedData, 
@@ -1112,21 +1154,18 @@ app.post('/api/templates', async (req, res) => {
     const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
     const metadata = {
       id: templateId,
-      name: template.title || template.name,
-      description: template.description,
-      preview_url: cleanPreviewUrl,
-      image_preview: finalImageUrl,
-      banner_url: finalBannerUrl,
-      gallery_images: finalGalleryImages,
-      file_url: template.file_url,
+      title: template.title || template.name || 'Untitled',
+      description: template.description || '',
+      fileUrl: template.file_url || '',
+      imageUrl: finalImageUrl,
+      bannerUrl: finalBannerUrl,
+      category: template.category || 'All',
       tags: template.tags || [],
-      creator: template.author_name || 'Anonymous',
-      creator_email: template.author_email,
-      creator_avatar: template.author_avatar || '',
+      author: template.author_name || 'Anonymous',
       created_at: new Date().toISOString(),
-      category: template.category,
-      price: template.price,
-      stats: { likes: 0, views: 0 }
+      price: String(template.price || 'Free'),
+      likes: 0,
+      views: 0
     };
 
     try {

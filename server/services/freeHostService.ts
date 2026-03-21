@@ -2,24 +2,18 @@ import { repoManager, uploadToPasteRs } from './repoService';
 
 interface TemplateMetadata {
   id: string;
-  name: string;
-  description?: string;
-  preview_url: string;
-  image_preview: string;
-  banner_url?: string;
-  gallery_images?: string[];
-  file_url?: string;
+  title: string;
+  description: string;
+  fileUrl: string;
+  imageUrl: string;
+  bannerUrl: string;
+  category: string;
   tags: string[];
-  creator: string;
-  creator_email?: string;
-  creator_avatar?: string;
+  author: string;
   created_at: string;
-  category?: string;
-  price?: number;
-  stats: {
-    likes: number;
-    views: number;
-  };
+  price: string;
+  likes: number;
+  views: number;
 }
 
 interface Batch {
@@ -43,11 +37,111 @@ class FreeHostService {
     lastUpdated: new Date().toISOString()
   };
 
+  private readonly MOCK_TEMPLATES: TemplateMetadata[] = [
+    {
+      id: 'fluid-fitness-01',
+      title: 'Vanguard Fitness Dashboard',
+      description: 'A high-performance fitness tracking dashboard with real-time metrics and biometric data visualization.',
+      fileUrl: 'https://fluid-fitness.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1920&auto=format&fit=crop',
+      category: 'SaaS',
+      tags: ['Dashboard', 'Fitness', 'Dark UI', 'React'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 1240,
+      views: 8500
+    },
+    {
+      id: 'fluid-fitness-02',
+      title: 'Aura Meditation App',
+      description: 'Minimalist meditation and mindfulness application with atmospheric soundscapes and breathing guides.',
+      fileUrl: 'https://aura-meditation.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?q=80&w=1920&auto=format&fit=crop',
+      category: 'Mobile',
+      tags: ['Meditation', 'Mindfulness', 'Glassmorphism', 'iOS'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 890,
+      views: 4200
+    },
+    {
+      id: 'fluid-fitness-03',
+      title: 'Titan Strength Trainer',
+      description: 'Brutalist design for heavy lifting and strength training. Focused on raw data and performance tracking.',
+      fileUrl: 'https://titan-strength.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1920&auto=format&fit=crop',
+      category: 'Brutalist',
+      tags: ['Strength', 'Gym', 'Typography', 'Performance'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 2100,
+      views: 12000
+    },
+    {
+      id: 'fluid-fitness-04',
+      title: 'Zenith Yoga Studio',
+      description: 'Elegant and organic landing page for boutique yoga studios. Features fluid animations and soft palettes.',
+      fileUrl: 'https://zenith-yoga.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=1920&auto=format&fit=crop',
+      category: 'Landing Page',
+      tags: ['Yoga', 'Wellness', 'Organic', 'Animations'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 560,
+      views: 3100
+    },
+    {
+      id: 'fluid-fitness-05',
+      title: 'Pulse Cardio Tracker',
+      description: 'Dynamic cardio tracking interface with live heart rate monitoring and route mapping.',
+      fileUrl: 'https://pulse-cardio.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1530143311094-34d807799e8f?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1530143311094-34d807799e8f?q=80&w=1920&auto=format&fit=crop',
+      category: 'SaaS',
+      tags: ['Cardio', 'Running', 'Maps', 'Live Data'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 1450,
+      views: 9200
+    },
+    {
+      id: 'fluid-fitness-06',
+      title: 'Omega Nutrition Planner',
+      description: 'Comprehensive nutrition and meal planning tool with macro tracking and recipe discovery.',
+      fileUrl: 'https://omega-nutrition.vercel.app',
+      imageUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1000&auto=format&fit=crop',
+      bannerUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1920&auto=format&fit=crop',
+      category: 'SaaS',
+      tags: ['Nutrition', 'Diet', 'Planning', 'Recipes'],
+      author: 'Fluid Fitness Team',
+      created_at: new Date().toISOString(),
+      price: 'Free',
+      likes: 780,
+      views: 5400
+    }
+  ];
+
   private readonly BATCH_SIZE = 500;
   private readonly JSON_HOSTING_API = 'https://jsonhosting.com/api/json';
+  private registryLoaded = false;
 
   constructor() {
     this.loadRegistry();
+  }
+
+  private async ensureRegistryLoaded() {
+    if (!this.registryLoaded) {
+      await this.loadRegistry();
+    }
   }
 
   private async loadRegistry() {
@@ -63,8 +157,10 @@ class FreeHostService {
         };
         console.log('Loaded master registry from GitHub');
       }
+      this.registryLoaded = true;
     } catch (e) {
       console.log('No master registry found, starting fresh');
+      this.registryLoaded = true;
     }
   }
 
@@ -78,11 +174,19 @@ class FreeHostService {
     }
   }
 
-  public getRegistry() {
+  public async getRegistry() {
+    await this.ensureRegistryLoaded();
+    if (this.registry.batches.length === 0) {
+      return {
+        ...this.registry,
+        totalTemplates: this.MOCK_TEMPLATES.length
+      };
+    }
     return this.registry;
   }
 
   public async addTemplate(template: TemplateMetadata) {
+    await this.ensureRegistryLoaded();
     let lastBatch = this.registry.batches[this.registry.batches.length - 1];
 
     if (!lastBatch || lastBatch.count >= this.BATCH_SIZE) {
@@ -118,6 +222,7 @@ class FreeHostService {
   }
 
   public async deleteTemplate(templateId: string) {
+    await this.ensureRegistryLoaded();
     for (let i = 0; i < this.registry.batches.length; i++) {
       const batch = this.registry.batches[i];
       const batchContent = await this.fetchBatchContent(batch.url);
@@ -150,6 +255,7 @@ class FreeHostService {
   }
 
   public async updateTemplate(templateId: string, updates: any) {
+    await this.ensureRegistryLoaded();
     for (const batch of this.registry.batches) {
       const batchContent = await this.fetchBatchContent(batch.url);
       if (batchContent && batchContent.templates) {
@@ -165,6 +271,14 @@ class FreeHostService {
   }
 
   public async getTemplateById(templateId: string) {
+    await this.ensureRegistryLoaded();
+    
+    // Check mock templates first if registry is empty
+    if (this.registry.batches.length === 0) {
+      const mock = this.MOCK_TEMPLATES.find(t => t.id === templateId);
+      if (mock) return mock;
+    }
+
     for (const batch of this.registry.batches) {
       const content = await this.fetchBatchContent(batch.url);
       if (content && content.templates) {
@@ -176,6 +290,21 @@ class FreeHostService {
   }
 
   public async getTemplates(page: number, limit: number, category?: string, searchQuery?: string) {
+    await this.ensureRegistryLoaded();
+    
+    // If we have no batches, use mock templates as fallback
+    if (this.registry.batches.length === 0) {
+      let filtered = [...this.MOCK_TEMPLATES];
+      if (category && category !== 'All') {
+        filtered = filtered.filter((t: any) => t.category === category);
+      }
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter((t: any) => t.title?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+      }
+      return filtered.slice(page * limit, (page + 1) * limit);
+    }
+
     const startIdx = page * limit;
     const endIdx = startIdx + limit;
     

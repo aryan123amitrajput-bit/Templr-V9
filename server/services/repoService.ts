@@ -34,7 +34,7 @@ export class RepoManager {
     this.threshold = parseInt(process.env.REPO_THRESHOLD || '1000');
 
     const githubList = process.env.GITHUB_REPO_LIST || '';
-    this.githubRepos = githubList.split(',').filter(Boolean).map(item => {
+    const initialGithubRepos = githubList.split(',').filter(Boolean).map(item => {
       const trimmed = item.trim();
       let owner = '';
       let repo = '';
@@ -68,6 +68,13 @@ export class RepoManager {
       }
       return null;
     }).filter((item): item is { owner: string; repo: string } => item !== null);
+
+    // If no GitHub repos are configured, add Fluid-Fitness as default
+    if (initialGithubRepos.length === 0) {
+      console.log('[RepoManager] No GitHub repos configured, adding default: aryan123amitrajput-bit/Fluid-Fitness');
+      initialGithubRepos.push({ owner: 'aryan123amitrajput-bit', repo: 'Fluid-Fitness' });
+    }
+    this.githubRepos = initialGithubRepos;
 
     const gitlabList = process.env.GITLAB_PROJECT_LIST || '';
     this.gitlabProjects = gitlabList.split(',').filter(Boolean).map(item => {
@@ -166,36 +173,48 @@ export class RepoManager {
 
     let data: TemplateMetadata[] = [];
     if (repo.type === 'github') {
-      // Use jsDelivr CDN for faster public access
-      const url = `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`;
-      try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-        if (response.ok) {
-          data = await response.json();
-        } else if (response.status === 404) {
-          // File not found on CDN, could be new or private
-          data = [];
-        } else {
-          // Fallback to Octokit if CDN fails or for private repos
-          const octokit = new Octokit({ auth: repo.token });
+      // Use jsDelivr CDN for faster public access, with cache busting
+      const cacheBuster = Date.now();
+      const paths = ['registry.json', 'templates/registry.json'];
+      
+      for (const path of paths) {
+        const url = `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/${path}?t=${cacheBuster}`;
+        try {
+          console.log(`[RepoService] Fetching GitHub registry from CDN: ${url}`);
+          const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (response.ok) {
+            data = await response.json();
+            console.log(`[RepoService] Fetched ${data.length} templates from CDN for ${repo.owner}/${repo.repo} at ${path}`);
+            break; // Found it!
+          } else if (response.status === 404) {
+            console.log(`[RepoService] Registry not found on CDN for ${repo.owner}/${repo.repo} at ${path} (404)`);
+          } else {
+            console.warn(`[RepoService] CDN fetch failed for ${repo.owner}/${repo.repo} at ${path} with status ${response.status}`);
+          }
+        } catch (e: any) {
+          console.error(`[RepoService] Error fetching GitHub registry for ${repo.owner}/${repo.repo} at ${path}:`, e.message);
+        }
+      }
+
+      // If data is empty, try Octokit fallback for both paths
+      if (data.length === 0) {
+        console.log(`[RepoService] CDN returned empty registry for ${repo.owner}/${repo.repo}, trying Octokit fallback...`);
+        const octokit = new Octokit({ auth: repo.token });
+        for (const path of paths) {
           try {
             const { data: fileData }: any = await octokit.rest.repos.getContent({
               owner: repo.owner!,
               repo: repo.repo!,
-              path: 'registry.json'
+              path: path
             });
             const content = Buffer.from(fileData.content, 'base64').toString();
             data = JSON.parse(content);
+            console.log(`[RepoService] Octokit fallback fetched ${data.length} templates for ${repo.owner}/${repo.repo} at ${path}`);
+            break;
           } catch (octoErr: any) {
-            if (octoErr.status === 404) {
-              data = [];
-            } else {
-              throw octoErr;
-            }
+            console.error(`[RepoService] Octokit fallback failed for ${repo.owner}/${repo.repo} at ${path}:`, octoErr.message);
           }
         }
-      } catch (e: any) {
-        return [];
       }
     } else {
       // GitLab Raw URL

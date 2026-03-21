@@ -5,14 +5,13 @@ export const uploadToI111666 = async (fileBuffer: Buffer, fileName: string, mime
     const blob = new Blob([fileBuffer], { type: mimeType });
     formData.append('image', blob, fileName);
 
-    // Generate a random token for deletion as requested
     const authToken = crypto.randomBytes(16).toString('hex');
-
     const response = await fetch('https://i.111666.best/image', {
         method: 'POST',
         body: formData,
         headers: {
             'Auth-Token': authToken,
+            'Referer': 'https://i.111666.best/',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
     });

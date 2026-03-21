@@ -19,7 +19,7 @@ class TemplrAuditor {
 
   public async runFullAudit(): Promise<AuditReport[]> {
     const registry = await repoManager.getMergedRegistry();
-    const freeRegistry = freeHostService.getRegistry();
+    const freeRegistry = await freeHostService.getRegistry();
     const allTemplates = [...registry, ...(freeRegistry.batches.flatMap(b => []))]; // Simplified for now
 
     const results: AuditReport[] = [];
