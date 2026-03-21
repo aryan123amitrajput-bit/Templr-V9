@@ -263,7 +263,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                                 muted 
                                                 loop 
                                                 controlsList="nodownload"
-                                                poster={signedImage || displayImage || undefined}
+                                                poster={getProxiedImageUrl(signedImage || displayImage) || undefined}
                                             />
                                         </div>
                                     ) : (

@@ -354,7 +354,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     <img 
                         key={signedBanner || proxiedBanner}
                         ref={imgRef}
-                        src={signedBanner || proxiedBanner}
+                        src={signedBanner ? getProxiedImageUrl(signedBanner) : proxiedBanner}
                         alt={`${title} Preview`}
                         referrerPolicy="no-referrer"
                         onLoad={() => {
@@ -384,7 +384,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         key={displayVideoUrl}
                         ref={videoRef}
                         className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
-                        poster={signedBanner || displayBanner || undefined}
+                        poster={getProxiedImageUrl(signedBanner || displayBanner) || undefined}
                         muted
                         loop
                         playsInline

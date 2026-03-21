@@ -1,12 +1,14 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
 import { getSupabase, uploadPreviewImage } from '../server/services/supabaseService';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToI111666 } from '../server/services/i111666Service';
 import { uploadToGifyu } from '../server/services/gifyuService';
+import { uploadToCatbox } from '../server/services/catboxService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -325,6 +327,75 @@ app.post('/api/upload/pastesrs', async (req, res) => {
 });
 
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
+async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
+    const isVideo = mimetype.startsWith('video/');
+    let imageUrl = '';
+    let hostUsed = 'Supabase Storage';
+
+    if (isVideo) {
+        console.log('[Upload] Video detected, using Supabase Storage');
+        imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
+        hostUsed = 'Supabase Storage';
+    } else {
+        console.log('[Upload] Image detected, trying 0008888 -> BeeIMG -> Catbox -> Gifyu -> ImgBB -> GitHub -> ImgHippo');
+        try {
+            const result = await uploadToI111666(buffer, originalname, mimetype);
+            imageUrl = result.direct_url;
+            hostUsed = '0008888 (Primary)';
+        } catch (error: any) {
+            console.error('[Upload] 0008888 failed, trying BeeIMG:', error.message);
+            try {
+                const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+                const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
+                imageUrl = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+                hostUsed = 'BeeIMG (Secondary)';
+            } catch (error: any) {
+                console.error('[Upload] BeeIMG failed, trying Catbox:', error.message);
+                try {
+                    const userhash = process.env.CATBOX_USERHASH || '';
+                    const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+                    imageUrl = result.direct_url;
+                    hostUsed = 'Catbox (Tertiary)';
+                } catch (error: any) {
+                    console.error('[Upload] Catbox failed, trying Gifyu:', error.message);
+                    try {
+                        const result = await uploadToGifyu(buffer, originalname, mimetype);
+                        imageUrl = result.direct_url;
+                        hostUsed = 'Gifyu (Quaternary)';
+                    } catch (error: any) {
+                        console.error('[Upload] Gifyu failed, trying ImgBB:', error.message);
+                        try {
+                        const result = await uploadToImgBB(buffer, originalname, mimetype);
+                        imageUrl = result.direct_url;
+                        hostUsed = 'ImgBB';
+                    } catch (error: any) {
+                        console.error('[Upload] ImgBB failed, trying GitHub:', error.message);
+                        try {
+                            const path = `assets/${originalname}`;
+                            imageUrl = await repoManager.uploadAsset(buffer, path, mimetype);
+                            hostUsed = 'GitHub';
+                        } catch (error: any) {
+                            console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
+                            try {
+                                const result = await uploadToImgHippo(buffer, originalname);
+                                imageUrl = result.direct_url;
+                                hostUsed = 'ImgHippo';
+                            } catch (error: any) {
+                                console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
+                                imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
+                                hostUsed = 'Supabase Storage (Fallback)';
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+    return { imageUrl, hostUsed };
+}
+
+// Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 app.post('/api/upload', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -344,57 +415,9 @@ app.post('/api/upload', (req, res, next) => {
     }
     console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}, Mime: ${file.mimetype}`);
 
-    const isVideo = file.mimetype.startsWith('video/');
-    let imageUrl = '';
-    let hostUsed = 'Supabase Storage';
-
-    if (isVideo) {
-        console.log('[Upload] Video detected, using Supabase Storage');
-        imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
-        hostUsed = 'Supabase Storage';
-    } else {
-        console.log('[Upload] Image detected, trying 0008888 -> Gifyu -> ImgBB -> GitHub -> ImgHippo');
-        try {
-            const result = await uploadToI111666(file.buffer, file.originalname, file.mimetype);
-            imageUrl = result.direct_url;
-            hostUsed = '0008888 (Primary)';
-        } catch (error: any) {
-            console.error('[Upload] 0008888 failed, trying Gifyu:', error.message);
-            try {
-                const result = await uploadToGifyu(file.buffer, file.originalname, file.mimetype);
-                imageUrl = result.direct_url;
-                hostUsed = 'Gifyu (Secondary)';
-            } catch (error: any) {
-                console.error('[Upload] Gifyu failed, trying ImgBB:', error.message);
-                try {
-                    const result = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);
-                    imageUrl = result.direct_url;
-                    hostUsed = 'ImgBB';
-                } catch (error: any) {
-                    console.error('[Upload] ImgBB failed, trying GitHub:', error.message);
-                    try {
-                        const path = `assets/${file.originalname}`;
-                        imageUrl = await repoManager.uploadAsset(file.buffer, path, file.mimetype);
-                        hostUsed = 'GitHub';
-                    } catch (error: any) {
-                        console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
-                        try {
-                            const result = await uploadToImgHippo(file.buffer, file.originalname);
-                            imageUrl = result.direct_url;
-                            hostUsed = 'ImgHippo';
-                        } catch (error: any) {
-                            console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
-                            imageUrl = await uploadPreviewImage(file.buffer, file.originalname, file.mimetype);
-                            hostUsed = 'Supabase Storage (Fallback)';
-                        }
-                    }
-                }
-            }
-        }
-    }
+    const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
-    console.log('[Upload] Host used:', hostUsed);
 
     if (title) {
         console.log('[Upload] Saving to database...');
@@ -417,6 +440,146 @@ app.post('/api/upload', (req, res, next) => {
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
+  }
+});
+
+// Upload from URL Proxy
+app.post('/api/upload/url', async (req, res) => {
+    console.log(`[URL Upload Request] Received POST /api/upload/url`);
+    try {
+        const { url } = req.body;
+        if (!url) return res.status(400).json({ error: 'URL is required' });
+
+        console.log(`[URL Upload Request] Fetching from URL: ${url}`);
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        const buffer = Buffer.from(response.data, 'binary');
+        const mimetype = response.headers['content-type'] || 'image/jpeg';
+        
+        // Extract filename from URL or use a default
+        const urlObj = new URL(url);
+        let originalname = urlObj.pathname.split('/').pop() || 'image.jpg';
+        if (!originalname.includes('.')) {
+            const ext = mimetype.split('/')[1] || 'jpg';
+            originalname = `${originalname}.${ext}`;
+        }
+
+        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
+
+        console.log('[URL Upload] Final URL extracted:', imageUrl);
+
+        res.json({ success: true, url: imageUrl, host: hostUsed });
+    } catch (error: any) {
+        console.error('URL Upload Error:', error);
+        res.status(500).json({ error: error.message || 'Internal Server Error during URL upload' });
+    }
+});
+
+// Upload File Proxy (Catbox)
+app.post('/api/upload/catbox', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+
+    console.log(`[Catbox Upload] Received POST /api/upload/catbox`);
+    const userhash = process.env.CATBOX_USERHASH || '';
+    const result = await uploadToCatbox(file.buffer, file.originalname, file.mimetype, userhash);
+    
+    res.json({
+      url: result.direct_url,
+      direct_url: result.direct_url,
+      thumbnail_url: result.thumbnail_url,
+      viewer_url: result.viewer_url,
+      provider: 'catbox'
+    });
+  } catch (error: any) {
+    console.error('Catbox proxy error:', error);
+    res.status(500).json({ error: error.message || 'Catbox proxy failed' });
+  }
+});
+
+// Catbox URL Upload Proxy
+app.post('/api/catbox/urlupload', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+    
+    const userhash = process.env.CATBOX_USERHASH || '';
+    const { urlUploadToCatbox } = await import('../server/services/catboxService');
+    const result = await urlUploadToCatbox(url, userhash);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Catbox urlupload error:', error);
+    res.status(500).json({ error: error.message || 'Catbox urlupload failed' });
+  }
+});
+
+// Catbox Delete Files Proxy
+app.post('/api/catbox/deletefiles', async (req, res) => {
+  try {
+    const { files } = req.body;
+    if (!files || !Array.isArray(files)) return res.status(400).json({ error: 'files array is required' });
+    
+    const userhash = process.env.CATBOX_USERHASH;
+    if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is not configured on the server' });
+    
+    const { deleteFromCatbox } = await import('../server/services/catboxService');
+    const result = await deleteFromCatbox(files, userhash);
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error('Catbox deletefiles error:', error);
+    res.status(500).json({ error: error.message || 'Catbox deletefiles failed' });
+  }
+});
+
+// Catbox Album Operations
+app.post('/api/catbox/album/:action', async (req, res) => {
+  try {
+    const { action } = req.params;
+    const { title, desc, files, short } = req.body;
+    const userhash = process.env.CATBOX_USERHASH || '';
+    
+    const { 
+      createCatboxAlbum, 
+      editCatboxAlbum, 
+      addToCatboxAlbum, 
+      removeFromCatboxAlbum, 
+      deleteCatboxAlbum 
+    } = await import('../server/services/catboxService');
+
+    let result;
+    switch (action) {
+      case 'create':
+        result = await createCatboxAlbum(title || '', desc || '', files || [], userhash);
+        break;
+      case 'edit':
+        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
+        result = await editCatboxAlbum(short, title || '', desc || '', files || [], userhash);
+        break;
+      case 'add':
+        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
+        result = await addToCatboxAlbum(short, files || [], userhash);
+        break;
+      case 'remove':
+        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
+        result = await removeFromCatboxAlbum(short, files || [], userhash);
+        break;
+      case 'delete':
+        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
+        result = await deleteCatboxAlbum(short, userhash);
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid album action' });
+    }
+    
+    res.json({ success: true, result });
+  } catch (error: any) {
+    console.error(`Catbox album action error:`, error);
+    res.status(500).json({ error: error.message || 'Catbox album action failed' });
   }
 });
 
@@ -536,16 +699,41 @@ app.post('/api/upload/i111666', (req, res, next) => {
       body: formData,
       headers: {
         'Auth-Token': authToken,
+        'Referer': 'https://i.111666.best/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const contentType = response.headers.get('content-type');
+      let errorText = '';
+      if (contentType && contentType.includes('application/json')) {
+        const errorJson = await response.json();
+        errorText = JSON.stringify(errorJson);
+      } else {
+        errorText = await response.text();
+      }
       throw new Error(`i111666 API failed: ${response.status} ${errorText}`);
     }
 
-    const directUrl = (await response.text()).trim();
+    const responseText = (await response.text()).trim();
+    let directUrl = responseText;
+    
+    try {
+        const parsed = JSON.parse(responseText);
+        if (parsed.src) {
+            directUrl = parsed.src;
+        } else if (parsed.direct_url) {
+            directUrl = parsed.direct_url;
+        }
+    } catch (e) {
+        // Not JSON, treat as plain text
+    }
+    
+    // Ensure absolute URL
+    if (directUrl.startsWith('/')) {
+        directUrl = `https://i.111666.best${directUrl}`;
+    }
     
     res.json({
       success: true,
@@ -586,6 +774,38 @@ app.delete('/api/upload/i111666/:imagePath', async (req, res) => {
   } catch (error: any) {
     console.error('i111666 Delete Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during i111666 delete' });
+  }
+});
+
+// BeeIMG Upload Proxy
+app.post('/api/upload/beeimg', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('[BeeIMG Upload] Multer error:', err);
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  console.log(`[BeeIMG Upload] Received POST /api/upload/beeimg`);
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "file is required" });
+    }
+
+    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+    const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
+    const directUrl = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
+    
+    res.json({
+      success: true,
+      provider: 'beeimg',
+      direct_url: directUrl
+    });
+  } catch (error: any) {
+    console.error('BeeIMG Upload Error:', error);
+    res.status(500).json({ error: error.message || 'Internal Server Error during BeeIMG upload' });
   }
 });
 

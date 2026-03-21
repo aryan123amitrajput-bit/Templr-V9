@@ -917,10 +917,21 @@ export const uploadFileFromUrl = async (url: string): Promise<{ url: string; hos
     if (!url) throw new Error("No URL provided for upload.");
     
     try {
-        const { uploadFromUrl } = await import('./src/services/imageUploadService');
-        const result = await uploadFromUrl(url);
-        if (!result) throw new Error("Upload from URL failed");
-        return { url: result.direct_url, host: result.provider };
+        const response = await fetch('/api/upload/url', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Upload from URL failed: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return { url: data.url, host: data.host };
     } catch (err: any) {
         throw new Error("Upload from URL failed: " + err.message);
     }
