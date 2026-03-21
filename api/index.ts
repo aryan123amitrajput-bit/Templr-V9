@@ -418,6 +418,7 @@ app.post('/api/upload', (req, res, next) => {
     const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
+    console.log('[Upload] Host used:', hostUsed);
 
     if (title) {
         console.log('[Upload] Saving to database...');
@@ -466,6 +467,7 @@ app.post('/api/upload/url', async (req, res) => {
         const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
 
         console.log('[URL Upload] Final URL extracted:', imageUrl);
+        console.log('[URL Upload] Host used:', hostUsed);
 
         res.json({ success: true, url: imageUrl, host: hostUsed });
     } catch (error: any) {
@@ -699,20 +701,12 @@ app.post('/api/upload/i111666', (req, res, next) => {
       body: formData,
       headers: {
         'Auth-Token': authToken,
-        'Referer': 'https://i.111666.best/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
     if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      let errorText = '';
-      if (contentType && contentType.includes('application/json')) {
-        const errorJson = await response.json();
-        errorText = JSON.stringify(errorJson);
-      } else {
-        errorText = await response.text();
-      }
+      const errorText = await response.text();
       throw new Error(`i111666 API failed: ${response.status} ${errorText}`);
     }
 
@@ -904,18 +898,12 @@ app.get('/api/templates', async (req, res) => {
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
-    console.log(`[API] Fetching templates: page=${page}, limit=${limit}, category=${category}, sortBy=${sortBy}`);
-
-    const [gitRegistry, supabaseResult] = await Promise.all([
+    const [gitRegistry, { data: supabaseData }] = await Promise.all([
       repoManager.getMergedRegistry(),
       supabase.from('templates').select('*').order('created_at', { ascending: false })
     ]);
 
-    console.log(`[API] Fetched gitRegistry: ${gitRegistry.length} templates, supabaseData: ${supabaseResult.data?.length || 0} templates, error: ${supabaseResult.error}`);
-
     clearTimeout(timeoutId);
-    
-    const supabaseData = supabaseResult.data;
 
     const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
     
@@ -956,35 +944,23 @@ app.get('/api/templates', async (req, res) => {
 
     const start = page * limit;
     const gitSupabaseCount = registry.length;
-    console.log(`[API] Pagination: page=${page}, limit=${limit}, start=${start}, gitSupabaseCount=${gitSupabaseCount}`);
     
     let paginatedData = [];
     if (start < gitSupabaseCount) {
       paginatedData = registry.slice(start, start + limit);
       if (paginatedData.length < limit) {
         const needed = limit - paginatedData.length;
-        console.log(`[API] Fetching extra from freeHostService: needed=${needed}`);
-        try {
-          const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-          paginatedData.push(...extra);
-        } catch (e) {
-          console.error(`[API] freeHostService.getTemplates failed:`, e);
-        }
+        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
+        paginatedData.push(...extra);
       }
     } else {
       const freeHostOffset = start - gitSupabaseCount;
       const freeHostPage = Math.floor(freeHostOffset / limit);
       const freeHostLimit = limit;
-      console.log(`[API] Fetching from freeHostService: page=${freeHostPage}, limit=${freeHostLimit}`);
-      try {
-        paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
-      } catch (e) {
-        console.error(`[API] freeHostService.getTemplates failed:`, e);
-      }
+      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
     }
 
     const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
-    console.log(`[API] Pagination: gitSupabaseCount=${gitSupabaseCount}, freeHostTotal=${freeHostService.getRegistry().totalTemplates}, totalCount=${totalCount}, hasMore=${start + limit < totalCount}`);
 
     res.json({ 
       data: paginatedData, 

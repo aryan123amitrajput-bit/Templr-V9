@@ -52,6 +52,7 @@ export const optimizeImage = async (file: File): Promise<Blob> => {
 
 // 2. Providers
 const uploadToI111666 = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[i111666] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -72,6 +73,7 @@ const uploadToI111666 = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToBeeIMG = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[BeeIMG] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -91,6 +93,7 @@ const uploadToBeeIMG = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToCatbox = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[Catbox] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -110,6 +113,7 @@ const uploadToCatbox = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToGifyu = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[Gifyu] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -129,6 +133,7 @@ const uploadToGifyu = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToImgBB = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[ImgBB] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -148,6 +153,7 @@ const uploadToImgBB = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToImgHippo = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[ImgHippo] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -167,6 +173,7 @@ const uploadToImgHippo = async (file: Blob): Promise<Partial<UploadResult>> => {
 };
 
 const uploadToGitHub = async (file: Blob): Promise<Partial<UploadResult>> => {
+    console.log('[GitHub] Attempting upload via server proxy...');
     const formData = new FormData();
     formData.append('file', file, 'image.webp');
     
@@ -219,8 +226,8 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     const optimizedBlob = await optimizeImage(file);
     
     const providers = [
-        { name: '0008888', fn: uploadToI111666 },
         { name: 'beeimg', fn: uploadToBeeIMG },
+        { name: '0008888', fn: uploadToI111666 },
         { name: 'catbox', fn: uploadToCatbox },
         { name: 'gifyu', fn: uploadToGifyu },
         { name: 'imgbb', fn: uploadToImgBB },
@@ -232,6 +239,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     for (let i = 0; i < providers.length; i++) {
         const provider = providers[i];
         try {
+            console.log(`[Orchestrator] Attempting upload via ${provider.name}...`);
             const result = await provider.fn(optimizedBlob);
             
             return {
@@ -245,7 +253,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             };
         } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
-            console.warn(`[Orchestrator] Provider failed:`, lastError);
+            console.warn(`[Orchestrator] ${provider.name} failed:`, lastError);
         }
     }
 
