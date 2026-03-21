@@ -904,12 +904,18 @@ app.get('/api/templates', async (req, res) => {
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
-    const [gitRegistry, { data: supabaseData }] = await Promise.all([
+    console.log(`[API] Fetching templates: page=${page}, limit=${limit}, category=${category}, sortBy=${sortBy}`);
+
+    const [gitRegistry, supabaseResult] = await Promise.all([
       repoManager.getMergedRegistry(),
       supabase.from('templates').select('*').order('created_at', { ascending: false })
     ]);
 
+    console.log(`[API] Fetched gitRegistry: ${gitRegistry.length} templates, supabaseData: ${supabaseResult.data?.length || 0} templates, error: ${supabaseResult.error}`);
+
     clearTimeout(timeoutId);
+    
+    const supabaseData = supabaseResult.data;
 
     const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
     
@@ -950,23 +956,35 @@ app.get('/api/templates', async (req, res) => {
 
     const start = page * limit;
     const gitSupabaseCount = registry.length;
+    console.log(`[API] Pagination: page=${page}, limit=${limit}, start=${start}, gitSupabaseCount=${gitSupabaseCount}`);
     
     let paginatedData = [];
     if (start < gitSupabaseCount) {
       paginatedData = registry.slice(start, start + limit);
       if (paginatedData.length < limit) {
         const needed = limit - paginatedData.length;
-        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-        paginatedData.push(...extra);
+        console.log(`[API] Fetching extra from freeHostService: needed=${needed}`);
+        try {
+          const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
+          paginatedData.push(...extra);
+        } catch (e) {
+          console.error(`[API] freeHostService.getTemplates failed:`, e);
+        }
       }
     } else {
       const freeHostOffset = start - gitSupabaseCount;
       const freeHostPage = Math.floor(freeHostOffset / limit);
       const freeHostLimit = limit;
-      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+      console.log(`[API] Fetching from freeHostService: page=${freeHostPage}, limit=${freeHostLimit}`);
+      try {
+        paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+      } catch (e) {
+        console.error(`[API] freeHostService.getTemplates failed:`, e);
+      }
     }
 
     const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
+    console.log(`[API] Pagination: gitSupabaseCount=${gitSupabaseCount}, freeHostTotal=${freeHostService.getRegistry().totalTemplates}, totalCount=${totalCount}, hasMore=${start + limit < totalCount}`);
 
     res.json({ 
       data: paginatedData, 
