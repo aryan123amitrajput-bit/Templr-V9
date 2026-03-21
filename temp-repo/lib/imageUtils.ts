@@ -38,7 +38,7 @@ export const getProxiedImageUrl = (url: string | { src: string } | undefined | n
   if (url.includes('/api/proxy?url=')) return url;
   
   if (url.includes('ui-avatars.com')) return url;
-  // if (url.includes('supabase.co')) return url;
+  if (url.includes('supabase.co')) return url;
   if (url.includes('unsplash.com')) return url;
   
   console.log(`[getProxiedImageUrl] Returning proxied URL for:`, url);
