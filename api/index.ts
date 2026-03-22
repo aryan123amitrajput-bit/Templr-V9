@@ -194,9 +194,17 @@ app.get('/api/registry', async (req, res) => {
 
 // Asset Proxy for CORS bypass
 app.get('/api/proxy', async (req, res) => {
-    const url = req.query.url as string;
-    if (!url) return res.status(400).json({ error: 'Missing url' });
+    let urlParam = req.query.url;
+    if (!urlParam) return res.status(400).json({ error: 'Missing url' });
     
+    // Handle array of URLs (Express quirk)
+    if (Array.isArray(urlParam)) {
+        urlParam = urlParam[0] as string;
+    }
+    
+    let url = urlParam as string;
+    if (!url) return res.status(400).json({ error: 'Empty url' });
+
     // Re-construct the full URL if it was truncated by missing encoding
     // This is a safety measure in case some parts of the app don't use encodeURIComponent
     let fullUrl = url;
@@ -235,6 +243,7 @@ app.get('/api/proxy', async (req, res) => {
             return res.redirect('https://picsum.photos/seed/local/800/600?blur=5');
         }
     } catch (e) {
+        console.error(`[Proxy] Invalid URL: ${fullUrl}`);
         return res.redirect('https://picsum.photos/seed/invalid/800/600?blur=5');
     }
 
@@ -263,7 +272,7 @@ app.get('/api/proxy', async (req, res) => {
         }
     }
 
-    const fetchWithFallback = async (targetUrl: string, timeoutMs = 8000): Promise<Response> => {
+    const fetchWithFallback = async (targetUrl: string, timeoutMs = 10000): Promise<Response> => {
         let parsedUrl: URL;
         try {
             parsedUrl = new URL(targetUrl);
@@ -277,12 +286,19 @@ app.get('/api/proxy', async (req, res) => {
         try {
             const response = await fetch(targetUrl, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                     'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.9',
                     'Referer': parsedUrl.origin,
                     'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache'
+                    'Pragma': 'no-cache',
+                    'Accept-Encoding': 'identity',
+                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"Windows"',
+                    'sec-fetch-dest': 'image',
+                    'sec-fetch-mode': 'no-cors',
+                    'sec-fetch-site': 'cross-site'
                 },
                 signal: controller.signal,
                 redirect: 'follow'
@@ -337,13 +353,23 @@ app.get('/api/proxy', async (req, res) => {
         const contentType = response.headers.get('content-type');
         if (contentType) res.setHeader('Content-Type', contentType);
         
+        const contentLength = response.headers.get('content-length');
+        if (contentLength) res.setHeader('Content-Length', contentLength);
+        
         // Stream the response to avoid Vercel memory limits and for better performance
         if (response.body) {
             // @ts-ignore - response.body is a ReadableStream in some environments, but we can iterate it
-            for await (const chunk of response.body as any) {
-                res.write(chunk);
+            const reader = response.body.getReader();
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    res.write(value);
+                }
+            } finally {
+                reader.releaseLock();
+                res.end();
             }
-            res.end();
         } else {
             const buffer = await response.arrayBuffer();
             res.send(Buffer.from(buffer));
