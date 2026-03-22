@@ -289,55 +289,43 @@ class FreeHostService {
     return null;
   }
 
-  public async getTemplates(page: number, limit: number, category?: string, searchQuery?: string) {
+  public async getTemplates(offset: number, limit: number, category?: string, searchQuery?: string) {
     await this.ensureRegistryLoaded();
     
+    let allTemplates: TemplateMetadata[] = [];
+
     // If we have no batches, use mock templates as fallback
     if (this.registry.batches.length === 0) {
-      let filtered = [...this.MOCK_TEMPLATES];
-      if (category && category !== 'All') {
-        filtered = filtered.filter((t: any) => t.category === category);
-      }
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter((t: any) => t.title?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
-      }
-      return filtered.slice(page * limit, (page + 1) * limit);
-    }
-
-    const startIdx = page * limit;
-    const endIdx = startIdx + limit;
-    
-    let currentCount = 0;
-    const templates: TemplateMetadata[] = [];
-    
-    for (const batch of this.registry.batches) {
-      const batchStart = currentCount;
-      const batchEnd = currentCount + batch.count;
+      allTemplates = [...this.MOCK_TEMPLATES];
+    } else {
+      // Fetch all batches (in a real app with thousands of templates, this would need a proper database)
+      // For now, since it's a fallback, we fetch all to correctly apply filters and pagination
+      const batchPromises = this.registry.batches.map(batch => this.fetchBatchContent(batch.url));
+      const batchContents = await Promise.all(batchPromises);
       
-      // Check if this batch overlaps with our requested range
-      if (batchEnd > startIdx && batchStart < endIdx) {
-        const content = await this.fetchBatchContent(batch.url);
+      for (const content of batchContents) {
         if (content && content.templates) {
-          // Apply filters if any
-          let filtered = content.templates;
-          if (category && category !== 'All') {
-            filtered = filtered.filter((t: any) => t.category === category);
-          }
-          if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            filtered = filtered.filter((t: any) => t.name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
-          }
-          
-          templates.push(...filtered);
+          allTemplates.push(...content.templates);
         }
       }
-      
-      currentCount += batch.count;
-      if (currentCount >= endIdx && !category && !searchQuery) break;
     }
-    
-    return templates.slice(0, limit);
+
+    // Apply filters
+    if (category && category !== 'All') {
+      allTemplates = allTemplates.filter((t: any) => t.category === category);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      allTemplates = allTemplates.filter((t: any) => 
+        t.title?.toLowerCase().includes(q) || 
+        t.description?.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort by newest
+    allTemplates.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return allTemplates.slice(offset, offset + limit);
   }
 
   private async uploadToJSONHosting(content: any): Promise<{ id: string, editKey: string, rawUrl: string } | null> {

@@ -245,165 +245,178 @@ export class RepoManager {
   }
 
   async uploadTemplate(template: TemplateMetadata): Promise<boolean> {
-    const repos = await this.getAllRepos();
-    if (repos.length === 0) return false;
+    const repo = await this.getActiveRepo();
+    if (!repo) {
+      console.error('[RepoService] No active repository available for upload.');
+      return false;
+    }
 
     const templateId = template.id;
-    const filePath = `templates/${templateId}.json`;
+    // Use sharded path for scalability
+    const filePath = `templates/${templateId.substring(0, 2)}/${templateId.substring(2, 4)}/${templateId}.json`;
     const content = JSON.stringify(template, null, 2);
 
-    for (const repo of repos) {
-      try {
-        if (repo.type === 'github') {
-          const octokit = new Octokit({ auth: repo.token });
-          
-          // 1. Upload template file
-          let sha: string | undefined;
-          try {
-            const { data }: any = await octokit.rest.repos.getContent({
-              owner: repo.owner!,
-              repo: repo.repo!,
-              path: filePath
-            });
-            sha = data.sha;
-          } catch (e) {}
-
-          await octokit.rest.repos.createOrUpdateFileContents({
-            owner: repo.owner!,
-            repo: repo.repo!,
-            path: filePath,
-            message: `Add template ${templateId}`,
-            content: Buffer.from(content).toString('base64'),
-            sha
-          });
-
-          // 2. Update registry
-          const registry = await this.getRegistry(repo, false);
-          const existingIndex = registry.findIndex(t => t.id === templateId);
-          
-          const registryEntry = {
-            id: template.id,
-            title: template.title,
-            author: template.author,
-            thumbnail: template.thumbnail,
-            category: template.category,
-            created_at: template.created_at || new Date().toISOString(),
-            tags: template.tags || []
-          };
-
-          if (existingIndex >= 0) {
-            registry[existingIndex] = registryEntry;
-          } else {
-            registry.unshift(registryEntry);
-          }
-
-          let regSha: string | undefined;
-          try {
-            const { data: registryFile }: any = await octokit.rest.repos.getContent({
-              owner: repo.owner!,
-              repo: repo.repo!,
-              path: 'registry.json'
-            });
-            regSha = registryFile.sha;
-          } catch (e) {}
-
-          await octokit.rest.repos.createOrUpdateFileContents({
-            owner: repo.owner!,
-            repo: repo.repo!,
-            path: 'registry.json',
-            message: `Update registry for ${templateId}`,
-            content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
-            sha: regSha
-          });
-          return true; // Success
-        } else {
-          // GitLab API
-          // 1. Upload template file
-          const fileUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}`;
-          
-          const checkRes = await fetch(`${fileUrl}?ref=main`, {
-            headers: { 'PRIVATE-TOKEN': repo.token }
-          });
-
-          const method = checkRes.ok ? 'PUT' : 'POST';
-          const uploadRes = await fetch(fileUrl, {
-            method,
-            headers: {
-              'PRIVATE-TOKEN': repo.token,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              branch: 'main',
-              content,
-              commit_message: `Add template ${templateId}`
-            })
-          });
-
-          if (!uploadRes.ok) {
-            const err = await uploadRes.text();
-            throw new Error(`GitLab upload failed: ${err}`);
-          }
-
-          // 2. Update registry
-          const registry = await this.getRegistry(repo, false);
-          const existingIndex = registry.findIndex(t => t.id === templateId);
-          
-          const registryEntry = {
-            id: template.id,
-            title: template.title,
-            author: template.author,
-            thumbnail: template.thumbnail,
-            category: template.category,
-            created_at: template.created_at || new Date().toISOString(),
-            tags: template.tags || []
-          };
-
-          if (existingIndex >= 0) {
-            registry[existingIndex] = registryEntry;
-          } else {
-            registry.unshift(registryEntry);
-          }
-
-          const regUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json`;
-          const regCheckRes = await fetch(`${regUrl}?ref=main`, {
-            headers: { 'PRIVATE-TOKEN': repo.token }
-          });
-
-          const regMethod = regCheckRes.ok ? 'PUT' : 'POST';
-          const regUploadRes = await fetch(regUrl, {
-            method: regMethod,
-            headers: {
-              'PRIVATE-TOKEN': repo.token,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              branch: 'main',
-              content: JSON.stringify(registry, null, 2),
-              commit_message: `Update registry for ${templateId}`
-            })
-          });
-
-          if (!regUploadRes.ok) {
-            const err = await regUploadRes.text();
-            throw new Error(`GitLab registry update failed: ${err}`);
-          }
-          return true; // Success
-        }
-      } catch (error) {
-        // Continue to the next repo
-      }
-    }
-    
-    // If all repos fail, try Paste.rs as a final backup
     try {
-      const pasteUrl = await uploadToPasteRs(content);
-      console.log(`[Backup] Template ${templateId} hosted on paste.rs: ${pasteUrl}`);
-      return true; // Consider it a success if backup works
-    } catch (e) {
-      console.error('Paste.rs backup failed:', e);
-    }
+      if (repo.type === 'github') {
+        const octokit = new Octokit({ auth: repo.token });
+        
+        // 1. Upload template file
+        let sha: string | undefined;
+        try {
+          const { data }: any = await octokit.rest.repos.getContent({
+            owner: repo.owner!,
+            repo: repo.repo!,
+            path: filePath
+          });
+          sha = data.sha;
+        } catch (e) {}
 
-    return false;
+        await octokit.rest.repos.createOrUpdateFileContents({
+          owner: repo.owner!,
+          repo: repo.repo!,
+          path: filePath,
+          message: `Add template ${templateId}`,
+          content: Buffer.from(content).toString('base64'),
+          sha
+        });
+
+        // 2. Update registry
+        const registry = await this.getRegistry(repo, false);
+        const existingIndex = registry.findIndex(t => t.id === templateId);
+        
+        const registryEntry = {
+          id: template.id,
+          title: template.title,
+          author: template.author,
+          thumbnail: template.thumbnail,
+          category: template.category,
+          created_at: template.created_at || new Date().toISOString(),
+          tags: template.tags || [],
+          status: template.status || 'approved'
+        };
+
+        if (existingIndex >= 0) {
+          registry[existingIndex] = registryEntry;
+        } else {
+          registry.unshift(registryEntry);
+        }
+
+        let regSha: string | undefined;
+        try {
+          const { data: registryFile }: any = await octokit.rest.repos.getContent({
+            owner: repo.owner!,
+            repo: repo.repo!,
+            path: 'registry.json'
+          });
+          regSha = registryFile.sha;
+        } catch (e) {}
+
+        await octokit.rest.repos.createOrUpdateFileContents({
+          owner: repo.owner!,
+          repo: repo.repo!,
+          path: 'registry.json',
+          message: `Update registry for ${templateId}`,
+          content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
+          sha: regSha
+        });
+        
+        // Invalidate cache
+        const cacheKey = `${repo.owner}/${repo.repo}`;
+        this.registryCache.delete(cacheKey);
+        
+        return true; // Success
+      } else {
+        // GitLab API
+        // 1. Upload template file
+        const fileUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}`;
+        
+        const checkRes = await fetch(`${fileUrl}?ref=main`, {
+          headers: { 'PRIVATE-TOKEN': repo.token }
+        });
+
+        const method = checkRes.ok ? 'PUT' : 'POST';
+        const uploadRes = await fetch(fileUrl, {
+          method,
+          headers: {
+            'PRIVATE-TOKEN': repo.token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            branch: 'main',
+            content,
+            commit_message: `Add template ${templateId}`
+          })
+        });
+
+        if (!uploadRes.ok) {
+          const err = await uploadRes.text();
+          throw new Error(`GitLab upload failed: ${err}`);
+        }
+
+        // 2. Update registry
+        const registry = await this.getRegistry(repo, false);
+        const existingIndex = registry.findIndex(t => t.id === templateId);
+        
+        const registryEntry = {
+          id: template.id,
+          title: template.title,
+          author: template.author,
+          thumbnail: template.thumbnail,
+          category: template.category,
+          created_at: template.created_at || new Date().toISOString(),
+          tags: template.tags || [],
+          status: template.status || 'approved'
+        };
+
+        if (existingIndex >= 0) {
+          registry[existingIndex] = registryEntry;
+        } else {
+          registry.unshift(registryEntry);
+        }
+
+        const regUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json`;
+        const regCheck = await fetch(`${regUrl}?ref=main`, {
+          headers: { 'PRIVATE-TOKEN': repo.token }
+        });
+
+        const regMethod = regCheck.ok ? 'PUT' : 'POST';
+        const regUpload = await fetch(regUrl, {
+          method: regMethod,
+          headers: {
+            'PRIVATE-TOKEN': repo.token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            branch: 'main',
+            content: JSON.stringify(registry, null, 2),
+            commit_message: `Update registry for ${templateId}`
+          })
+        });
+
+        if (!regUpload.ok) {
+          const err = await regUpload.text();
+          throw new Error(`GitLab registry update failed: ${err}`);
+        }
+        
+        // Invalidate cache
+        this.registryCache.delete(repo.projectId!);
+
+        return true;
+      }
+    } catch (error) {
+      console.error(`[RepoService] Upload failed for repo ${repo.type === 'github' ? repo.repo : repo.projectId}:`, error);
+      
+      // If all repos fail, try Paste.rs as a final backup
+      try {
+        const pasteUrl = await uploadToPasteRs(content);
+        console.log(`[Backup] Template ${templateId} hosted on paste.rs: ${pasteUrl}`);
+        return true; // Consider it a success if backup works
+      } catch (e) {
+        console.error('Paste.rs backup failed:', e);
+      }
+      
+      return false;
+    }
   }
 
   async getTemplateById(templateId: string): Promise<TemplateMetadata | null> {
@@ -411,27 +424,33 @@ export class RepoManager {
     for (const repo of repos) {
       const registry = await this.getRegistry(repo);
       if (registry.some(t => t.id === templateId)) {
-        const filePath = `templates/${templateId}.json`;
+        const directPath = `templates/${templateId}.json`;
+        const shardedPath = `templates/${templateId.substring(0, 2)}/${templateId.substring(2, 4)}/${templateId}.json`;
+        
         if (repo.type === 'github') {
           const octokit = new Octokit({ auth: repo.token });
-          try {
-            const { data }: any = await octokit.rest.repos.getContent({
-              owner: repo.owner!,
-              repo: repo.repo!,
-              path: filePath
-            });
-            const content = Buffer.from(data.content, 'base64').toString();
-            return JSON.parse(content);
-          } catch (e) {
-            continue;
+          for (const filePath of [shardedPath, directPath]) {
+            try {
+              const { data }: any = await octokit.rest.repos.getContent({
+                owner: repo.owner!,
+                repo: repo.repo!,
+                path: filePath
+              });
+              const content = Buffer.from(data.content, 'base64').toString();
+              return JSON.parse(content);
+            } catch (e) {
+              // Try next path
+            }
           }
         } else {
-          const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=main`;
-          const response = await fetch(url, {
-            headers: { 'PRIVATE-TOKEN': repo.token }
-          });
-          if (response.ok) {
-            return await response.json();
+          for (const filePath of [shardedPath, directPath]) {
+            const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=main`;
+            const response = await fetch(url, {
+              headers: { 'PRIVATE-TOKEN': repo.token }
+            });
+            if (response.ok) {
+              return await response.json();
+            }
           }
         }
       }
