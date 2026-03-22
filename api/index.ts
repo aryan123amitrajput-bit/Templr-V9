@@ -194,200 +194,24 @@ app.get('/api/registry', async (req, res) => {
 
 // Asset Proxy for CORS bypass
 app.get('/api/proxy', async (req, res) => {
-    let urlParam = req.query.url;
-    if (!urlParam) return res.status(400).json({ error: 'Missing url' });
-    
-    // Handle array of URLs (Express quirk)
-    if (Array.isArray(urlParam)) {
-        urlParam = urlParam[0] as string;
-    }
-    
-    let url = urlParam as string;
-    if (!url) return res.status(400).json({ error: 'Empty url' });
-
-    // Re-construct the full URL if it was truncated by missing encoding
-    // This is a safety measure in case some parts of the app don't use encodeURIComponent
-    let fullUrl = url;
-    const otherParams = { ...req.query };
-    delete otherParams.url;
-    if (Object.keys(otherParams).length > 0) {
-        const searchParams = new URLSearchParams(otherParams as any);
-        fullUrl += (fullUrl.includes('?') ? '&' : '?') + searchParams.toString();
-    }
-
-    // Validate URL format and block localhost/internal IPs
-    try {
-        const urlObj = new URL(fullUrl);
-        console.log(`[Proxy] Fetching URL: ${fullUrl}`);
-        const hostname = urlObj.hostname.toLowerCase();
-        if (hostname === 'localhost' || 
-            hostname === '127.0.0.1' || 
-            hostname.startsWith('192.168.') || 
-            hostname.startsWith('10.') || 
-            hostname.startsWith('172.16.') || 
-            hostname.startsWith('172.17.') || 
-            hostname.startsWith('172.18.') || 
-            hostname.startsWith('172.19.') || 
-            hostname.startsWith('172.20.') || 
-            hostname.startsWith('172.21.') || 
-            hostname.startsWith('172.22.') || 
-            hostname.startsWith('172.23.') || 
-            hostname.startsWith('172.24.') || 
-            hostname.startsWith('172.25.') || 
-            hostname.startsWith('172.26.') || 
-            hostname.startsWith('172.27.') || 
-            hostname.startsWith('172.28.') || 
-            hostname.startsWith('172.29.') || 
-            hostname.startsWith('172.30.') || 
-            hostname.startsWith('172.31.')) {
-            console.warn(`[Proxy] Blocking local/internal URL: ${fullUrl}`);
-            return res.redirect('https://picsum.photos/seed/local/800/600?blur=5');
-        }
-    } catch (e) {
-        console.error(`[Proxy] Invalid URL: ${fullUrl}`);
-        return res.redirect('https://picsum.photos/seed/invalid/800/600?blur=5');
-    }
-
-    // Special case: Supabase URLs from the same project
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-    if (supabase && supabaseUrl && fullUrl.startsWith(supabaseUrl) && fullUrl.includes('/storage/v1/object/public/')) {
-        try {
-            const pathParts = fullUrl.split('/storage/v1/object/public/')[1].split('/');
-            const bucket = pathParts[0];
-            const path = pathParts.slice(1).join('/');
-            
-            if (bucket && path) {
-                console.log(`[Proxy] Attempting direct Supabase download for: ${bucket}/${path}`);
-                const { data, error } = await supabase.storage.from(bucket).download(path);
-                if (!error && data) {
-                    res.setHeader('Content-Type', data.type || 'image/jpeg');
-                    res.setHeader('Cache-Control', 'public, max-age=86400');
-                    res.setHeader('Access-Control-Allow-Origin', '*');
-                    const buffer = Buffer.from(await data.arrayBuffer());
-                    return res.send(buffer);
-                }
-                console.warn(`[Proxy] Supabase download error:`, error?.message);
-            }
-        } catch (e: any) {
-            console.warn(`[Proxy] Supabase direct download failed:`, e.message);
-        }
-    }
-
-    const fetchWithFallback = async (targetUrl: string, timeoutMs = 10000): Promise<Response> => {
-        let parsedUrl: URL;
-        try {
-            parsedUrl = new URL(targetUrl);
-        } catch (e) {
-            throw new Error(`Invalid URL format: ${targetUrl}`);
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
-        try {
-            const response = await fetch(targetUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': parsedUrl.origin,
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'Accept-Encoding': 'identity',
-                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                    'sec-ch-ua-mobile': '?0',
-                    'sec-ch-ua-platform': '"Windows"',
-                    'sec-fetch-dest': 'image',
-                    'sec-fetch-mode': 'no-cors',
-                    'sec-fetch-site': 'cross-site'
-                },
-                signal: controller.signal,
-                redirect: 'follow'
-            });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status} from ${targetUrl}`);
-            }
-
-            // Validate content type
-            const contentType = response.headers.get('content-type') || '';
-            if (!contentType.startsWith('image/') && !contentType.startsWith('video/') && !contentType.includes('application/octet-stream')) {
-                // Some CDNs return octet-stream for images, but if it's text/html it's definitely an error page
-                if (contentType.includes('text/html') || contentType.includes('application/json')) {
-                    throw new Error(`Target URL returned ${contentType} instead of an image`);
-                }
-            }
-
-            return response;
-        } catch (e) {
-            clearTimeout(timeoutId);
-            throw e;
-        }
-    };
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
 
     try {
-        let response;
-        try {
-            response = await fetchWithFallback(fullUrl);
-        } catch (e: any) {
-            console.warn(`[Proxy] Direct fetch failed for ${fullUrl}, trying weserv.nl fallback... (${e.message})`);
-            try {
-                // weserv.nl is a powerful image proxy that can often bypass blocks
-                const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}&default=https://picsum.photos/seed/fallback/800/600`;
-                response = await fetchWithFallback(fallbackUrl);
-            } catch (fallbackError: any) {
-                console.error(`[Proxy] Fallback also failed for ${fullUrl}:`, fallbackError.message);
-                // Final fallback: return a reliable placeholder image
-                const placeholderUrl = 'https://picsum.photos/seed/notfound/800/600?blur=10';
-                response = await fetchWithFallback(placeholderUrl);
-            }
-        }
-        
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        // Cache for 24 hours on Vercel Edge
-        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600');
-        
-        const contentType = response.headers.get('content-type');
-        res.setHeader('Content-Type', contentType || 'image/jpeg');
-        
-        const contentLength = response.headers.get('content-length');
-        if (contentLength) res.setHeader('Content-Length', contentLength);
-        
-        // Stream the response to avoid Vercel memory limits and for better performance
-        if (response.body) {
-            // @ts-ignore - response.body is a ReadableStream in some environments, but we can iterate it
-            const reader = response.body.getReader();
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    res.write(value);
-                }
-            } finally {
-                reader.releaseLock();
-                res.end();
-            }
-        } else {
-            const buffer = await response.arrayBuffer();
-            res.send(Buffer.from(buffer));
-        }
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            },
+            timeout: 10000
+        });
+
+        res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.send(Buffer.from(response.data));
     } catch (error: any) {
-        console.error(`[Proxy] Critical failure for ${fullUrl}:`, error.message);
-        // Return a 200 with a placeholder image instead of an error
-        try {
-            const placeholderRes = await fetch(DEFAULT_IMAGE);
-            const buffer = await placeholderRes.arrayBuffer();
-            res.setHeader('Content-Type', 'image/jpeg');
-            res.status(200).send(Buffer.from(buffer));
-        } catch (e) {
-            // Final fallback: transparent 1x1 pixel
-            res.setHeader('Content-Type', 'image/png');
-            res.status(200).send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'));
-        }
+        console.error(`[Proxy] Error fetching ${url}:`, error.message);
+        res.status(500).send('Error fetching image');
     }
 });
 

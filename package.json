@@ -11,7 +11,8 @@
     "start": "node api/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "validate-images": "tsx scripts/validateImages.ts"
   },
   "dependencies": {
     "@google/genai": "^1.42.0",
