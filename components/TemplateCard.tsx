@@ -147,9 +147,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
   
   const fixedBanner = rawBanner;
   const displayBanner = getOptimizedImageUrl(fixedBanner);
-  const proxiedBanner = displayBanner ? getProxiedImageUrl(displayBanner) : null;
-  console.log(`[TemplateCard] displayBanner for ${title}:`, displayBanner);
-  console.log(`[TemplateCard] proxiedBanner for ${title}:`, proxiedBanner);
+  const finalImageUrl = signedBanner 
+      ? getProxiedImageUrl(signedBanner) 
+      : (displayBanner ? getProxiedImageUrl(displayBanner) : null);
+  
+  console.log(`[TemplateCard] finalImageUrl for ${title}:`, finalImageUrl);
   const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
 
   // Check if image is already loaded (from cache)
@@ -359,16 +361,16 @@ const CardContent: React.FC<TemplateCardProps> = ({
             <div className="absolute inset-0 z-10">
                 {displayBanner && !imageError ? (
                     <img 
-                        key={signedBanner || proxiedBanner}
+                        key={finalImageUrl}
                         ref={imgRef}
-                        src={signedBanner ? getProxiedImageUrl(signedBanner) : proxiedBanner}
+                        src={finalImageUrl || ''}
                         alt={`${title} Preview`}
                         referrerPolicy="no-referrer"
                         onLoad={() => {
-                            console.log(`[TemplateCard] Image loaded for ${title}:`, signedBanner || proxiedBanner);
+                            console.log(`[TemplateCard] Image loaded for ${title}:`, finalImageUrl);
                         }}
                         onError={() => {
-                            console.log(`[TemplateCard] Image load error for ${title}:`, signedBanner || proxiedBanner);
+                            console.log(`[TemplateCard] Image load error for ${title}:`, finalImageUrl);
                             handleImageError();
                         }}
                         className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 opacity-100"
