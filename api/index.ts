@@ -225,13 +225,17 @@ app.get('/api/proxy', async (req, res) => {
         try {
             response = await fetchWithFallback(url);
         } catch (e: any) {
-            if (e.message.includes('404')) {
-                console.warn(`[Proxy] Direct fetch failed for ${url} (404 Not Found)`);
-                throw e; // Don't fallback on 404
+            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback... (${e.message})`);
+            try {
+                const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+                response = await fetchWithFallback(fallbackUrl);
+            } catch (fallbackError: any) {
+                console.error(`[Proxy] Fallback also failed for ${url}:`, fallbackError.message);
+                // Final fallback: return a placeholder image instead of erroring out
+                // This prevents broken image icons in the UI
+                const placeholderUrl = 'https://picsum.photos/seed/notfound/800/600?blur=10';
+                response = await fetchWithFallback(placeholderUrl);
             }
-            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback...`);
-            const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
-            response = await fetchWithFallback(fallbackUrl);
         }
         
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -257,7 +261,7 @@ app.get('/api/proxy', async (req, res) => {
             res.send(Buffer.from(buffer));
         }
     } catch (error: any) {
-        console.error(`[Proxy] Error fetching ${url}:`, error.message);
+        console.error(`[Proxy] Critical failure for ${url}:`, error.message);
         res.status(500).json({ error: `Proxy failed: ${error.message}` });
     }
 });
