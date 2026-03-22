@@ -18,6 +18,7 @@ interface TemplateGalleryProps {
   onLike: (templateId: string) => void;
   onFavorite: (templateId: string) => void;
   onCreatorClick?: (creatorName: string) => void;
+  onShowNotification: (message: string, type?: 'info' | 'success' | 'error') => void;
   isLoading: boolean;
   likedIds: Set<string>; 
   favoriteIds: Set<string>;
@@ -34,6 +35,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     onLike, 
     onFavorite,
     onCreatorClick, 
+    onShowNotification,
     isLoading: initialLoading,
     likedIds,
     favoriteIds,
@@ -500,6 +502,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             onLike={handleLocalLike}
                             onFavorite={onFavorite}
                             onCreatorClick={handleCreatorClick}
+                            onShowNotification={onShowNotification}
                         />
                     ))
                 )}

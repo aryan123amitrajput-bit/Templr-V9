@@ -610,6 +610,7 @@ const App: React.FC = () => {
               onFavorite={handleFavoriteClick}
               onView={handleViewClick}
               onCreatorClick={handleOpenCreator}
+              onShowNotification={showNotification}
               likedIds={likedTemplateIds}
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}

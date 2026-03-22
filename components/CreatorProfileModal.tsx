@@ -187,6 +187,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     onView={() => onView(template)}
                                     onLike={() => onLike(template.id)}
                                     onFavorite={() => onFavorite(template.id)}
+                                    onShowNotification={() => {}}
                                     // Disable recursion
                                     onCreatorClick={() => {}}
                                 />

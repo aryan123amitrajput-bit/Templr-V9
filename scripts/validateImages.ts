@@ -8,19 +8,20 @@ async function validateAndFixImages() {
     console.log('Starting image validation...');
     
     const { data: templates, error } = await supabase.from('templates').select('id, image_url, banner_url');
+    const templatesList = templates as any[];
     
     if (error) {
         console.error('Error fetching templates:', error);
         return;
     }
 
-    for (const template of templates) {
+    for (const template of templatesList) {
         const urls = [template.image_url, template.banner_url];
         let updated = false;
         const updates: any = {};
 
         for (const field of ['image_url', 'banner_url']) {
-            const url = template[field];
+            const url = template[field] as string;
             if (!url) continue;
 
             if (url.startsWith('blob:') || url.includes('localhost') || url.startsWith('/uploads/')) {
@@ -43,8 +44,8 @@ async function validateAndFixImages() {
         }
 
         if (updated) {
-            console.log(`Updating template ${template.id}:`, updates);
-            await supabase.from('templates').update(updates).eq('id', template.id);
+            console.log(`Updating template ${(template as any).id}:`, updates);
+            await (supabase.from('templates') as any).update(updates).eq('id', (template as any).id);
         }
     }
     console.log('Image validation complete.');

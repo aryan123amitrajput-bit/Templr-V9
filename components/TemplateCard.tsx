@@ -30,6 +30,7 @@ interface TemplateCardProps {
   onLike: (id: string) => void;
   onFavorite: (id: string) => void;
   onCreatorClick?: (authorName: string) => void;
+  onShowNotification: (message: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 // --- VIDEO CONCURRENCY CONTROLLER ---
@@ -129,7 +130,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
   onView, 
   onLike,
   onFavorite,
-  onCreatorClick
+  onCreatorClick,
+  onShowNotification
 }) => {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -325,6 +327,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
 
       setImageError(true);
+      onShowNotification(`Failed to load image: ${title}`, 'error');
   };
 
   const cardVariants = {
