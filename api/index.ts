@@ -1078,6 +1078,45 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
+// Sync Supabase to GitHub
+app.post('/api/admin/sync-github', async (req, res) => {
+  try {
+    const { data: supabaseData, error } = await supabase.from('templates').select('*');
+    if (error) throw error;
+    
+    if (!supabaseData || supabaseData.length === 0) {
+      return res.json({ success: true, message: 'No templates in Supabase to sync.' });
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // We will upload each template individually to GitHub.
+    // repoManager.uploadTemplate handles both the file and the registry update.
+    for (const template of supabaseData) {
+      try {
+        const success = await repoManager.uploadTemplate(template);
+        if (success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (e) {
+        console.error(`[Sync] Failed to sync template ${template.id}:`, e);
+        failCount++;
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Sync complete. Successfully synced ${successCount} templates. Failed: ${failCount}.` 
+    });
+  } catch (error: any) {
+    console.error('[Sync] Error syncing to GitHub:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get User Templates
 app.get('/api/user/templates', async (req, res) => {
   try {
