@@ -195,8 +195,54 @@ app.get('/api/proxy', async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: 'Missing url' });
     
+    // Re-construct the full URL if it was truncated by missing encoding
+    // This is a safety measure in case some parts of the app don't use encodeURIComponent
+    let fullUrl = url;
+    const otherParams = { ...req.query };
+    delete otherParams.url;
+    if (Object.keys(otherParams).length > 0) {
+        const searchParams = new URLSearchParams(otherParams as any);
+        fullUrl += (fullUrl.includes('?') ? '&' : '?') + searchParams.toString();
+    }
+
+    // Validate URL format and block localhost/internal IPs
+    try {
+        const urlObj = new URL(fullUrl);
+        const hostname = urlObj.hostname.toLowerCase();
+        if (hostname === 'localhost' || 
+            hostname === '127.0.0.1' || 
+            hostname.startsWith('192.168.') || 
+            hostname.startsWith('10.') || 
+            hostname.startsWith('172.16.') || 
+            hostname.startsWith('172.17.') || 
+            hostname.startsWith('172.18.') || 
+            hostname.startsWith('172.19.') || 
+            hostname.startsWith('172.20.') || 
+            hostname.startsWith('172.21.') || 
+            hostname.startsWith('172.22.') || 
+            hostname.startsWith('172.23.') || 
+            hostname.startsWith('172.24.') || 
+            hostname.startsWith('172.25.') || 
+            hostname.startsWith('172.26.') || 
+            hostname.startsWith('172.27.') || 
+            hostname.startsWith('172.28.') || 
+            hostname.startsWith('172.29.') || 
+            hostname.startsWith('172.30.') || 
+            hostname.startsWith('172.31.')) {
+            return res.status(400).json({ error: 'Localhost or internal URLs are not allowed' });
+        }
+    } catch (e) {
+        return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
     const fetchWithFallback = async (targetUrl: string, timeoutMs = 8000): Promise<Response> => {
-        const urlObj = new URL(targetUrl);
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(targetUrl);
+        } catch (e) {
+            throw new Error(`Invalid URL format: ${targetUrl}`);
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         
@@ -204,15 +250,30 @@ app.get('/api/proxy', async (req, res) => {
             const response = await fetch(targetUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                    'Referer': `${urlObj.protocol}//${urlObj.hostname}/`
+                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': parsedUrl.origin,
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
                 },
                 signal: controller.signal,
                 redirect: 'follow'
             });
             clearTimeout(timeoutId);
             
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} from ${targetUrl}`);
+            }
+
+            // Validate content type
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.startsWith('image/') && !contentType.startsWith('video/') && !contentType.includes('application/octet-stream')) {
+                // Some CDNs return octet-stream for images, but if it's text/html it's definitely an error page
+                if (contentType.includes('text/html') || contentType.includes('application/json')) {
+                    throw new Error(`Target URL returned ${contentType} instead of an image`);
+                }
+            }
+
             return response;
         } catch (e) {
             clearTimeout(timeoutId);
@@ -223,16 +284,16 @@ app.get('/api/proxy', async (req, res) => {
     try {
         let response;
         try {
-            response = await fetchWithFallback(url);
+            response = await fetchWithFallback(fullUrl);
         } catch (e: any) {
-            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback... (${e.message})`);
+            console.warn(`[Proxy] Direct fetch failed for ${fullUrl}, trying weserv.nl fallback... (${e.message})`);
             try {
-                const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+                // weserv.nl is a powerful image proxy that can often bypass blocks
+                const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(fullUrl)}&default=https://picsum.photos/seed/fallback/800/600`;
                 response = await fetchWithFallback(fallbackUrl);
             } catch (fallbackError: any) {
-                console.error(`[Proxy] Fallback also failed for ${url}:`, fallbackError.message);
-                // Final fallback: return a placeholder image instead of erroring out
-                // This prevents broken image icons in the UI
+                console.error(`[Proxy] Fallback also failed for ${fullUrl}:`, fallbackError.message);
+                // Final fallback: return a reliable placeholder image
                 const placeholderUrl = 'https://picsum.photos/seed/notfound/800/600?blur=10';
                 response = await fetchWithFallback(placeholderUrl);
             }
@@ -242,18 +303,17 @@ app.get('/api/proxy', async (req, res) => {
         res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        // Cache for 24 hours on Vercel Edge
+        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600');
         
         const contentType = response.headers.get('content-type');
         if (contentType) res.setHeader('Content-Type', contentType);
         
-        // Stream the response to avoid Vercel memory limits
+        // Stream the response to avoid Vercel memory limits and for better performance
         if (response.body) {
-            const reader = response.body.getReader();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                res.write(value);
+            // @ts-ignore - response.body is a ReadableStream in some environments, but we can iterate it
+            for await (const chunk of response.body as any) {
+                res.write(chunk);
             }
             res.end();
         } else {
@@ -261,8 +321,17 @@ app.get('/api/proxy', async (req, res) => {
             res.send(Buffer.from(buffer));
         }
     } catch (error: any) {
-        console.error(`[Proxy] Critical failure for ${url}:`, error.message);
-        res.status(500).json({ error: `Proxy failed: ${error.message}` });
+        console.error(`[Proxy] Critical failure for ${fullUrl}:`, error.message);
+        // Return a 500 but still try to send a placeholder image if possible
+        try {
+            const placeholderUrl = 'https://picsum.photos/seed/critical/800/600?blur=20';
+            const placeholderRes = await fetch(placeholderUrl);
+            const buffer = await placeholderRes.arrayBuffer();
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.status(500).send(Buffer.from(buffer));
+        } catch (e) {
+            res.status(500).json({ error: `Proxy failed completely: ${error.message}` });
+        }
     }
 });
 
@@ -382,16 +451,12 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         
         const providers = [
             {
-                name: '0008888 (Primary)',
-                fn: () => uploadToI111666(buffer, originalname, mimetype).then(r => r.direct_url)
+                name: 'ImgBB (Primary)',
+                fn: () => uploadToImgBB(buffer, originalname, mimetype).then(r => r.direct_url)
             },
             {
-                name: 'BeeIMG (Secondary)',
-                fn: async () => {
-                    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
-                    const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
-                    return await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-                }
+                name: 'Gifyu (Secondary)',
+                fn: () => uploadToGifyu(buffer, originalname, mimetype).then(r => r.direct_url)
             },
             {
                 name: 'Catbox (Tertiary)',
@@ -401,18 +466,22 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
                 }
             },
             {
-                name: 'Gifyu (Quaternary)',
-                fn: () => uploadToGifyu(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'ImgBB',
-                fn: () => uploadToImgBB(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'GitHub',
+                name: 'GitHub (Quaternary)',
                 fn: () => {
                     const path = `assets/${Date.now()}-${originalname}`;
                     return repoManager.uploadAsset(buffer, path, mimetype);
+                }
+            },
+            {
+                name: '0008888 (i.111666.best)',
+                fn: () => uploadToI111666(buffer, originalname, mimetype).then(r => r.direct_url)
+            },
+            {
+                name: 'BeeIMG',
+                fn: async () => {
+                    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+                    const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
+                    return await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
                 }
             },
             {
@@ -1230,7 +1299,16 @@ app.post('/api/templates', async (req, res) => {
     if (!template) return res.status(400).json({ error: 'Template is required' });
     const templateId = crypto.randomUUID();
     let finalImageUrl = template.image_url || template.imageUrl || '';
+    
+    // Block localhost/internal URLs
+    if (finalImageUrl.includes('localhost') || finalImageUrl.includes('127.0.0.1')) {
+      finalImageUrl = 'https://picsum.photos/seed/invalid/800/600';
+    }
+    
     let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
+    if (finalBannerUrl.includes('localhost') || finalBannerUrl.includes('127.0.0.1')) {
+      finalBannerUrl = finalImageUrl;
+    }
     let finalGalleryImages = template.gallery_images || [];
 
     const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
@@ -1281,6 +1359,14 @@ app.put('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { updates } = req.body;
+
+    // Block localhost/internal URLs in updates
+    if (updates.image_url && (updates.image_url.includes('localhost') || updates.image_url.includes('127.0.0.1'))) {
+      updates.image_url = 'https://picsum.photos/seed/invalid/800/600';
+    }
+    if (updates.banner_url && (updates.banner_url.includes('localhost') || updates.banner_url.includes('127.0.0.1'))) {
+      updates.banner_url = updates.image_url || 'https://picsum.photos/seed/invalid/800/600';
+    }
 
     try { await updateTemplateOnGitHub(id, updates); } catch (e) {}
     try { await freeHostService.updateTemplate(id, updates); } catch (e) {}

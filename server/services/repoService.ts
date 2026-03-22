@@ -715,8 +715,8 @@ export class RepoManager {
           sha
         });
 
-        // Return jsDelivr CDN URL for public access
-        return `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/${path}`;
+        // Return raw.githubusercontent.com URL for faster access (jsDelivr has cache delay)
+        return `https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/main/${path}`;
       } catch (e) {
         lastError = e;
       }

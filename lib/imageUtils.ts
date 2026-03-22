@@ -29,9 +29,17 @@ export const getProxiedImageUrl = (url: string | { src: string } | undefined | n
   
   if (typeof url !== 'string') return '';
   
+  // Filter out localhost/127.0.0.1 URLs as they will never work in production
+  if (url.includes('localhost:') || url.includes('127.0.0.1:')) {
+      console.warn(`[getProxiedImageUrl] Filtering out local URL:`, url);
+      return 'https://picsum.photos/seed/local/800/600?blur=5'; // Return a placeholder
+  }
+  
   if (url.startsWith('blob:')) return url;
   if (url.startsWith('data:')) return url;
   if (url.startsWith('/')) {
+      // If it's a relative path, we should probably prefix it with the app URL in production
+      // but for now, we'll just return it as is if it's an internal route
       console.log(`[getProxiedImageUrl] Returning relative URL:`, url);
       return url;
   }

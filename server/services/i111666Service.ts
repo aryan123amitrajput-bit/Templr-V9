@@ -38,10 +38,20 @@ export const uploadToI111666 = async (fileBuffer: Buffer, fileName: string, mime
         // Not JSON, treat as plain text
     }
     
-    // Ensure absolute URL
+    // Ensure absolute URL and direct image path
     if (directUrl.startsWith('/')) {
         directUrl = `https://i.111666.best${directUrl}`;
     }
+    
+    // If it doesn't contain /image/ or doesn't have an extension, it might be a viewer link
+    if (!directUrl.includes('/image/') && !directUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+        // Try to convert viewer link to direct link if it follows the pattern https://i.111666.best/abc
+        const urlObj = new URL(directUrl);
+        if (urlObj.hostname === 'i.111666.best' && urlObj.pathname.length > 1 && !urlObj.pathname.includes('/')) {
+            directUrl = `https://i.111666.best/image${urlObj.pathname}`;
+        }
+    }
+    
     console.log(`[i111666Service] Final URL:`, directUrl);
     
     return {
