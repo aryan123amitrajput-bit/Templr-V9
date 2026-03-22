@@ -480,25 +480,25 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         
         const providers = [
             {
-                name: 'ImgBB (Primary)',
-                fn: () => uploadToImgBB(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'Gifyu (Secondary)',
-                fn: () => uploadToGifyu(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'Catbox (Tertiary)',
-                fn: () => {
-                    const userhash = process.env.CATBOX_USERHASH || '';
-                    return uploadToCatbox(buffer, originalname, mimetype, userhash).then(r => r.direct_url);
-                }
-            },
-            {
-                name: 'GitHub (Quaternary)',
+                name: 'GitHub (Primary)',
                 fn: () => {
                     const path = `assets/${Date.now()}-${originalname}`;
                     return repoManager.uploadAsset(buffer, path, mimetype);
+                }
+            },
+            {
+                name: 'ImgBB (Secondary)',
+                fn: () => uploadToImgBB(buffer, originalname, mimetype).then(r => r.direct_url)
+            },
+            {
+                name: 'Gifyu (Tertiary)',
+                fn: () => uploadToGifyu(buffer, originalname, mimetype).then(r => r.direct_url)
+            },
+            {
+                name: 'Catbox',
+                fn: () => {
+                    const userhash = process.env.CATBOX_USERHASH || '';
+                    return uploadToCatbox(buffer, originalname, mimetype, userhash).then(r => r.direct_url);
                 }
             },
             {
@@ -1204,7 +1204,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// Sync Supabase to GitHub
+// Sync Supabase to GitHub (with asset localization)
 app.post('/api/admin/sync-github', async (req, res) => {
   try {
     const { data: supabaseData, error } = await supabase.from('templates').select('*');
@@ -1216,13 +1216,50 @@ app.post('/api/admin/sync-github', async (req, res) => {
 
     let successCount = 0;
     let failCount = 0;
+    let localizedCount = 0;
 
-    // We will upload each template individually to GitHub.
-    // repoManager.uploadTemplate handles both the file and the registry update.
     for (const template of supabaseData) {
       try {
-        const success = await repoManager.uploadTemplate(template);
+        let updatedTemplate = { ...template };
+        let needsUpdate = false;
+
+        // Localize image_url if it's not already on GitHub/GitLab
+        const currentUrl = template.image_url || template.imageUrl;
+        if (currentUrl && 
+            !currentUrl.includes('githubusercontent.com') && 
+            !currentUrl.includes('gitlab.com') && 
+            !currentUrl.includes('localhost')) {
+          
+          console.log(`[Sync] Localizing asset for template ${template.id}: ${currentUrl}`);
+          try {
+            const response = await axios.get(currentUrl, { responseType: 'arraybuffer', timeout: 10000 });
+            const buffer = Buffer.from(response.data);
+            const contentType = response.headers['content-type'] || 'image/jpeg';
+            const extension = contentType.split('/')[1] || 'jpg';
+            const filename = `${template.id}.${extension}`;
+            const path = `assets/${filename}`;
+            
+            const gitUrl = await repoManager.uploadAsset(buffer, path, contentType);
+            if (gitUrl) {
+              updatedTemplate.image_url = gitUrl;
+              updatedTemplate.imageUrl = gitUrl;
+              needsUpdate = true;
+              localizedCount++;
+            }
+          } catch (assetErr: any) {
+            console.warn(`[Sync] Failed to localize asset for ${template.id}:`, assetErr.message);
+          }
+        }
+
+        const success = await repoManager.uploadTemplate(updatedTemplate);
         if (success) {
+          if (needsUpdate) {
+            // Update Supabase with the new Git URL
+            await supabase.from('templates').update({ 
+              image_url: updatedTemplate.image_url,
+              imageUrl: updatedTemplate.imageUrl 
+            }).eq('id', template.id);
+          }
           successCount++;
         } else {
           failCount++;
@@ -1235,7 +1272,7 @@ app.post('/api/admin/sync-github', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Sync complete. Successfully synced ${successCount} templates. Failed: ${failCount}.` 
+      message: `Sync complete. Successfully synced ${successCount} templates. Localized ${localizedCount} assets. Failed: ${failCount}.` 
     });
   } catch (error: any) {
     console.error('[Sync] Error syncing to GitHub:', error);
