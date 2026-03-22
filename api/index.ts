@@ -914,7 +914,7 @@ app.get('/api/templates', async (req, res) => {
       supabase.from('templates').select('*').order('created_at', { ascending: false })
     ]);
 
-    console.log(`[API] Fetched gitRegistry: ${gitRegistry.length} templates, supabaseData: ${supabaseResult.data?.length || 0} templates, error: ${supabaseResult.error}`);
+    // Log removed to reduce noise
 
     clearTimeout(timeoutId);
     

@@ -212,7 +212,9 @@ export class RepoManager {
             console.log(`[RepoService] Octokit fallback fetched ${data.length} templates for ${repo.owner}/${repo.repo} at ${path}`);
             break;
           } catch (octoErr: any) {
-            console.error(`[RepoService] Octokit fallback failed for ${repo.owner}/${repo.repo} at ${path}:`, octoErr.message);
+            if (octoErr.status !== 404) {
+              console.error(`[RepoService] Octokit fallback failed for ${repo.owner}/${repo.repo} at ${path}:`, octoErr.message);
+            }
           }
         }
       }
