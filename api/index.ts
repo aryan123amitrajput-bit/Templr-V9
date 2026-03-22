@@ -218,6 +218,7 @@ app.get('/api/proxy', async (req, res) => {
     // Validate URL format and block localhost/internal IPs
     try {
         const urlObj = new URL(fullUrl);
+        console.log(`[Proxy] Fetching URL: ${fullUrl}`);
         const hostname = urlObj.hostname.toLowerCase();
         if (hostname === 'localhost' || 
             hostname === '127.0.0.1' || 
@@ -351,7 +352,7 @@ app.get('/api/proxy', async (req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600');
         
         const contentType = response.headers.get('content-type');
-        if (contentType) res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Type', contentType || 'image/jpeg');
         
         const contentLength = response.headers.get('content-length');
         if (contentLength) res.setHeader('Content-Length', contentLength);
