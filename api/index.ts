@@ -22,6 +22,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
 
+const DEFAULT_IMAGE = 'https://picsum.photos/seed/notfound/800/600?blur=10';
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -229,10 +231,36 @@ app.get('/api/proxy', async (req, res) => {
             hostname.startsWith('172.29.') || 
             hostname.startsWith('172.30.') || 
             hostname.startsWith('172.31.')) {
-            return res.status(400).json({ error: 'Localhost or internal URLs are not allowed' });
+            console.warn(`[Proxy] Blocking local/internal URL: ${fullUrl}`);
+            return res.redirect('https://picsum.photos/seed/local/800/600?blur=5');
         }
     } catch (e) {
-        return res.status(400).json({ error: 'Invalid URL format' });
+        return res.redirect('https://picsum.photos/seed/invalid/800/600?blur=5');
+    }
+
+    // Special case: Supabase URLs from the same project
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    if (supabase && supabaseUrl && fullUrl.startsWith(supabaseUrl) && fullUrl.includes('/storage/v1/object/public/')) {
+        try {
+            const pathParts = fullUrl.split('/storage/v1/object/public/')[1].split('/');
+            const bucket = pathParts[0];
+            const path = pathParts.slice(1).join('/');
+            
+            if (bucket && path) {
+                console.log(`[Proxy] Attempting direct Supabase download for: ${bucket}/${path}`);
+                const { data, error } = await supabase.storage.from(bucket).download(path);
+                if (!error && data) {
+                    res.setHeader('Content-Type', data.type || 'image/jpeg');
+                    res.setHeader('Cache-Control', 'public, max-age=86400');
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    const buffer = Buffer.from(await data.arrayBuffer());
+                    return res.send(buffer);
+                }
+                console.warn(`[Proxy] Supabase download error:`, error?.message);
+            }
+        } catch (e: any) {
+            console.warn(`[Proxy] Supabase direct download failed:`, e.message);
+        }
     }
 
     const fetchWithFallback = async (targetUrl: string, timeoutMs = 8000): Promise<Response> => {
@@ -322,15 +350,16 @@ app.get('/api/proxy', async (req, res) => {
         }
     } catch (error: any) {
         console.error(`[Proxy] Critical failure for ${fullUrl}:`, error.message);
-        // Return a 500 but still try to send a placeholder image if possible
+        // Return a 200 with a placeholder image instead of an error
         try {
-            const placeholderUrl = 'https://picsum.photos/seed/critical/800/600?blur=20';
-            const placeholderRes = await fetch(placeholderUrl);
+            const placeholderRes = await fetch(DEFAULT_IMAGE);
             const buffer = await placeholderRes.arrayBuffer();
             res.setHeader('Content-Type', 'image/jpeg');
-            res.status(500).send(Buffer.from(buffer));
+            res.status(200).send(Buffer.from(buffer));
         } catch (e) {
-            res.status(500).json({ error: `Proxy failed completely: ${error.message}` });
+            // Final fallback: transparent 1x1 pixel
+            res.setHeader('Content-Type', 'image/png');
+            res.status(200).send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'));
         }
     }
 });
@@ -1399,34 +1428,48 @@ app.post('/api/user/update', async (req, res) => {
     }
 });
 
-// For local development
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  const PORT = 3000;
-  const startServer = async () => {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-    app.use(errorHandler);
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  };
-  startServer();
-} else if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
-  // Production standalone (not Vercel)
-  const PORT = 3000;
-  const distPath = path.resolve(__dirname, '..', 'dist');
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      if (req.url.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
+// Server Startup
+const PORT = 3000;
+
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    // Development mode with Vite middleware
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('[Server] Vite middleware integrated');
+    } catch (e) {
+      console.error('[Server] Failed to create Vite server:', e);
+    }
+  } else {
+    // Production mode serving static files
+    const distPath = path.resolve(__dirname, '..', 'dist');
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      console.log(`[Server] Serving static files from ${distPath}`);
+      app.get('*', (req, res, next) => {
+        if (req.url.startsWith('/api/')) return next();
+        res.sendFile(path.resolve(distPath, 'index.html'));
+      });
+    } else {
+      console.warn(`[Server] Production build not found at ${distPath}`);
+    }
   }
+
   app.use(errorHandler);
-  app.listen(PORT, '0.0.0.0');
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Server] Templr Engine running on http://0.0.0.0:${PORT}`);
+    console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+// Only start the server if we're not on Vercel (Vercel uses the exported app)
+if (!process.env.VERCEL) {
+  startServer();
 }
 
 export default app;

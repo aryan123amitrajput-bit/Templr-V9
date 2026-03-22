@@ -29,6 +29,11 @@ export const getProxiedImageUrl = (url: string | { src: string } | undefined | n
   
   if (typeof url !== 'string') return '';
   
+  // Handle protocol-relative URLs
+  if (url.startsWith('//')) {
+      url = `https:${url}`;
+  }
+  
   // Filter out localhost/127.0.0.1 URLs as they will never work in production
   if (url.includes('localhost:') || url.includes('127.0.0.1:')) {
       console.warn(`[getProxiedImageUrl] Filtering out local URL:`, url);

@@ -229,26 +229,47 @@ export const fixUrl = (url?: string | string[]): string => {
     if (!url) return '';
     
     // Handle case where DB returns an array or JSON stringified array
-    if (Array.isArray(url)) {
-        if (url.length === 0) return '';
-        url = url[0];
-    } else if (typeof url === 'string' && url.trim().startsWith('[') && url.trim().endsWith(']')) {
+    let finalUrl: any = url;
+    if (Array.isArray(finalUrl)) {
+        if (finalUrl.length === 0) return '';
+        finalUrl = finalUrl[0];
+    } else if (typeof finalUrl === 'string' && finalUrl.trim().startsWith('[') && finalUrl.trim().endsWith(']')) {
         try {
-            const parsed = JSON.parse(url);
+            const parsed = JSON.parse(finalUrl);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                url = parsed[0];
+                finalUrl = parsed[0];
             }
         } catch (e) {
             // Ignore parse error
         }
     }
 
-    if (typeof url !== 'string') return '';
-    let trimmedUrl = url.trim();
+    if (typeof finalUrl !== 'string') return '';
+    let trimmedUrl = finalUrl.trim();
     
     // Strip leading/trailing quotes if they exist
     if ((trimmedUrl.startsWith('"') && trimmedUrl.endsWith('"')) || (trimmedUrl.startsWith("'") && trimmedUrl.endsWith("'"))) {
         trimmedUrl = trimmedUrl.slice(1, -1).trim();
+    }
+
+    if (!trimmedUrl) return '';
+
+    // Handle protocol-relative URLs
+    if (trimmedUrl.startsWith('//')) {
+        return `https:${trimmedUrl}`;
+    }
+
+    // Handle Supabase storage paths (e.g. "previews/image.png")
+    // If it doesn't have a protocol and doesn't start with /, it might be a path
+    if (!trimmedUrl.startsWith('http') && !trimmedUrl.startsWith('/') && !trimmedUrl.startsWith('data:') && !trimmedUrl.startsWith('blob:')) {
+        // Heuristic: if it contains a dot (extension) and no spaces, it's likely a path
+        if (trimmedUrl.includes('.') && !trimmedUrl.includes(' ')) {
+            const { url: sbUrl } = getSupabaseConfig();
+            if (sbUrl && sbUrl !== 'https://placeholder.supabase.co') {
+                const bucket = 'templates'; // Default bucket
+                return `${sbUrl}/storage/v1/object/public/${bucket}/${trimmedUrl}`;
+            }
+        }
     }
     
     return trimmedUrl;
@@ -889,7 +910,8 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
         try {
             const result = await uploadImage(file);
             return { url: result.direct_url, host: result.provider };
-        } catch (err) {
+        } catch (err: any) {
+            console.warn("[Upload] Client-side uploadImage failed, falling back to backend:", err.message);
         }
     }
 
