@@ -196,22 +196,63 @@ app.get('/api/registry', async (req, res) => {
 app.get('/api/proxy', async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: 'Missing url' });
+    
+    const fetchWithFallback = async (targetUrl: string): Promise<{ buffer: ArrayBuffer, contentType: string | null }> => {
+        const urlObj = new URL(targetUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        try {
+            const response = await fetch(targetUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Referer': `${urlObj.protocol}//${urlObj.hostname}/`
+                },
+                signal: controller.signal,
+                redirect: 'follow'
+            });
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            return {
+                buffer: await response.arrayBuffer(),
+                contentType: response.headers.get('content-type')
+            };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            throw e;
+        }
+    };
 
     try {
-        const response = await axios.get(url, {
-            responseType: 'arraybuffer',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            },
-            timeout: 10000
-        });
-
-        res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+        let result;
+        try {
+            result = await fetchWithFallback(url);
+        } catch (e: any) {
+            if (e.message.includes('404')) {
+                console.warn(`[Proxy] Direct fetch failed for ${url} (404 Not Found)`);
+                throw e; // Don't fallback on 404
+            }
+            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback...`);
+            const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+            result = await fetchWithFallback(fallbackUrl);
+        }
+        
+        const { buffer, contentType } = result;
+        console.log(`[Proxy] Successfully fetched ${url}, size: ${buffer.byteLength} bytes`);
+        
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Cache-Control', 'public, max-age=86400');
-        res.send(Buffer.from(response.data));
+        
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.send(Buffer.from(buffer));
     } catch (error: any) {
         console.error(`[Proxy] Error fetching ${url}:`, error.message);
-        res.status(500).send('Error fetching image');
+        res.status(500).json({ error: `Proxy failed: ${error.message}` });
     }
 });
 
