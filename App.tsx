@@ -15,7 +15,6 @@ import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
 import SubscriptionModal from './components/SubscriptionModal';
 import DocumentationModal from './components/DocumentationModal';
-import AdminPanel from './components/AdminPanel';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
@@ -86,7 +85,6 @@ const App: React.FC = () => {
   const [isProfileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [isSubscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [isDocumentationOpen, setDocumentationOpen] = useState(false);
-  const [isAdminOpen, setAdminOpen] = useState(false);
   
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null);
@@ -242,13 +240,6 @@ const App: React.FC = () => {
         if (mounted) await loadTemplates();
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-            setAdminOpen(prev => !prev);
-        }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('templr-data-update', (e: any) => {
         if (e.detail?.type === 'delete') {
             setTemplates(prev => prev.filter(t => t.id !== e.detail.id));
@@ -266,7 +257,6 @@ const App: React.FC = () => {
     return () => {
         mounted = false;
         clearTimeout(splashTimer);
-        window.removeEventListener('keydown', handleKeyDown);
         authSubPromise.then(sub => sub?.unsubscribe());
     };
   }, []);
@@ -610,7 +600,6 @@ const App: React.FC = () => {
               onFavorite={handleFavoriteClick}
               onView={handleViewClick}
               onCreatorClick={handleOpenCreator}
-              onShowNotification={showNotification}
               likedIds={likedTemplateIds}
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}
@@ -718,12 +707,6 @@ const App: React.FC = () => {
         onClose={handleCloseSubscription}
         onUpgradeConfirm={handleUpgradeConfirm}
       />
-
-      <AnimatePresence>
-        {isAdminOpen && (
-          <AdminPanel onClose={() => setAdminOpen(false)} />
-        )}
-      </AnimatePresence>
       
       {notification && (
         <Notification 

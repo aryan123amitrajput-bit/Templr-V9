@@ -18,7 +18,6 @@ interface TemplateGalleryProps {
   onLike: (templateId: string) => void;
   onFavorite: (templateId: string) => void;
   onCreatorClick?: (creatorName: string) => void;
-  onShowNotification: (message: string, type?: 'info' | 'success' | 'error') => void;
   isLoading: boolean;
   likedIds: Set<string>; 
   favoriteIds: Set<string>;
@@ -35,7 +34,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     onLike, 
     onFavorite,
     onCreatorClick, 
-    onShowNotification,
     isLoading: initialLoading,
     likedIds,
     favoriteIds,
@@ -71,6 +69,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   // Sync initial templates if provided
   useEffect(() => {
       if (initialTemplates) {
+          console.log(`[Gallery] Received ${initialTemplates.length} templates from parent`);
           setData(initialTemplates);
           // If we receive a fresh batch (likely page 0), reset pagination state for consistency
           if (initialTemplates.length <= 6) {
@@ -110,6 +109,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
           const msg = error?.toLowerCase() || '';
           if (error && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) && retryCount < 2) {
+              console.warn(`Gallery fetch failed, retrying... (${retryCount + 1})`);
               setTimeout(() => fetchData(reset, retryCount + 1), 1000);
               return;
           }
@@ -128,9 +128,14 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       } catch (e: any) {
           const msg = e.message?.toLowerCase() || '';
           if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
+              console.warn(`Gallery fetch exception, retrying... (${retryCount + 1})`);
               setTimeout(() => fetchData(reset, retryCount + 1), 1000);
           } else {
-              // Fetch error
+              if (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) {
+                  console.warn("Gallery Fetch Error:", e.message);
+              } else {
+                  console.error("Gallery Fetch Error", e);
+              }
           }
       } finally {
           setIsFetching(false);
@@ -502,7 +507,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             onLike={handleLocalLike}
                             onFavorite={onFavorite}
                             onCreatorClick={handleCreatorClick}
-                            onShowNotification={onShowNotification}
                         />
                     ))
                 )}

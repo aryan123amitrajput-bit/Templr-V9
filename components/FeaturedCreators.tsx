@@ -4,7 +4,6 @@ import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 import { CheckCircleIcon, RocketIcon } from './Icons';
 import { getFeaturedCreators, CreatorStats } from '../api';
-import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface FeaturedCreatorsProps {
   onCreatorClick?: (creatorName: string) => void;
@@ -99,13 +98,12 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                                     <div className="relative w-24 h-24 mb-6 group-hover:scale-105 transition-transform duration-500">
                                         <div className="absolute inset-0 rounded-full border border-white/10 shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)]"></div>
                                         <img 
-                                            src={creator.avatarUrl ? getProxiedImageUrl(creator.avatarUrl) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`)} 
+                                            src={creator.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`} 
                                             alt={creator.name} 
-                                            referrerPolicy="no-referrer"
                                             onError={(e) => { 
                                                 const target = e.target as HTMLImageElement;
                                                 if (!target.src.includes('ui-avatars.com')) {
-                                                    target.src = getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`); 
+                                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`; 
                                                 }
                                             }}
                                             className="w-full h-full rounded-full object-cover grayscale opacity-90 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500" 

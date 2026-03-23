@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
-import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface TemplateCardProps {
   id: string;
@@ -30,7 +29,6 @@ interface TemplateCardProps {
   onLike: (id: string) => void;
   onFavorite: (id: string) => void;
   onCreatorClick?: (authorName: string) => void;
-  onShowNotification: (message: string, type?: 'info' | 'success' | 'error') => void;
 }
 
 // --- VIDEO CONCURRENCY CONTROLLER ---
@@ -130,39 +128,14 @@ const CardContent: React.FC<TemplateCardProps> = ({
   onView, 
   onLike,
   onFavorite,
-  onCreatorClick,
-  onShowNotification
+  onCreatorClick
 }) => {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const fixedVideoUrl = videoUrl;
-  const [displayVideoUrl, setDisplayVideoUrl] = useState(fixedVideoUrl);
   const [imageError, setImageError] = useState(false);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
   const playerRef = useRef<any>(null); // Lottie ref
-
-  const rawBanner = (bannerUrl && bannerUrl.trim() !== '') ? bannerUrl : (imageUrl && imageUrl.trim() !== '' ? imageUrl : null);
-  
-  const fixedBanner = rawBanner;
-  const displayBanner = getOptimizedImageUrl(fixedBanner);
-  const finalImageUrl = signedBanner 
-      ? getProxiedImageUrl(signedBanner) 
-      : (displayBanner ? getProxiedImageUrl(displayBanner) : null);
-  
-  console.log(`[TemplateCard] finalImageUrl for ${title}:`, finalImageUrl);
-  const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
-
-  // Check if image is already loaded (from cache)
-  useEffect(() => {
-    if (displayBanner) {
-        // console.log(`[TemplateCard] Loading preview for ${title}:`, signedBanner || displayBanner);
-        if (imgRef.current?.complete) {
-        }
-    } else {
-    }
-  }, [signedBanner, displayBanner, title]);
 
   const isZip = fileType === 'zip';
   const hasCode = (sourceCode && sourceCode.trim().length > 0) || isZip;
@@ -252,54 +225,52 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
   };
 
+  const rawBanner = bannerUrl || imageUrl;
+  const displayBanner = getOptimizedImageUrl(rawBanner);
+  const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
+
   // Reset error state if the image URL changes (e.g., component reused)
   useEffect(() => {
       setImageError(false);
       setSignedBanner(null);
   }, [displayBanner]);
 
-  // Update video URL if the prop changes
-  useEffect(() => {
-      const fixedVideoUrl = videoUrl;
-      setDisplayVideoUrl(fixedVideoUrl);
-      setVideoError(false);
-      setVideoReady(false);
-  }, [videoUrl]);
-
   const handleImageError = async () => {
-      if (imageError) return;
-      
-      console.log('[TemplateCard] handleImageError, displayBanner:', displayBanner, 'signedBanner:', signedBanner);
-
-      // If we've already tried a fallback, give up
       if (signedBanner) {
+          // Already tried signed URL, give up
           setImageError(true);
           return;
       }
 
-      // 1. Try Supabase signed URL fallback if it's a Supabase URL
+      // console.warn(`[TemplateCard] Image load failed for ${title}:`, displayBanner);
+
       if (displayBanner && displayBanner.includes('/storage/v1/object/public/')) {
           try {
               const pathParts = displayBanner.split('/storage/v1/object/public/')[1].split('/');
               const bucket = pathParts[0];
               const path = pathParts.slice(1).join('/');
               if (bucket && path) {
+                  // Dynamically import api to avoid circular dependencies if any
                   const api = await import('../api');
-                  const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
+                  const { data, error } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
                   if (data?.signedUrl) {
+                      // console.log("[TemplateCard] Attempting signed URL fallback for:", title);
                       setSignedBanner(data.signedUrl);
                       return;
                   } else {
                       // Try download as last resort
                       const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
                       if (blobData) {
+                          // Fix for "application/octet-stream" issues on old uploads
                           let mimeType = blobData.type;
                           if (!mimeType || mimeType === 'application/octet-stream') {
                               const ext = path.split('.').pop()?.toLowerCase();
                               if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
                               else if (ext === 'png') mimeType = 'image/png';
                               else if (ext === 'webp') mimeType = 'image/webp';
+                              else if (ext === 'gif') mimeType = 'image/gif';
                           }
+                          
                           const correctedBlob = blobData.slice(0, blobData.size, mimeType);
                           const objectUrl = URL.createObjectURL(correctedBlob);
                           setSignedBanner(objectUrl);
@@ -308,28 +279,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
                   }
               }
           } catch (e) {
-              console.warn("[TemplateCard] Fallback failed:", e);
+              // console.warn("[TemplateCard] Signed URL fallback failed:", e);
           }
       }
-
-      // 2. Try the alternative URL if available
-      const currentUrl = signedBanner || displayBanner;
-      const altUrl = (currentUrl === bannerUrl) ? imageUrl : (currentUrl === imageUrl ? bannerUrl : null);
       
-      if (altUrl && altUrl !== currentUrl && altUrl.trim() !== '') {
-          setSignedBanner(altUrl);
-          return;
-      }
-
-      // 3. Cache-busting retry for external hosting
-      if (displayBanner && !displayBanner.includes('retry=')) {
-          const separator = displayBanner.includes('?') ? '&' : '?';
-          setSignedBanner(`${displayBanner}${separator}retry=${Date.now()}`);
-          return;
-      }
-
       setImageError(true);
-      onShowNotification(`Failed to load image: ${title}`, 'error');
   };
 
   const cardVariants = {
@@ -352,48 +306,38 @@ const CardContent: React.FC<TemplateCardProps> = ({
     >
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
-        <div className="absolute inset-0 bg-[#050505]">
-            {/* Technical Grid Overlay */}
-            <div className="absolute inset-0 z-20 opacity-[0.03] pointer-events-none" 
-                 style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-            
-            {/* Background Image - z-10 to be above shimmer */}
-            <div className="absolute inset-0 z-10">
-                {displayBanner && !imageError ? (
+        <div className="absolute inset-0 z-0 bg-[#111]">
+            {/* Background Image (Always present as fallback/base) */}
+            <div className="absolute inset-0 z-0 bg-zinc-900">
+                {(signedBanner || displayBanner) && !imageError ? (
                     <img 
-                        key={finalImageUrl}
-                        ref={imgRef}
-                        src={finalImageUrl || ''}
-                        alt={`${title} Preview`}
+                        src={signedBanner || displayBanner!} 
+                        alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
-                        onLoad={() => {
-                            console.log(`[TemplateCard] Image loaded for ${title}:`, finalImageUrl);
-                        }}
-                        onError={() => {
-                            console.log(`[TemplateCard] Image load error for ${title}:`, finalImageUrl);
+                        onError={(e) => {
+                            // Silently retry to avoid console spam
                             handleImageError();
                         }}
-                        className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 opacity-100"
+                        onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                 ) : (
-                    // Fallback Gradient - Only if no image or error
-                    <div className="w-full h-full flex items-center justify-center bg-red-500">
-                        <div className="text-center p-4 opacity-40">
-                            <LayersIcon className="w-10 h-10 text-zinc-500 mx-auto mb-2" />
-                            <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">{imageError ? 'Load Error' : 'No Preview'}</p>
+                    // Fallback Gradient - Only if no image
+                    <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+                        <div className="text-center p-4 opacity-10">
+                            <LayersIcon className="w-12 h-12 text-white mx-auto mb-2" />
                         </div>
                     </div>
                 )}
             </div>
 
             {/* Video Layer - Only show if valid AND ready */}
-            {displayVideoUrl && displayVideoUrl.trim() !== '' && !videoError && (
+            {videoUrl && videoUrl.trim() !== '' && !videoError && (
                 <div className={`absolute inset-0 z-10 bg-black transition-opacity duration-500 ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                     <video 
-                        key={displayVideoUrl}
                         ref={videoRef}
                         className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500"
-                        poster={getProxiedImageUrl(signedBanner || displayBanner) || undefined}
+                        poster={signedBanner || displayBanner || undefined}
                         muted
                         loop
                         playsInline
@@ -403,11 +347,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
                             setVideoReady(true);
                         }}
                         onError={(e) => {
-                            console.error(`[TemplateCard] Video error for ${title}:`, displayVideoUrl, e);
+                            console.error(`[TemplateCard] Video error for ${title}:`, videoUrl, e);
                             setVideoError(true);
                         }}
                     >
-                        <source src={displayVideoUrl} type="video/mp4" />
+                        <source src={videoUrl} type="video/mp4" />
                     </video>
                 </div>
             )}
@@ -421,13 +365,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     {category}
                  </div>
              </div>
-             <div className="flex flex-col items-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="text-[8px] font-mono text-white/50 uppercase tracking-tighter">ID: {id.slice(0, 8)}</div>
-                <div className="flex items-center gap-1">
-                    <div className="w-1 h-1 rounded-full bg-cyan-500 animate-pulse"></div>
-                    <div className="text-[8px] font-mono text-cyan-500/80 uppercase tracking-tighter">Status: Active</div>
-                </div>
-             </div>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-5 z-30 translate-y-2 group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none">
@@ -439,15 +376,13 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
                          <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
                              <img 
-                                src={displayAvatar ? getProxiedImageUrl(displayAvatar) : getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`)} 
+                                src={displayAvatar} 
                                 className="w-full h-full object-cover" 
                                 alt={author} 
-                                referrerPolicy="no-referrer"
                                 onError={(e) => { 
                                     const target = e.target as HTMLImageElement;
-                                    if (target.getAttribute('data-fallbackTried') !== 'true') {
-                                        target.setAttribute('data-fallbackTried', 'true');
-                                        target.src = getProxiedImageUrl(`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`); 
+                                    if (!target.src.includes('ui-avatars.com')) {
+                                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`; 
                                     }
                                 }}
                              />
@@ -456,23 +391,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     </div>
                 </div>
 
-                 <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
-                      {hasLink && (
-                        <a 
-                          href={fileUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="group/btn w-11 h-11 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 backdrop-blur-md border border-cyan-500/20 flex items-center justify-center transition-all text-cyan-400"
-                          title="Live Preview"
-                        >
-                          <GlobeIcon className="w-5 h-5" />
-                        </a>
-                      )}
-                      <button 
-                         onClick={handleLike} 
-                         className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
-                      >
+                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                     <button 
+                        onClick={handleLike} 
+                        className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
+                     >
                         <div 
                             className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
                                 isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'
@@ -554,7 +477,7 @@ const TemplateCard: React.FC<TemplateCardProps> = (props) => {
             className="w-full aspect-[4/3] min-h-[280px] rounded-[24px] relative bg-[#050505] border border-white/5 overflow-hidden"
             style={{ contain: 'content' }} // Performance optimization hint
         >
-            {inView ? <CardContent {...props} /> : <div className="w-full h-full bg-[#050505] rounded-[24px]"></div>}
+            <CardContent {...props} />
         </div>
     );
 };

@@ -3,7 +3,6 @@ import React from 'react';
 import { TwitterIcon } from './Icons';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
-import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface FooterProps {
   onShowNotification: (message: string) => void;
@@ -45,9 +44,10 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
       {/* Background Image with top fade */}
       <div className="relative w-full h-[300px] md:h-[450px] z-0 pointer-events-none mt-4">
         <img 
-          src={getProxiedImageUrl("https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/17531a40-abc9-4446-abb5-e95e7e7e81c4.png")} 
+          src="https://i.ibb.co/218M2Dpc/1773216566644-019cdbf1-0fae-77a1-9733-2fc4cbbed401.png" 
           alt="Footer Background" 
           className="w-full h-full object-cover object-top opacity-100"
+          referrerPolicy="no-referrer"
           style={{ 
             maskImage: 'linear-gradient(to bottom, transparent 0%, black 30%, black 100%)', 
             WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 30%, black 100%)' 

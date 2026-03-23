@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
 import { Template, fixUrl } from '../api';
-import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;
@@ -85,9 +84,8 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                 {banner_url && (
                     <div className="absolute inset-0">
                         <img 
-                            src={getProxiedImageUrl(banner_url)} 
+                            src={banner_url} 
                             alt={`${creatorName} banner`}
-                            referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-60"
                         />
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/50 to-[#050505]"></div>
@@ -112,9 +110,8 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                              <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full p-1">
                                 {avatar_url ? (
                                     <img 
-                                        src={getProxiedImageUrl(avatar_url)} 
+                                        src={avatar_url} 
                                         alt={creatorName}
-                                        referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover border border-white/10"
                                     />
                                 ) : (
@@ -187,7 +184,6 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     onView={() => onView(template)}
                                     onLike={() => onLike(template.id)}
                                     onFavorite={() => onFavorite(template.id)}
-                                    onShowNotification={() => {}}
                                     // Disable recursion
                                     onCreatorClick={() => {}}
                                 />

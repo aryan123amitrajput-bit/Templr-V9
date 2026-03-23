@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, LayersIcon, ShieldCheckIcon, CpuIcon, UploadIcon, LightbulbIcon } from './Icons';
 import { Template, listenForUserTemplates, deleteTemplate } from '../api';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
-import { getProxiedImageUrl } from '../lib/imageUtils';
 
 interface DashboardModalProps {
   isOpen: boolean;
@@ -126,7 +125,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                     }
                 }
             } catch (e) {
-                // Signed URL fallback failed
+                console.warn("Signed URL fallback failed:", e);
             }
         }
         
@@ -163,9 +162,8 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                 <div className="w-24 h-24 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0 relative flex items-center justify-center">
                     {!imageError ? (
                         <img 
-                            src={getProxiedImageUrl(signedBanner || template.bannerUrl)} 
+                            src={signedBanner || template.bannerUrl} 
                             onError={handleImageError}
-                            referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                         />
                     ) : (

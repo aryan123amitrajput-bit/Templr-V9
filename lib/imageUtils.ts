@@ -42,18 +42,32 @@ export const getProxiedImageUrl = (url: string | { src: string } | undefined | n
   
   if (url.startsWith('blob:')) return url;
   if (url.startsWith('data:')) return url;
+  
+  if (url.includes('/api/proxy?url=')) {
+      try {
+          const extractedUrl = decodeURIComponent(url.split('/api/proxy?url=')[1].split('&')[0]);
+          url = extractedUrl;
+      } catch (e) {
+          // ignore
+      }
+  }
+
   if (url.startsWith('/')) {
       // If it's a relative path, we should probably prefix it with the app URL in production
       // but for now, we'll just return it as is if it's an internal route
       console.log(`[getProxiedImageUrl] Returning relative URL:`, url);
       return url;
   }
-  if (url.includes('/api/proxy?url=')) return url;
   
   if (url.includes('ui-avatars.com')) return url;
   if (url.includes('supabase.co')) return url;
   if (url.includes('unsplash.com')) return url;
   
-  console.log(`[getProxiedImageUrl] Returning proxied URL for:`, url);
-  return `/api/proxy?url=${encodeURIComponent(url)}`;
+  // Upgrade HTTP to HTTPS to prevent mixed content warnings
+  if (url.startsWith('http://')) {
+      url = url.replace('http://', 'https://');
+  }
+  
+  console.log(`[getProxiedImageUrl] Returning direct URL for:`, url);
+  return url;
 };
