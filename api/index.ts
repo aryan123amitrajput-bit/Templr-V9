@@ -234,9 +234,29 @@ app.get('/api/proxy', async (req, res) => {
                 console.warn(`[Proxy] Direct fetch failed for ${url} (404 Not Found)`);
                 throw e; // Don't fallback on 404
             }
-            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback...`);
-            const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
-            result = await fetchWithFallback(fallbackUrl);
+            console.warn(`[Proxy] Direct fetch failed for ${url}, trying fallbacks...`);
+            
+            const fallbacks = [
+                `https://wsrv.nl/?url=${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://corsproxy.io/?${encodeURIComponent(url)}`
+            ];
+            
+            let lastError;
+            for (const fallbackUrl of fallbacks) {
+                try {
+                    console.log(`[Proxy] Trying fallback: ${fallbackUrl}`);
+                    result = await fetchWithFallback(fallbackUrl);
+                    break; // Success!
+                } catch (fallbackErr) {
+                    console.warn(`[Proxy] Fallback failed: ${fallbackUrl}`);
+                    lastError = fallbackErr;
+                }
+            }
+            
+            if (!result) {
+                throw lastError || new Error('All fallbacks failed');
+            }
         }
         
         const { buffer, contentType } = result;
