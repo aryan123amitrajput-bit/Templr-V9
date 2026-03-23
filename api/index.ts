@@ -12,7 +12,8 @@ import { uploadToCatbox } from '../server/services/catboxService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager, uploadToPasteRs } from '../server/services/repoService';
+import { repoManager } from '../server/services/repoService';
+import { uploadToPasteRs } from '../server/services/pasteService';
 import { freeHostService } from '../server/services/freeHostService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
@@ -21,8 +22,6 @@ import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
-
-const DEFAULT_IMAGE = 'https://picsum.photos/seed/notfound/800/600?blur=10';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -87,14 +86,12 @@ try {
 }
 
 // GitHub Configuration
-const GITHUB_REPO_DEFAULT = 'Fluid-Fitness';
+const GITHUB_REPO_DEFAULT = 'Templr-V9';
 
 function getGitHubConfig() {
   let owner = process.env.GITHUB_OWNER || 'aryan123amitrajput-bit';
   let repo = process.env.GITHUB_REPO || GITHUB_REPO_DEFAULT;
   const token = process.env.GITHUB_TOKEN;
-
-  console.log(`[GitHub Config] Initial: owner=${owner}, repo=${repo}`);
 
   if (repo && repo.includes('github.com')) {
     try {
@@ -102,10 +99,9 @@ function getGitHubConfig() {
       if (urlParts.length >= 2) {
         owner = urlParts[0];
         repo = urlParts[1];
-        console.log(`[GitHub Config] Parsed from URL: owner=${owner}, repo=${repo}`);
       }
     } catch (e) {
-      console.error("[GitHub Config] Failed to parse GitHub URL from GITHUB_REPO variable");
+      console.error("Failed to parse GitHub URL from GITHUB_REPO variable");
     }
   }
 
@@ -129,13 +125,12 @@ async function deleteTemplateFromGitHub(templateId: string) {
 }
 
 async function updateTemplateOnGitHub(templateId: string, updates: any) {
-  const metadataUpdates = { ...updates };
+  const metadataUpdates: any = {};
   if (updates.title || updates.name) metadataUpdates.title = updates.title || updates.name;
   if (updates.image_url || updates.image_preview) metadataUpdates.thumbnail = updates.image_url || updates.image_preview;
   if (updates.category) metadataUpdates.category = updates.category;
   if (updates.tags) metadataUpdates.tags = updates.tags;
   
-  // Pass all updates to the repo manager so both registry and the template file get updated
   await repoManager.updateTemplate(templateId, metadataUpdates);
 }
 
@@ -150,7 +145,13 @@ async function saveTemplateToGitHub(template: any) {
     tags: template.tags || [],
     ...template
   };
-  return await repoManager.uploadTemplate(metadata);
+  try {
+    await repoManager.uploadTemplate(metadata);
+    return true;
+  } catch (e) {
+    console.error('Failed to save to GitHub:', e);
+    return false;
+  }
 }
 
 const app = express();
@@ -188,8 +189,8 @@ const errorHandler: express.ErrorRequestHandler = (err, req, res, next) => {
 };
 
 // Registry Endpoint for dynamic template loading
-app.get('/api/registry', async (req, res) => {
-  res.json(await freeHostService.getRegistry());
+app.get('/api/registry', (req, res) => {
+  res.json(freeHostService.getRegistry());
 });
 
 // Asset Proxy for CORS bypass
@@ -234,29 +235,9 @@ app.get('/api/proxy', async (req, res) => {
                 console.warn(`[Proxy] Direct fetch failed for ${url} (404 Not Found)`);
                 throw e; // Don't fallback on 404
             }
-            console.warn(`[Proxy] Direct fetch failed for ${url}, trying fallbacks...`);
-            
-            const fallbacks = [
-                `https://wsrv.nl/?url=${encodeURIComponent(url)}`,
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                `https://corsproxy.io/?${encodeURIComponent(url)}`
-            ];
-            
-            let lastError;
-            for (const fallbackUrl of fallbacks) {
-                try {
-                    console.log(`[Proxy] Trying fallback: ${fallbackUrl}`);
-                    result = await fetchWithFallback(fallbackUrl);
-                    break; // Success!
-                } catch (fallbackErr) {
-                    console.warn(`[Proxy] Fallback failed: ${fallbackUrl}`);
-                    lastError = fallbackErr;
-                }
-            }
-            
-            if (!result) {
-                throw lastError || new Error('All fallbacks failed');
-            }
+            console.warn(`[Proxy] Direct fetch failed for ${url}, trying weserv.nl fallback...`);
+            const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+            result = await fetchWithFallback(fallbackUrl);
         }
         
         const { buffer, contentType } = result;
@@ -352,31 +333,6 @@ app.post('/api/upload/pastesrs', async (req, res) => {
   }
 });
 
-// Helper for timeout and retry
-async function withTimeoutAndRetry<T>(fn: () => Promise<T>, timeoutMs: number, retries: number = 1): Promise<T> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-            
-            // We can't easily pass the signal to all upload functions without modifying them,
-            // so we use Promise.race to enforce the timeout at this level.
-            const result = await Promise.race([
-                fn(),
-                new Promise<never>((_, reject) => {
-                    controller.signal.addEventListener('abort', () => reject(new Error('Upload timeout')));
-                })
-            ]);
-            clearTimeout(timeoutId);
-            return result as T;
-        } catch (error: any) {
-            if (attempt === retries) throw error;
-            console.warn(`[Upload] Attempt ${attempt + 1} failed, retrying... (${error.message})`);
-        }
-    }
-    throw new Error('Unreachable');
-}
-
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
     const isVideo = mimetype.startsWith('video/');
@@ -388,69 +344,60 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
         hostUsed = 'Supabase Storage';
     } else {
-        console.log('[Upload] Image detected, starting Smart Upload Engine (Backend)');
-        
-        const providers = [
-            {
-                name: 'GitHub (Primary)',
-                fn: () => {
-                    const path = `assets/${Date.now()}-${originalname}`;
-                    return repoManager.uploadAsset(buffer, path, mimetype);
-                }
-            },
-            {
-                name: 'ImgBB (Secondary)',
-                fn: () => uploadToImgBB(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'Gifyu (Tertiary)',
-                fn: () => uploadToGifyu(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'Catbox',
-                fn: () => {
-                    const userhash = process.env.CATBOX_USERHASH || '';
-                    return uploadToCatbox(buffer, originalname, mimetype, userhash).then(r => r.direct_url);
-                }
-            },
-            {
-                name: '0008888 (i.111666.best)',
-                fn: () => uploadToI111666(buffer, originalname, mimetype).then(r => r.direct_url)
-            },
-            {
-                name: 'BeeIMG',
-                fn: async () => {
-                    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
-                    const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
-                    return await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-                }
-            },
-            {
-                name: 'ImgHippo',
-                fn: () => uploadToImgHippo(buffer, originalname).then(r => r.direct_url)
-            }
-        ];
-
-        let success = false;
-        for (const provider of providers) {
-            console.log(`[Upload] Attempting with ${provider.name}...`);
+        console.log('[Upload] Image detected, trying 0008888 -> BeeIMG -> Catbox -> Gifyu -> ImgBB -> GitHub -> ImgHippo');
+        try {
+            const result = await uploadToI111666(buffer, originalname, mimetype);
+            imageUrl = result.direct_url;
+            hostUsed = '0008888 (Primary)';
+        } catch (error: any) {
+            console.error('[Upload] 0008888 failed, trying BeeIMG:', error.message);
             try {
-                // 10 seconds timeout, 1 retry
-                imageUrl = await withTimeoutAndRetry(provider.fn, 10000, 1);
-                hostUsed = provider.name;
-                success = true;
-                console.log(`[Upload] Success with ${provider.name}!`);
-                break;
+                const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+                const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
+                imageUrl = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+                hostUsed = 'BeeIMG (Secondary)';
             } catch (error: any) {
-                console.error(`[Upload] ${provider.name} failed permanently:`, error.message);
+                console.error('[Upload] BeeIMG failed, trying Catbox:', error.message);
+                try {
+                    const userhash = process.env.CATBOX_USERHASH || '';
+                    const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+                    imageUrl = result.direct_url;
+                    hostUsed = 'Catbox (Tertiary)';
+                } catch (error: any) {
+                    console.error('[Upload] Catbox failed, trying Gifyu:', error.message);
+                    try {
+                        const result = await uploadToGifyu(buffer, originalname, mimetype);
+                        imageUrl = result.direct_url;
+                        hostUsed = 'Gifyu (Quaternary)';
+                    } catch (error: any) {
+                        console.error('[Upload] Gifyu failed, trying ImgBB:', error.message);
+                        try {
+                        const result = await uploadToImgBB(buffer, originalname, mimetype);
+                        imageUrl = result.direct_url;
+                        hostUsed = 'ImgBB';
+                    } catch (error: any) {
+                        console.error('[Upload] ImgBB failed, trying GitHub:', error.message);
+                        try {
+                            const path = `assets/${originalname}`;
+                            imageUrl = await repoManager.uploadAsset(buffer, path, mimetype);
+                            hostUsed = 'GitHub';
+                        } catch (error: any) {
+                            console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
+                            try {
+                                const result = await uploadToImgHippo(buffer, originalname);
+                                imageUrl = result.direct_url;
+                                hostUsed = 'ImgHippo';
+                            } catch (error: any) {
+                                console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
+                                imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
+                                hostUsed = 'Supabase Storage (Fallback)';
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        if (!success) {
-            console.error('[Upload] All primary providers failed, falling back to Supabase Storage');
-            imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
-            hostUsed = 'Supabase Storage (Fallback)';
-        }
+    }
     }
     return { imageUrl, hostUsed };
 }
@@ -478,6 +425,7 @@ app.post('/api/upload', (req, res, next) => {
     const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
+    console.log('[Upload] Host used:', hostUsed);
 
     if (title) {
         console.log('[Upload] Saving to database...');
@@ -526,6 +474,7 @@ app.post('/api/upload/url', async (req, res) => {
         const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
 
         console.log('[URL Upload] Final URL extracted:', imageUrl);
+        console.log('[URL Upload] Host used:', hostUsed);
 
         res.json({ success: true, url: imageUrl, host: hostUsed });
     } catch (error: any) {
@@ -759,20 +708,12 @@ app.post('/api/upload/i111666', (req, res, next) => {
       body: formData,
       headers: {
         'Auth-Token': authToken,
-        'Referer': 'https://i.111666.best/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
     if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      let errorText = '';
-      if (contentType && contentType.includes('application/json')) {
-        const errorJson = await response.json();
-        errorText = JSON.stringify(errorJson);
-      } else {
-        errorText = await response.text();
-      }
+      const errorText = await response.text();
       throw new Error(`i111666 API failed: ${response.status} ${errorText}`);
     }
 
@@ -954,103 +895,89 @@ app.post('/api/upload/pixhost', (req, res, next) => {
 
 // Get Public Templates
 app.get('/api/templates', async (req, res) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  
   try {
     const page = parseInt(req.query.page as string) || 0;
-    const limit = parseInt(req.query.limit as string) || 12;
+    const limit = parseInt(req.query.limit as string) || 6;
     const category = req.query.category as string;
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
-    console.log(`[API] Fetching templates: page=${page}, limit=${limit}, category=${category}, sortBy=${sortBy}`);
+    const [gitRegistry, { data: supabaseData }] = await Promise.all([
+      repoManager.getMergedRegistry(),
+      supabase.from('templates').select('*').order('created_at', { ascending: false })
+    ]);
 
-    // 1. Try Supabase Cache First (Fastest)
-    let query = supabase.from('templates').select('*', { count: 'exact' });
+    clearTimeout(timeoutId);
+
+    const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
     
-    // Only approved templates
-    query = query.eq('status', 'approved');
+    const templatesMap = new Map();
+    gitRegistry.forEach((t: any) => {
+      if (!templatesMap.has(t.id)) {
+        templatesMap.set(t.id, { ...t, _source: 'git' });
+      }
+    });
+    mappedSupabase.forEach((t: any) => {
+      if (!templatesMap.has(t.id)) {
+        templatesMap.set(t.id, t);
+      }
+    });
+
+    let registry = Array.from(templatesMap.values());
+
+    const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
+    const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
+    registry = registry.filter((t: any) => !deletedIds.has(t.id));
 
     if (category && category !== 'All') {
-      query = query.eq('category', category);
+      registry = registry.filter((t: any) => t.category === category);
     }
     
     if (searchQuery) {
-      const q = `%${searchQuery}%`;
-      query = query.or(`title.ilike.${q},description.ilike.${q}`);
+      const q = searchQuery.toLowerCase();
+      registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
     }
-
+    
     if (sortBy === 'popular') {
-      query = query.order('views', { ascending: false });
+      registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
     } else if (sortBy === 'likes') {
-      query = query.order('likes', { ascending: false });
+      registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
     } else {
-      query = query.order('created_at', { ascending: false });
+      registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     }
 
     const start = page * limit;
-    const end = start + limit - 1;
-    query = query.range(start, end);
-
-    const { data: supabaseData, count: supabaseCount, error } = await query;
-
-    let paginatedData = supabaseData || [];
-    let totalCount = supabaseCount || 0;
-
-    if (error) {
-      console.error('[API] Supabase query error:', error);
-    }
-
-    // 2. Fallback to Git if Supabase is empty or failed
-    if (totalCount === 0) {
-      console.warn('[API] Cache miss or empty. Fetching from Git Source of Truth...');
-      try {
-        const gitRegistry = await repoManager.getMergedRegistry();
-        let filtered = gitRegistry.filter((t: any) => t.status === 'approved');
-        
-        if (category && category !== 'All') {
-          filtered = filtered.filter((t: any) => t.category === category);
-        }
-        if (searchQuery) {
-          const q = searchQuery.toLowerCase();
-          filtered = filtered.filter((t: any) => 
-            (t.title?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q))
-          );
-        }
-        
-        if (sortBy === 'popular') filtered.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
-        else if (sortBy === 'likes') filtered.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-        else filtered.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-
-        totalCount = filtered.length;
-        paginatedData = filtered.slice(start, start + limit);
-      } catch (e) {
-        console.error('[API] Git fetch failed:', e);
-      }
-    }
-
-    // 3. Append FreeHostService templates if needed
-    if (paginatedData.length < limit) {
-      const needed = limit - paginatedData.length;
-      const freeHostOffset = Math.max(0, start - totalCount);
-      try {
-        const extra = await freeHostService.getTemplates(freeHostOffset, needed, category, searchQuery);
+    const gitSupabaseCount = registry.length;
+    
+    let paginatedData = [];
+    if (start < gitSupabaseCount) {
+      paginatedData = registry.slice(start, start + limit);
+      if (paginatedData.length < limit) {
+        const needed = limit - paginatedData.length;
+        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
         paginatedData.push(...extra);
-      } catch (e) {
-        console.error(`[API] freeHostService.getTemplates failed:`, e);
       }
+    } else {
+      const freeHostOffset = start - gitSupabaseCount;
+      const freeHostPage = Math.floor(freeHostOffset / limit);
+      const freeHostLimit = limit;
+      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
     }
 
-    const freeHostRegistry = await freeHostService.getRegistry();
-    const absoluteTotal = totalCount + (freeHostRegistry?.totalTemplates || 0);
+    const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
 
     res.json({ 
       data: paginatedData, 
-      hasMore: start + limit < absoluteTotal,
-      source: supabaseCount ? 'supabase' : 'git'
+      hasMore: start + limit < totalCount 
     });
-
   } catch (error: any) {
     console.error('API Error:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    clearTimeout(timeoutId);
   }
 });
 
@@ -1116,82 +1043,6 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// Sync Supabase to GitHub (with asset localization)
-app.post('/api/admin/sync-github', async (req, res) => {
-  try {
-    const { data: supabaseData, error } = await supabase.from('templates').select('*');
-    if (error) throw error;
-    
-    if (!supabaseData || supabaseData.length === 0) {
-      return res.json({ success: true, message: 'No templates in Supabase to sync.' });
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-    let localizedCount = 0;
-
-    for (const template of supabaseData) {
-      try {
-        let updatedTemplate = { ...template };
-        let needsUpdate = false;
-
-        // Localize image_url if it's not already on GitHub/GitLab
-        const currentUrl = template.image_url || template.imageUrl;
-        if (currentUrl && 
-            !currentUrl.includes('githubusercontent.com') && 
-            !currentUrl.includes('gitlab.com') && 
-            !currentUrl.includes('localhost')) {
-          
-          console.log(`[Sync] Localizing asset for template ${template.id}: ${currentUrl}`);
-          try {
-            const response = await axios.get(currentUrl, { responseType: 'arraybuffer', timeout: 10000 });
-            const buffer = Buffer.from(response.data);
-            const contentType = response.headers['content-type'] || 'image/jpeg';
-            const extension = contentType.split('/')[1] || 'jpg';
-            const filename = `${template.id}.${extension}`;
-            const path = `assets/${filename}`;
-            
-            const gitUrl = await repoManager.uploadAsset(buffer, path, contentType);
-            if (gitUrl) {
-              updatedTemplate.image_url = gitUrl;
-              updatedTemplate.imageUrl = gitUrl;
-              needsUpdate = true;
-              localizedCount++;
-            }
-          } catch (assetErr: any) {
-            console.warn(`[Sync] Failed to localize asset for ${template.id}:`, assetErr.message);
-          }
-        }
-
-        const success = await repoManager.uploadTemplate(updatedTemplate);
-        if (success) {
-          if (needsUpdate) {
-            // Update Supabase with the new Git URL
-            await supabase.from('templates').update({ 
-              image_url: updatedTemplate.image_url,
-              imageUrl: updatedTemplate.imageUrl 
-            }).eq('id', template.id);
-          }
-          successCount++;
-        } else {
-          failCount++;
-        }
-      } catch (e) {
-        console.error(`[Sync] Failed to sync template ${template.id}:`, e);
-        failCount++;
-      }
-    }
-
-    res.json({ 
-      success: true, 
-      message: `Sync complete. Successfully synced ${successCount} templates. Localized ${localizedCount} assets. Failed: ${failCount}.` 
-    });
-  } catch (error: any) {
-    console.error('[Sync] Error syncing to GitHub:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Get User Templates
 app.get('/api/user/templates', async (req, res) => {
   try {
@@ -1240,28 +1091,13 @@ app.get('/api/user/templates', async (req, res) => {
 app.get('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // 1. Try Supabase first
-    const { data: supabaseData, error } = await supabase
-      .from('templates')
-      .select('*')
-      .eq('id', id)
-      .single();
-      
-    if (supabaseData && !error) {
-      return res.json({ data: supabaseData, source: 'supabase' });
-    }
-
-    // 2. Fallback to Git
     let content = await repoManager.getTemplateById(id);
-    
-    // 3. Fallback to FreeHostService
     if (!content) {
       content = await freeHostService.getTemplateById(id);
     }
 
     if (content) {
-      res.json({ data: content, source: 'git' });
+      res.json({ data: content });
     } else {
       res.status(404).json({ error: 'Template not found' });
     }
@@ -1277,33 +1113,27 @@ app.post('/api/templates', async (req, res) => {
     if (!template) return res.status(400).json({ error: 'Template is required' });
     const templateId = crypto.randomUUID();
     let finalImageUrl = template.image_url || template.imageUrl || '';
-    
-    // Block localhost/internal URLs
-    if (finalImageUrl.includes('localhost') || finalImageUrl.includes('127.0.0.1')) {
-      finalImageUrl = 'https://picsum.photos/seed/invalid/800/600';
-    }
-    
     let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
-    if (finalBannerUrl.includes('localhost') || finalBannerUrl.includes('127.0.0.1')) {
-      finalBannerUrl = finalImageUrl;
-    }
     let finalGalleryImages = template.gallery_images || [];
 
     const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
     const metadata = {
       id: templateId,
-      title: template.title || template.name || 'Untitled',
-      description: template.description || '',
-      fileUrl: template.file_url || '',
-      imageUrl: finalImageUrl,
-      bannerUrl: finalBannerUrl,
-      category: template.category || 'All',
+      name: template.title || template.name,
+      description: template.description,
+      preview_url: cleanPreviewUrl,
+      image_preview: finalImageUrl,
+      banner_url: finalBannerUrl,
+      gallery_images: finalGalleryImages,
+      file_url: template.file_url,
       tags: template.tags || [],
-      author: template.author_name || 'Anonymous',
+      creator: template.author_name || 'Anonymous',
+      creator_email: template.author_email,
+      creator_avatar: template.author_avatar || '',
       created_at: new Date().toISOString(),
-      price: String(template.price || 'Free'),
-      likes: 0,
-      views: 0
+      category: template.category,
+      price: template.price,
+      stats: { likes: 0, views: 0 }
     };
 
     try {
@@ -1338,14 +1168,6 @@ app.put('/api/templates/:id', async (req, res) => {
     const { id } = req.params;
     const { updates } = req.body;
 
-    // Block localhost/internal URLs in updates
-    if (updates.image_url && (updates.image_url.includes('localhost') || updates.image_url.includes('127.0.0.1'))) {
-      updates.image_url = 'https://picsum.photos/seed/invalid/800/600';
-    }
-    if (updates.banner_url && (updates.banner_url.includes('localhost') || updates.banner_url.includes('127.0.0.1'))) {
-      updates.banner_url = updates.image_url || 'https://picsum.photos/seed/invalid/800/600';
-    }
-
     try { await updateTemplateOnGitHub(id, updates); } catch (e) {}
     try { await freeHostService.updateTemplate(id, updates); } catch (e) {}
     await supabase.from('templates').update(updates).eq('id', id);
@@ -1377,48 +1199,34 @@ app.post('/api/user/update', async (req, res) => {
     }
 });
 
-// Server Startup
-const PORT = 3000;
-
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    // Development mode with Vite middleware
-    try {
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-      console.log('[Server] Vite middleware integrated');
-    } catch (e) {
-      console.error('[Server] Failed to create Vite server:', e);
-    }
-  } else {
-    // Production mode serving static files
-    const distPath = path.resolve(__dirname, '..', 'dist');
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      console.log(`[Server] Serving static files from ${distPath}`);
-      app.get('*', (req, res, next) => {
-        if (req.url.startsWith('/api/')) return next();
-        res.sendFile(path.resolve(distPath, 'index.html'));
-      });
-    } else {
-      console.warn(`[Server] Production build not found at ${distPath}`);
-    }
-  }
-
-  app.use(errorHandler);
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Server] Templr Engine running on http://0.0.0.0:${PORT}`);
-    console.log(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
-}
-
-// Only start the server if we're not on Vercel (Vercel uses the exported app)
-if (!process.env.VERCEL) {
+// For local development
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  const PORT = 3000;
+  const startServer = async () => {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+    app.use(errorHandler);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  };
   startServer();
+} else if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
+  // Production standalone (not Vercel)
+  const PORT = 3000;
+  const distPath = path.resolve(__dirname, '..', 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      if (req.url.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
+      res.sendFile(path.resolve(distPath, 'index.html'));
+    });
+  }
+  app.use(errorHandler);
+  app.listen(PORT, '0.0.0.0');
 }
 
 export default app;

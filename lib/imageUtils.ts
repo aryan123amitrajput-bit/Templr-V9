@@ -29,45 +29,18 @@ export const getProxiedImageUrl = (url: string | { src: string } | undefined | n
   
   if (typeof url !== 'string') return '';
   
-  // Handle protocol-relative URLs
-  if (url.startsWith('//')) {
-      url = `https:${url}`;
-  }
-  
-  // Filter out localhost/127.0.0.1 URLs as they will never work in production
-  if (url.includes('localhost:') || url.includes('127.0.0.1:')) {
-      console.warn(`[getProxiedImageUrl] Filtering out local URL:`, url);
-      return 'https://picsum.photos/seed/local/800/600?blur=5'; // Return a placeholder
-  }
-  
   if (url.startsWith('blob:')) return url;
   if (url.startsWith('data:')) return url;
-  
-  if (url.includes('/api/proxy?url=')) {
-      try {
-          const extractedUrl = decodeURIComponent(url.split('/api/proxy?url=')[1].split('&')[0]);
-          url = extractedUrl;
-      } catch (e) {
-          // ignore
-      }
-  }
-
   if (url.startsWith('/')) {
-      // If it's a relative path, we should probably prefix it with the app URL in production
-      // but for now, we'll just return it as is if it's an internal route
       console.log(`[getProxiedImageUrl] Returning relative URL:`, url);
       return url;
   }
+  if (url.includes('/api/proxy?url=')) return url;
   
   if (url.includes('ui-avatars.com')) return url;
   if (url.includes('supabase.co')) return url;
   if (url.includes('unsplash.com')) return url;
   
-  // Upgrade HTTP to HTTPS to prevent mixed content warnings
-  if (url.startsWith('http://')) {
-      url = url.replace('http://', 'https://');
-  }
-  
-  console.log(`[getProxiedImageUrl] Returning direct URL for:`, url);
-  return url;
+  console.log(`[getProxiedImageUrl] Returning proxied URL for:`, url);
+  return `/api/proxy?url=${encodeURIComponent(url)}`;
 };

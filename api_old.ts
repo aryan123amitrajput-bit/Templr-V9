@@ -229,26 +229,47 @@ export const fixUrl = (url?: string | string[]): string => {
     if (!url) return '';
     
     // Handle case where DB returns an array or JSON stringified array
-    if (Array.isArray(url)) {
-        if (url.length === 0) return '';
-        url = url[0];
-    } else if (typeof url === 'string' && url.trim().startsWith('[') && url.trim().endsWith(']')) {
+    let finalUrl: any = url;
+    if (Array.isArray(finalUrl)) {
+        if (finalUrl.length === 0) return '';
+        finalUrl = finalUrl[0];
+    } else if (typeof finalUrl === 'string' && finalUrl.trim().startsWith('[') && finalUrl.trim().endsWith(']')) {
         try {
-            const parsed = JSON.parse(url);
+            const parsed = JSON.parse(finalUrl);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                url = parsed[0];
+                finalUrl = parsed[0];
             }
         } catch (e) {
             // Ignore parse error
         }
     }
 
-    if (typeof url !== 'string') return '';
-    let trimmedUrl = url.trim();
+    if (typeof finalUrl !== 'string') return '';
+    let trimmedUrl = finalUrl.trim();
     
     // Strip leading/trailing quotes if they exist
     if ((trimmedUrl.startsWith('"') && trimmedUrl.endsWith('"')) || (trimmedUrl.startsWith("'") && trimmedUrl.endsWith("'"))) {
         trimmedUrl = trimmedUrl.slice(1, -1).trim();
+    }
+
+    if (!trimmedUrl) return '';
+
+    // Handle protocol-relative URLs
+    if (trimmedUrl.startsWith('//')) {
+        return `https:${trimmedUrl}`;
+    }
+
+    // Handle Supabase storage paths (e.g. "previews/image.png")
+    // If it doesn't have a protocol and doesn't start with /, it might be a path
+    if (!trimmedUrl.startsWith('http') && !trimmedUrl.startsWith('/') && !trimmedUrl.startsWith('data:') && !trimmedUrl.startsWith('blob:')) {
+        // Heuristic: if it contains a dot (extension) and no spaces, it's likely a path
+        if (trimmedUrl.includes('.') && !trimmedUrl.includes(' ')) {
+            const { url: sbUrl } = getSupabaseConfig();
+            if (sbUrl && sbUrl !== 'https://placeholder.supabase.co') {
+                const bucket = 'templates'; // Default bucket
+                return `${sbUrl}/storage/v1/object/public/${bucket}/${trimmedUrl}`;
+            }
+        }
     }
     
     return trimmedUrl;
@@ -336,75 +357,7 @@ export const getPublicTemplates = async (
     
     const attempt = async (retryCount = 0): Promise<any> => {
         try {
-            // 1. Try to fetch from Master Registry (JSONHosting batches)
-            if (!cachedRegistry) {
-                try {
-                    const regRes = await fetchWithTimeout('/api/registry', {});
-                    if (regRes.ok) {
-                        cachedRegistry = await regRes.json();
-                    } else {
-                    }
-                } catch (e) {
-                }
-            }
-
-            if (cachedRegistry && cachedRegistry.batches && cachedRegistry.batches.length > 0) {
-                const startIdx = page * limit;
-                const endIdx = startIdx + limit;
-                
-                let currentCount = 0;
-                const allTemplates: any[] = [];
-                
-                // Fetch required batches
-                for (const batch of cachedRegistry.batches) {
-                    const batchStart = currentCount;
-                    const batchEnd = currentCount + batch.count;
-                    
-                    if (batchEnd > startIdx && batchStart < endIdx) {
-                        try {
-                            const batchRes = await fetchWithTimeout(batch.url, {});
-                            if (batchRes.ok) {
-                                const batchData = await batchRes.json();
-                                if (batchData && batchData.templates) {
-                                    let filtered = batchData.templates;
-                                    
-                                    // Apply filters
-                                    if (category && category !== 'All') {
-                                        filtered = filtered.filter((t: any) => t.category === category);
-                                    }
-                                    if (searchQuery) {
-                                        const q = searchQuery.toLowerCase();
-                                        filtered = filtered.filter((t: any) => 
-                                            (t.title || t.name || '').toLowerCase().includes(q) || 
-                                            (t.description || '').toLowerCase().includes(q)
-                                        );
-                                    }
-                                    allTemplates.push(...filtered);
-                                }
-                            }
-                        } catch (e) {
-                        }
-                    }
-                    currentCount += batch.count;
-                    // Optimization: if we have enough and no filters, we can stop
-                    if (allTemplates.length >= limit && !searchQuery && category === 'All') break;
-                }
-
-                if (allTemplates.length > 0) {
-                    // Sort if needed (though batches are usually chronological)
-                    if (sortBy === 'popular' || sortBy === 'likes') {
-                        allTemplates.sort((a, b) => (b.likes || 0) - (a.likes || 0));
-                    }
-
-                    const mappedData = allTemplates.slice(0, limit).map(mapTemplate);
-                    return { 
-                        data: mappedData, 
-                        hasMore: currentCount < cachedRegistry.totalTemplates 
-                    };
-                }
-            }
-
-            // 2. Fallback to Backend API
+            // Always use the Backend API for consistent merging and pagination
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: limit.toString(),
@@ -423,17 +376,20 @@ export const getPublicTemplates = async (
 
             return { data: mappedData, hasMore };
         } catch (e: any) {
+            console.error(`[getPublicTemplates] Attempt ${retryCount} failed:`, e);
             
-            // 3. Fallback to Supabase directly
+            // Fallback to Supabase directly if backend fails
             if (isApiConfigured) {
                 try {
                     let query = supabase
                         .from('templates')
-                        .select('*')
+                        .select('*', { count: 'exact' })
                         .eq('status', 'approved');
                     
                     if (category !== 'All') query = query.eq('category', category);
-                    if (searchQuery) query = query.ilike('title', `%${searchQuery}%`);
+                    if (searchQuery) {
+                        query = query.or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+                    }
                     
                     if (sortBy === 'popular' || sortBy === 'likes') {
                         query = query.order('likes', { ascending: false });
@@ -441,24 +397,33 @@ export const getPublicTemplates = async (
                         query = query.order('created_at', { ascending: false });
                     }
 
-                    const { data: sbData, error: sbError } = await query
+                    const { data: sbData, error: sbError, count } = await query
                         .range(page * limit, (page + 1) * limit - 1);
 
                     if (!sbError && sbData) {
                         return { 
                             data: sbData.map(mapTemplate), 
-                            hasMore: sbData.length === limit 
+                            hasMore: count ? (page + 1) * limit < count : sbData.length === limit 
                         };
                     }
-                } catch (fallbackErr) {
+                } catch (sbErr) {
+                    console.error('[getPublicTemplates] Supabase fallback failed:', sbErr);
                 }
             }
 
+            if (retryCount < 1) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
             return { data: [], hasMore: false, error: e.message || "Connection failed" };
         }
     };
 
-    return attempt();
+    try {
+        return await attempt();
+    } catch (e: any) {
+        return { data: [], hasMore: false, error: e.message };
+    }
 };
 
 export const getTemplateById = async (id: string): Promise<Template | null> => {
@@ -945,7 +910,8 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
         try {
             const result = await uploadImage(file);
             return { url: result.direct_url, host: result.provider };
-        } catch (err) {
+        } catch (err: any) {
+            console.warn("[Upload] Client-side uploadImage failed, falling back to backend:", err.message);
         }
     }
 

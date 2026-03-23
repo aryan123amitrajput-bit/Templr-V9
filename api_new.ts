@@ -1,6 +1,5 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { uploadImage } from './src/services/imageUploadService';
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v9.37
@@ -849,6 +848,45 @@ const fileToBase64 = (file: File): Promise<string> => {
     });
 };
 
+export const uploadFile = async (file: File, path: string): Promise<string> => {
+    if (!file) throw new Error("No file provided for upload.");
+    if (!isApiConfigured) {
+        return URL.createObjectURL(file);
+    }
+    
+    // Sanitize path just in case
+    const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
+
+    const attempt = async (retryCount = 0): Promise<string> => {
+        try {
+            console.log(`[Upload] Starting upload for ${safePath}. Type: ${file.type}, Size: ${file.size}`);
+
+            const uploadPromise = supabase.storage.from('assets').upload(safePath, file, { 
+                upsert: true,
+                contentType: file.type || 'application/octet-stream'
+            });
+            
+            const { error } = await uploadPromise;
+            
+            if (error) throw error;
+            
+            const { data } = supabase.storage.from('assets').getPublicUrl(safePath);
+            console.log(`[Upload] Success. Public URL: ${data.publicUrl}`);
+            return fixUrl(data.publicUrl);
+        } catch (e: any) {
+            console.log(`[Upload] Attempt ${retryCount + 1} failed:`, e.message);
+            
+            if (retryCount < 2) {
+                await new Promise(r => setTimeout(r, 1000));
+                return attempt(retryCount + 1);
+            }
+            throw new Error("Upload failed: " + e.message);
+        }
+    };
+
+    return attempt();
+};
+
 export const getSession = async (): Promise<Session | null> => {
     try {
         // supabase.auth.getSession() can throw "Failed to fetch" if Supabase is unreachable
@@ -1006,82 +1044,4 @@ export const signOut = async () => {
     try {
         await supabase.auth.signOut();
     } catch (e) {}
-};
-
-export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
-    if (!url) throw new Error("No URL provided for upload.");
-    
-    try {
-        const response = await fetch('/api/upload/url', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Upload from URL failed: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return { url: data.url, host: data.host };
-    } catch (err: any) {
-        throw new Error("Upload from URL failed: " + err.message);
-    }
-};
-
-export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
-    if (!file) throw new Error("No file provided for upload.");
-    
-    // Use specialized image upload service for images to ensure iimg.live prioritization and verification
-    if (file.type.startsWith('image/')) {
-        try {
-            const result = await uploadImage(file);
-            return { url: result.direct_url, host: result.provider };
-        } catch (err: any) {
-            console.warn("[Upload] Client-side uploadImage failed, falling back to backend:", err.message);
-        }
-    }
-
-    if (!isApiConfigured) {
-        return { url: URL.createObjectURL(file), host: 'Local/Mock' };
-    }
-    
-    // Sanitize path just in case
-    const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
-
-    const attempt = async (retryCount = 0): Promise<{ url: string; host: string }> => {
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('path', safePath);
-            
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const contentType = response.headers.get("content-type");
-                if (contentType && contentType.includes("application/json")) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'File upload failed');
-                } else {
-                    const errorText = await response.text();
-                    throw new Error(`File upload failed: ${errorText.substring(0, 100)}`);
-                }
-            }
-            const data = await response.json();
-            return { url: data.url, host: data.host };
-        } catch (err: any) {
-            if (retryCount < 2) {
-                await new Promise(r => setTimeout(r, 1000));
-                return attempt(retryCount + 1);
-            }
-            throw new Error("Upload failed: " + err.message);
-        }
-    };
-    return attempt();
 };

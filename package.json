@@ -3,16 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "engines": {
-    "node": "24.x"
-  },
   "scripts": {
-    "dev": "tsx api/index.ts",
-    "start": "node api/index.ts",
+    "dev": "tsx server.ts",
+    "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
-    "validate-images": "tsx scripts/validateImages.ts"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^1.42.0",
@@ -21,7 +17,6 @@
     "@supabase/supabase-js": "^2.39.3",
     "@types/multer": "^2.1.0",
     "@vercel/analytics": "^1.6.1",
-    "axios": "^1.13.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -30,9 +25,7 @@
     "firebase": "^12.10.0",
     "firebase-admin": "^13.7.0",
     "framer-motion": "^11.0.0",
-    "lucide-react": "^0.577.0",
     "multer": "^2.1.1",
-    "mysql2": "^3.20.0",
     "octokit": "^5.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -44,9 +37,9 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.4.1"
+    "vite": "^6.2.0"
   }
 }

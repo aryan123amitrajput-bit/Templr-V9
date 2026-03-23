@@ -5,9 +5,9 @@ let supabaseClient: ReturnType<typeof createClient> | null = null;
 
 export function getSupabase() {
   if (!supabaseClient) {
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseUrl = process.env.SUPABASE_URL;
     // Prefer service role key for backend operations, fallback to anon key
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     
     console.log("Initializing Supabase client...");
     console.log("SUPABASE_URL:", supabaseUrl ? "Set" : "Not Set");
@@ -33,29 +33,10 @@ export function getSupabase() {
  */
 export async function uploadPreviewImage(fileBuffer: Buffer, originalName: string, mimetype: string): Promise<string> {
   const supabase = getSupabase();
-  
-  // Resilient bucket name resolution
-  let bucketName = 'templates';
-  const envBucket = process.env.SUPABASE_BUCKET;
-  console.log(`[Supabase] Raw SUPABASE_BUCKET from env: "${envBucket ? (envBucket.length > 20 ? envBucket.substring(0, 10) + '...' : envBucket) : 'Not Set'}"`);
-  if (envBucket) {
-    // Remove quotes, trim, remove trailing slashes, replace underscores with hyphens, and lowercase
-    const cleaned = envBucket.replace(/['"]/g, '').trim().split('/')[0].replace(/_/g, '-').toLowerCase();
-    // Remove leading/trailing hyphens and any other invalid characters (only lowercase, numbers, hyphens allowed)
-    const finalCleaned = cleaned.replace(/^-+|-+$/g, '').replace(/[^a-z0-9-]/g, '');
-    
-    // Validate bucket name: must be 3-63 chars, not a token (doesn't start with eyJ), and not empty
-    if (finalCleaned.length >= 3 && finalCleaned.length <= 63 && !finalCleaned.startsWith('eyj')) {
-      bucketName = finalCleaned;
-    } else {
-      console.warn(`[Supabase] Invalid bucket name provided in env ("${envBucket.substring(0, 10)}..."), falling back to default "templates"`);
-    }
-  }
-  
-  console.log(`[Supabase] Using bucket: "${bucketName}" for upload`);
+  const bucketName = process.env.SUPABASE_BUCKET || 'templates';
   
   // Generate a unique filename to prevent collisions
-  const fileExt = originalName.split('.').pop() || 'bin';
+  const fileExt = originalName.split('.').pop();
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
   const filePath = `previews/${fileName}`;
 
@@ -64,13 +45,10 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
     .from(bucketName)
     .upload(filePath, fileBuffer, {
       contentType: mimetype,
-      cacheControl: '3600',
       upsert: false
     });
 
   if (error) {
-    console.error(`[Supabase] Upload failed for bucket "${bucketName}":`, error);
-    await listBuckets(); // Debugging: List buckets on failure
     throw new Error(`Supabase upload failed: ${error.message}`);
   }
 
@@ -80,15 +58,4 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
     .getPublicUrl(filePath);
 
   return publicUrlData.publicUrl;
-}
-
-export async function listBuckets() {
-  const supabase = getSupabase();
-  const { data, error } = await supabase.storage.listBuckets();
-  if (error) {
-    console.error('[Supabase] Error listing buckets:', error);
-    return [];
-  }
-  console.log('[Supabase] Available buckets:', data.map(b => b.name));
-  return data;
 }

@@ -7,11 +7,11 @@ import { templrAuditor } from './templrAuditor';
 class TemplrBackend {
   public async getStats() {
     const registry = await repoManager.getMergedRegistry();
-    const freeRegistry = await freeHostService.getRegistry();
+    const freeRegistry = freeHostService.getRegistry();
     const hosts = traffService.getHosts();
     
     return {
-      totalTemplates: registry.length + freeRegistry.totalTemplates,
+      totalTemplates: registry.length + (freeRegistry.batches.length * 100), // Approximate
       activeHosts: hosts.filter(h => h.isReachable).length,
       totalHosts: hosts.length,
       storageStatus: 'unlimited'

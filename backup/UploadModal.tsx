@@ -1,11 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from './Icons';
+import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from '../components/Icons';
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
-import { uploadFile, uploadFileFromUrl, NewTemplateData, Template } from '../api';
-import { NotificationType } from './Notification';
-import { getProxiedImageUrl } from '../lib/imageUtils';
+import { uploadFile, NewTemplateData, Template } from '../api';
+import { NotificationType } from '../components/Notification';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -94,7 +93,7 @@ const TagInput = ({ value, onChange, placeholder, maxTags = 5 }: { value: string
     );
 };
 
-const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading, host }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean, host?: string }) => {
+const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean }) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,9 +104,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
     };
 
     const hasContent = !!file || !!initialUrl;
-    const previewSrc = file ? URL.createObjectURL(file) : (initialUrl ? getProxiedImageUrl(initialUrl) : null);
-    
-    console.log('[PreviewUploader] file:', file, 'initialUrl:', initialUrl, 'previewSrc:', previewSrc);
+    const previewSrc = file ? URL.createObjectURL(file) : (initialUrl || null);
 
     return (
         <div 
@@ -133,10 +130,9 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
                     {type === 'image' ? (
                         <img 
                             key={previewSrc || 'empty'}
-                            src={previewSrc ? getProxiedImageUrl(previewSrc) : undefined} 
+                            src={previewSrc || undefined} 
                             alt="Preview" 
-                            referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).src = getProxiedImageUrl(DEFAULT_VIDEO_THUMB); }}
+                            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
                             className="w-full h-full object-contain" 
                         />
                     ) : (
@@ -157,8 +153,6 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading,
                             <p className="text-[10px] font-bold text-white uppercase tracking-widest animate-pulse">Uploading Media...</p>
                         </div>
                     )}
-
-
 
                     {/* Change Button (Only when not uploading) */}
                     {!isUploading && (
@@ -249,8 +243,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
   
   const [previewType, setPreviewType] = useState<'image' | 'video'>('image');
   const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [urlInput, setUrlInput] = useState('');
-  const [showUrlInput, setShowUrlInput] = useState(false);
   
   const [existingImageUrl, setExistingImageUrl] = useState('');
   const [existingVideoUrl, setExistingVideoUrl] = useState('');
@@ -260,68 +252,9 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [sourceCode, setSourceCode] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [uploadHost, setUploadHost] = useState('');
   const [uploadStatus, setUploadStatus] = useState(''); // "Uploading Video...", "Saving..."
   const [errors, setErrors] = useState<any>({});
   const zipInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImmediateUpload = async (file: File) => {
-      if (previewType === 'image' && !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-          onShowNotification('Please select an image file (JPEG, PNG, GIF, WebP)', 'error');
-          return;
-      }
-      
-      setPreviewFile(file);
-      setIsUploadingImage(true);
-      setUploadHost('');
-      try {
-          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const path = `${previewType}s/${Date.now()}_${safeName}`;
-          const { url, host } = await uploadFile(file, path);
-          
-          if (previewType === 'video') {
-              setExistingVideoUrl(url);
-              if (!existingImageUrl) setExistingImageUrl(DEFAULT_VIDEO_THUMB);
-          } else {
-              setExistingImageUrl(url);
-              setExistingVideoUrl('');
-          }
-          setUploadHost(host);
-          onShowNotification(`Media uploaded successfully via ${host}!`, 'success');
-      } catch (e: any) {
-          onShowNotification("Upload failed: " + e.message, 'error');
-          setPreviewFile(null);
-      } finally {
-          setIsUploadingImage(false);
-      }
-  };
-
-  const handleUrlUpload = async () => {
-      if (!urlInput.trim()) return;
-      
-      setIsUploadingImage(true);
-      setUploadHost('');
-      try {
-          const { url, host } = await uploadFileFromUrl(urlInput);
-          
-          if (previewType === 'video') {
-              setExistingVideoUrl(url);
-              if (!existingImageUrl) setExistingImageUrl(DEFAULT_VIDEO_THUMB);
-          } else {
-              setExistingImageUrl(url);
-              setExistingVideoUrl('');
-          }
-          setUploadHost(host);
-          onShowNotification(`Media uploaded successfully via ${host}!`, 'success');
-          setShowUrlInput(false);
-          setUrlInput('');
-      } catch (e: any) {
-          onShowNotification("URL Upload failed: " + e.message, 'error');
-      } finally {
-          setIsUploadingImage(false);
-      }
-  };
 
   useEffect(() => {
       if (isOpen) {
@@ -344,7 +277,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingImageUrl(''); setExistingVideoUrl('');
               setCodeMode('zip'); setZipFile(null); setSourceCode('');
           }
-          setErrors({}); setIsSubmitting(false); setIsUploadingImage(false); setUploadStatus('');
+          setErrors({}); setIsSubmitting(false); setUploadStatus('');
       }
   }, [isOpen, isEditing, initialData]);
 
@@ -352,8 +285,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (type !== previewType) {
           setPreviewType(type);
           setPreviewFile(null);
-          setExistingImageUrl('');
-          setExistingVideoUrl('');
           playClickSound();
       }
   };
@@ -367,7 +298,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       if (!title.trim() || title.trim().length < 3) newErrors.title = true;
       if (!category) newErrors.category = true;
       
-      if (!existingImageUrl && !existingVideoUrl) {
+      if (!previewFile && !existingImageUrl && !existingVideoUrl) {
           newErrors.preview = true;
           onShowNotification("A preview is required.", 'error');
       }
@@ -379,16 +310,30 @@ const UploadModal: React.FC<UploadModalProps> = ({
       }
 
       // Trigger instant navigation and notification
-      onShowNotification("Saving Template...", 'info');
+      onShowNotification("Uploading Template...", 'info');
       onDashboardClick();
 
-      // Continue in background
+      // Continue upload in background
       try {
+          let imageUrl = existingImageUrl;
+          let videoUrl = existingVideoUrl;
+
+          if (previewFile) {
+              if (previewType === 'video') {
+                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  videoUrl = (await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`)).url;
+                  if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
+              } else {
+                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  imageUrl = (await uploadFile(previewFile, `images/${Date.now()}_${safeName}`)).url;
+                  videoUrl = ''; 
+              }
+          }
+
           let zipUrl = '';
           if (zipFile) {
               const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-              const { url } = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
-              zipUrl = url;
+              zipUrl = (await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`)).url;
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
               zipUrl = initialData.fileUrl;
           }
@@ -399,10 +344,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
               category,
               tags: tags || [],
               externalLink: link,
-              imageUrl: existingImageUrl,
-              videoUrl: existingVideoUrl,
-              bannerUrl: existingImageUrl,
-              galleryImages: [existingImageUrl],
+              imageUrl,
+              videoUrl,
+              bannerUrl: imageUrl,
+              galleryImages: [imageUrl],
               price: 'Free', 
               fileUrl: zipUrl, 
               sourceCode: codeMode === 'paste' ? sourceCode : '',
@@ -449,57 +394,19 @@ const UploadModal: React.FC<UploadModalProps> = ({
                 <section>
                     <div className="flex items-center justify-between mb-3">
                         <SectionLabel required>Preview Media</SectionLabel>
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => setShowUrlInput(!showUrlInput)}
-                                className={`p-1.5 rounded-lg border transition-all ${showUrlInput ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-[#121214] border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
-                                title="Upload from URL"
-                            >
-                                <LinkIcon className="w-4 h-4" />
-                            </button>
-                            <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
-                                <button onClick={() => !isSubmitting && togglePreviewType('image')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
-                                <button onClick={() => !isSubmitting && togglePreviewType('video')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
-                            </div>
+                        <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
+                            <button onClick={() => !isSubmitting && togglePreviewType('image')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'image' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Image</button>
+                            <button onClick={() => !isSubmitting && togglePreviewType('video')} disabled={isSubmitting} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${previewType === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}>Video</button>
                         </div>
                     </div>
                     
-                    <AnimatePresence>
-                        {showUrlInput && (
-                            <motion.div 
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="mb-4 overflow-hidden"
-                            >
-                                <div className="flex gap-2">
-                                    <StyledInput 
-                                        placeholder="Paste image/video URL here..." 
-                                        value={urlInput}
-                                        onChange={e => setUrlInput(e.target.value)}
-                                        disabled={isUploadingImage}
-                                        onKeyDown={e => e.key === 'Enter' && handleUrlUpload()}
-                                    />
-                                    <button 
-                                        onClick={handleUrlUpload}
-                                        disabled={isUploadingImage || !urlInput.trim()}
-                                        className="px-4 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white text-xs font-bold uppercase tracking-widest rounded-lg transition-colors whitespace-nowrap"
-                                    >
-                                        {isUploadingImage ? '...' : 'Fetch'}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
                     <PreviewUploader 
                         type={previewType}
                         file={previewFile} 
                         initialUrl={previewType === 'image' ? existingImageUrl : existingVideoUrl}
-                        onSelect={handleImmediateUpload} 
+                        onSelect={(f) => { setPreviewFile(f); playClickSound(); }} 
                         error={errors.preview}
-                        isUploading={isUploadingImage}
-                        host={uploadHost}
+                        isUploading={isSubmitting && !!previewFile}
                     />
                 </section>
 

@@ -1,10 +1,10 @@
 {
-  "projectId": "word-weaver-9usyc",
-  "appId": "1:259377788064:web:ddf54721523d2e4efb85c5",
-  "apiKey": "AIzaSyADpzxDduOe0esjAXBtQ1z0goNNH71ySt8",
-  "authDomain": "word-weaver-9usyc.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-8057dc52-a82d-437a-8cf2-09c0124477ba",
-  "storageBucket": "word-weaver-9usyc.firebasestorage.app",
-  "messagingSenderId": "259377788064",
-  "measurementId": ""
+  "projectId": "remixed-project-id",
+  "appId": "remixed-app-id",
+  "apiKey": "remixed-api-key",
+  "authDomain": "remixed-auth-domain",
+  "firestoreDatabaseId": "remixed-firestore-database-id",
+  "storageBucket": "remixed-storage-bucket",
+  "messagingSenderId": "remixed-messaging-sender-id",
+  "measurementId": "remixed-measurement-id"
 }
