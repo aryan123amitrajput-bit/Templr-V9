@@ -9,6 +9,7 @@ import { uploadToGifyu } from './server/services/gifyuService';
 import { uploadToCatbox } from './server/services/catboxService';
 import { uploadToBeeIMG } from './server/services/beeimgService';
 import { uploadToPasteRs } from './server/services/pasteService';
+import { telegramService } from './server/services/telegramService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -155,13 +156,21 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
     
-    // 1. Try BeeIMG
-    try {
-        const apiKey = process.env.BEEIMG_API_KEY || '';
-        const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-        return { imageUrl: url, hostUsed: 'BeeIMG' };
-    } catch (e: any) {
-        console.warn('[Upload] BeeIMG failed, trying Catbox...', e.message);
+    // 1. Try Telegram (Primary)
+    if (telegramService.isConfigured() && !isVideo) {
+        try {
+            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
+            // Return a URL that points to our proxy endpoint
+            const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+            return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+        } catch (e: any) {
+            if (e.message.includes('Telegram Chat Not Found')) {
+                console.warn('[Upload] Telegram skipped: Chat not found or bot lacks permissions. Falling back to Catbox...');
+            } else {
+                console.warn('[Upload] Telegram failed. Error:', e.message);
+                console.warn('[Upload] Falling back to Catbox...');
+            }
+        }
     }
 
     // 2. Try Catbox
@@ -202,7 +211,16 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         const result = await uploadToGifyu(buffer, originalname, mimetype);
         return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
     } catch (e: any) {
-        console.warn('[Upload] Gifyu failed, trying Supabase...', e.message);
+        console.warn('[Upload] Gifyu failed, trying BeeIMG...', e.message);
+    }
+
+    // 7. Try BeeIMG (Moved to end due to IPv6 redirect issues)
+    try {
+        const apiKey = process.env.BEEIMG_API_KEY || '';
+        const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+        return { imageUrl: url, hostUsed: 'BeeIMG' };
+    } catch (e: any) {
+        console.warn('[Upload] BeeIMG failed, trying Supabase...', e.message);
     }
 
     // 7. Try Supabase (Last)
@@ -239,6 +257,52 @@ async function startServer() {
   // Health Check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Telegram File Proxy
+  app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
+    try {
+      const { botIndex, fileId } = req.params;
+      const tgUri = `tg://${botIndex}/${fileId}`;
+      
+      const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+      
+      // Stream the file from Telegram to the client
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Telegram responded with ${response.status}`);
+      }
+      
+      // Pass headers from Telegram
+      const contentType = response.headers.get('content-type');
+      const contentLength = response.headers.get('content-length');
+      
+      if (contentType) res.setHeader('Content-Type', contentType);
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      
+      // Cache the file for 24 hours
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      
+      if (response.body) {
+        // Node 18+ fetch response.body is a ReadableStream
+        // We can use stream.pipeline or just pipe if it's a node-fetch stream
+        // Since we are in express, we can pipe the web stream to the node stream
+        const readableWebStream = response.body as any;
+        const reader = readableWebStream.getReader();
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+      } else {
+        res.status(500).json({ error: 'No response body from Telegram' });
+      }
+    } catch (error: any) {
+      console.error('[Telegram Proxy] Error:', error.message);
+      res.status(500).json({ error: 'Failed to fetch file from Telegram' });
+    }
   });
 
   // --- SEO Routes ---
@@ -621,19 +685,42 @@ function mapSupabaseToTemplate(t: any) {
       
       if (template) {
         // Handle bundle if it's a bundle
-        if (template.is_bundle && template.source_code && template.source_code.startsWith('http')) {
+        if (template.is_bundle && template.source_code) {
             try {
-                console.log(`[API] Fetching bundle for template ${id} from ${template.source_code}`);
-                const response = await fetch(template.source_code);
-                if (response.ok) {
-                    const bundle = await response.json();
+                let bundleData: any = null;
+                
+                if (template.source_code.startsWith('/api/tg-file/')) {
+                    // It's a Telegram file, fetch it directly via the service
+                    const match = template.source_code.match(/^\/api\/tg-file\/(\d+)\/(.+)$/);
+                    if (match) {
+                        const botIndex = match[1];
+                        const fileId = match[2];
+                        const tgUri = `tg://${botIndex}/${fileId}`;
+                        console.log(`[API] Fetching bundle for template ${id} from Telegram: ${tgUri}`);
+                        
+                        const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+                        const response = await fetch(downloadUrl);
+                        if (response.ok) {
+                            bundleData = await response.json();
+                        }
+                    }
+                } else if (template.source_code.startsWith('http')) {
+                    // It's a Paste.rs or other HTTP URL
+                    console.log(`[API] Fetching bundle for template ${id} from ${template.source_code}`);
+                    const response = await fetch(template.source_code);
+                    if (response.ok) {
+                        bundleData = await response.json();
+                    }
+                }
+
+                if (bundleData) {
                     template = { 
                         ...template, 
-                        ...bundle.metadata, 
-                        sourceCode: bundle.sourceCode, 
-                        preview_url: bundle.demoLink,
-                        galleryImages: bundle.images?.gallery || [],
-                        bannerUrl: bundle.images?.banner || template.bannerUrl
+                        ...bundleData.metadata, 
+                        sourceCode: bundleData.sourceCode, 
+                        preview_url: bundleData.demoLink,
+                        galleryImages: bundleData.images?.gallery || [],
+                        bannerUrl: bundleData.images?.banner || template.bannerUrl
                     };
                 }
             } catch (e: any) {
@@ -717,12 +804,31 @@ function mapSupabaseToTemplate(t: any) {
       };
 
       try {
-          console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
-          bundleUrl = await uploadToPasteRs(JSON.stringify(templateBundle));
-          console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
-      } catch (e: any) {
-          console.error("Paste.rs Upload Failed:", e.message);
-          throw new Error("Failed to upload template bundle to Paste.rs");
+          const bundleString = JSON.stringify(templateBundle);
+          const bundleBuffer = Buffer.from(bundleString, 'utf-8');
+          
+          if (telegramService.isConfigured()) {
+              console.log(`[Telegram Upload] Uploading template bundle for: ${template.title || template.name}`);
+              const tgUri = await telegramService.uploadDocument(bundleBuffer, `${templateId}.json`);
+              bundleUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+              console.log(`[Telegram Upload] Success: ${bundleUrl}`);
+          } else {
+              throw new Error("Telegram not configured");
+          }
+      } catch (tgError: any) {
+          if (tgError.message.includes('Telegram Chat Not Found')) {
+              console.warn(`[Telegram Upload] Skipped: Chat not found or bot lacks permissions. Falling back to Paste.rs...`);
+          } else {
+              console.warn(`[Telegram Upload] Failed (${tgError.message}), falling back to Paste.rs...`);
+          }
+          try {
+              console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
+              bundleUrl = await uploadToPasteRs(JSON.stringify(templateBundle));
+              console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
+          } catch (e: any) {
+              console.error("Paste.rs Upload Failed:", e.message);
+              throw new Error("Failed to upload template bundle to both Telegram and Paste.rs");
+          }
       }
 
       // 5. Create metadata object (pointing to the bundle)

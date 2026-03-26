@@ -8,7 +8,7 @@ async function testApi() {
       console.error('API error:', response.status, await response.text());
       return;
     }
-    const result = await response.json();
+    const result = await response.json() as any;
     console.log('Total templates:', result.data.length);
     if (result.data.length > 0) {
       console.log('First template:', JSON.stringify(result.data[0], null, 2));
