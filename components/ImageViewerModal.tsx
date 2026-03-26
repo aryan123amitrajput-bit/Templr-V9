@@ -27,6 +27,8 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [imageError, setImageError] = useState(false);
   const [signedImage, setSignedImage] = useState<string | null>(null);
+  const [fetchedCode, setFetchedCode] = useState<string | null>(null);
+  const [isFetchingCode, setIsFetchingCode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -41,6 +43,27 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     if (template) {
         setActiveTab('preview');
         setImageError(false);
+        
+        // Fetch source code if it's a URL
+        const codeUrl = template.template_url || template.sourceCode;
+        if (codeUrl && codeUrl.startsWith('http')) {
+            setIsFetchingCode(true);
+            setFetchedCode(null);
+            fetch(codeUrl)
+                .then(res => res.text())
+                .then(text => {
+                    setFetchedCode(text);
+                    setIsFetchingCode(false);
+                })
+                .catch(err => {
+                    console.error("Failed to fetch source code:", err);
+                    setFetchedCode("// Failed to load source code from URL: " + codeUrl);
+                    setIsFetchingCode(false);
+                });
+        } else {
+            setFetchedCode(null);
+            setIsFetchingCode(false);
+        }
     }
   }, [template]);
 
@@ -104,8 +127,8 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
           link.click();
           document.body.removeChild(link);
       } 
-      else if (template?.sourceCode) {
-          const blob = new Blob([template.sourceCode], { type: 'text/plain' });
+      else if (displayCode && !isZip) {
+          const blob = new Blob([displayCode], { type: 'text/plain' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
@@ -130,64 +153,23 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
 
       if (!onUsageAttempt()) return;
       
-      if (template?.sourceCode) {
-          navigator.clipboard.writeText(template.sourceCode);
+      const codeToCopy = fetchedCode || template?.sourceCode;
+      if (codeToCopy) {
+          navigator.clipboard.writeText(codeToCopy);
           playSuccessSound();
       }
   };
   
   if (!template) return null;
 
-  const rawCode = template.sourceCode || '';
+  const rawCode = template.template_url || template.sourceCode || '';
+  const displayCode = fetchedCode || rawCode;
   const isZip = template.fileType === 'zip';
   const hasCode = (rawCode.trim().length > 0) || isZip;
   const rawUrl = template.fileUrl || '';
   const hasLink = !!rawUrl && rawUrl.trim() !== '' && rawUrl !== '#' && !isZip;
 
   const handleImageError = async () => {
-      if (signedImage) {
-          setImageError(true);
-          return;
-      }
-
-      if (displayImage && displayImage.includes('/storage/v1/object/public/')) {
-          try {
-              const pathParts = displayImage.split('/storage/v1/object/public/')[1].split('/');
-              const bucket = pathParts[0];
-              const path = pathParts.slice(1).join('/');
-              if (bucket && path) {
-                  const api = await import('../api');
-                  const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
-                  if (data?.signedUrl) {
-                      console.log("Using signed URL fallback for modal:", template.title);
-                      setSignedImage(data.signedUrl);
-                      return;
-                  } else {
-                      // Try download as last resort
-                      const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
-                      if (blobData) {
-                          // Fix for "application/octet-stream" issues on old uploads
-                          let mimeType = blobData.type;
-                          if (!mimeType || mimeType === 'application/octet-stream') {
-                              const ext = path.split('.').pop()?.toLowerCase();
-                              if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-                              else if (ext === 'png') mimeType = 'image/png';
-                              else if (ext === 'webp') mimeType = 'image/webp';
-                              else if (ext === 'gif') mimeType = 'image/gif';
-                          }
-                          
-                          const correctedBlob = blobData.slice(0, blobData.size, mimeType);
-                          const objectUrl = URL.createObjectURL(correctedBlob);
-                          setSignedImage(objectUrl);
-                          return;
-                      }
-                  }
-              }
-          } catch (e) {
-              console.warn("Signed URL fallback failed:", e);
-          }
-      }
-      
       setImageError(true);
   };
   
@@ -308,7 +290,14 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                                 </button>
                                             </div>
                                         ) : (
-                                            template.sourceCode || "// No source code provided."
+                                            isFetchingCode ? (
+                                                <div className="flex flex-col items-center justify-center h-full gap-3">
+                                                    <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                                                    <p className="text-slate-500 text-[10px] uppercase tracking-widest">Fetching Code...</p>
+                                                </div>
+                                            ) : (
+                                                displayCode || "// No source code provided."
+                                            )
                                         )}
                                     </div>
                                 </motion.div>
@@ -322,7 +311,14 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                     <div className="p-6 md:p-8 pb-4 border-b border-white/5 bg-[#09090b]">
                         <div className="flex justify-between mb-4">
                             <span className="px-2 py-1 rounded bg-white/5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{template.category}</span>
-                            <span className="flex items-center gap-1 text-green-400 text-[10px] font-bold uppercase"><CheckCircleIcon className="w-3 h-3" /> Verified</span>
+                            <div className="flex items-center gap-2">
+                                {template.uploadHost && (
+                                    <span className="flex items-center gap-1 text-zinc-400 text-[10px] font-bold uppercase">
+                                        <GlobeIcon className="w-3 h-3" /> {template.uploadHost}
+                                    </span>
+                                )}
+                                <span className="flex items-center gap-1 text-green-400 text-[10px] font-bold uppercase"><CheckCircleIcon className="w-3 h-3" /> Verified</span>
+                            </div>
                         </div>
                         <h1 className="text-2xl font-bold text-white mb-4 line-clamp-2">{template.title}</h1>
                         <div className="flex items-center gap-3">

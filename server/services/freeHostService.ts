@@ -110,6 +110,11 @@ class FreeHostService {
         const success = await this.updateOnJSONHosting(lastBatch.id, lastBatch.editKey, batchContent);
         
         if (success) {
+          if (typeof success === 'object') {
+            lastBatch.id = success.id;
+            lastBatch.url = success.rawUrl;
+            lastBatch.editKey = success.editKey;
+          }
           lastBatch.count++;
           this.registry.totalTemplates++;
           await this.saveRegistry();
@@ -119,34 +124,62 @@ class FreeHostService {
   }
 
   public async deleteTemplate(templateId: string) {
-    for (let i = 0; i < this.registry.batches.length; i++) {
+    console.log(`[FreeHostService] Attempting to delete template: ${templateId}`);
+    let registryUpdated = false;
+
+    for (let i = this.registry.batches.length - 1; i >= 0; i--) {
       const batch = this.registry.batches[i];
       const batchContent = await this.fetchBatchContent(batch.url);
       
+      if (!batchContent) {
+        console.warn(`[FreeHostService] Batch ${batch.id} could not be fetched. It might be dead. Skipping for now.`);
+        continue;
+      }
+
       if (batchContent && batchContent.templates) {
         const index = batchContent.templates.findIndex((t: any) => t.id === templateId);
         if (index !== -1) {
+          console.log(`[FreeHostService] Found template ${templateId} in batch ${batch.id}`);
           batchContent.templates.splice(index, 1);
           
           if (batchContent.templates.length === 0) {
             // Remove empty batch from host
-            await this.deleteFromJSONHosting(batch.id, batch.editKey);
+            const deleted = await this.deleteFromJSONHosting(batch.id, batch.editKey);
+            if (!deleted) {
+                console.error(`[FreeHostService] Failed to delete batch ${batch.id} from host. Removing from registry anyway.`);
+            }
             // Remove empty batch from registry
             this.registry.batches.splice(i, 1);
           } else {
             // Update batch
             const success = await this.updateOnJSONHosting(batch.id, batch.editKey, batchContent);
             if (success) {
+              if (typeof success === 'object') {
+                batch.id = success.id;
+                batch.url = success.rawUrl;
+                batch.editKey = success.editKey;
+              }
               batch.count = batchContent.templates.length;
+            } else {
+                console.error(`[FreeHostService] Failed to update batch ${batch.id} on host`);
+                return false;
             }
           }
           
           this.registry.totalTemplates--;
-          await this.saveRegistry();
-          return true;
+          registryUpdated = true;
+          console.log(`[FreeHostService] Successfully deleted template ${templateId}`);
+          break; // Found and deleted, no need to check other batches
         }
       }
     }
+
+    if (registryUpdated) {
+      await this.saveRegistry();
+      return true;
+    }
+
+    console.log(`[FreeHostService] Template ${templateId} not found`);
     return false;
   }
 
@@ -158,7 +191,16 @@ class FreeHostService {
         if (index !== -1) {
           batchContent.templates[index] = { ...batchContent.templates[index], ...updates };
           const success = await this.updateOnJSONHosting(batch.id, batch.editKey, batchContent);
-          return success;
+          if (success) {
+            if (typeof success === 'object') {
+              batch.id = success.id;
+              batch.url = success.rawUrl;
+              batch.editKey = success.editKey;
+              await this.saveRegistry();
+            }
+            return true;
+          }
+          return false;
         }
       }
     }
@@ -241,11 +283,11 @@ class FreeHostService {
     return null;
   }
 
-  private async updateOnJSONHosting(id: string, editKey: string, content: any): Promise<boolean> {
+  private async updateOnJSONHosting(id: string, editKey: string, content: any): Promise<{ id: string, editKey: string, rawUrl: string } | boolean> {
     console.log(`Updating batch ${id} on JSONHosting...`);
     try {
       const response = await fetch(`${this.JSON_HOSTING_API}/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'X-Edit-Key': editKey
@@ -253,7 +295,21 @@ class FreeHostService {
         body: JSON.stringify(content)
       });
 
-      return response.ok;
+      if (response.ok) {
+        return true;
+      }
+
+      const errText = await response.text();
+      console.error(`[FreeHostService] Update failed with status ${response.status}:`, errText);
+      
+      // If PUT is not allowed or fails, fallback to DELETE and POST
+      console.log(`[FreeHostService] Falling back to DELETE and POST for batch ${id}`);
+      await this.deleteFromJSONHosting(id, editKey);
+      const newBatch = await this.uploadToJSONHosting(content);
+      if (newBatch) {
+        return newBatch;
+      }
+
     } catch (e) {
       console.error(`Update on JSONHosting failed:`, e);
     }
@@ -261,12 +317,23 @@ class FreeHostService {
   }
 
   private async deleteFromJSONHosting(id: string, editKey: string): Promise<boolean> {
-    console.log(`Deleting batch ${id} from JSONHosting...`);
+    console.log(`[FreeHostService] Deleting batch ${id} from JSONHosting...`);
     try {
       const response = await fetch(`${this.JSON_HOSTING_API}/${id}`, {
         method: 'DELETE',
-        headers: { 'X-Edit-Key': editKey }
+        headers: { 
+          'X-Edit-Key': editKey,
+          'Content-Type': 'application/json' 
+        }
       });
+
+      const text = await response.text();
+      try {
+        const result = JSON.parse(text);
+        console.log(`[FreeHostService] JSONHosting delete response:`, result);
+      } catch (e) {
+        console.log(`[FreeHostService] JSONHosting delete response (text):`, text);
+      }
 
       return response.ok;
     } catch (e) {
@@ -277,7 +344,18 @@ class FreeHostService {
 
   private async fetchBatchContent(url: string): Promise<any | null> {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      // Add cache buster to bypass any intermediate caching
+      const cacheBuster = `?t=${Date.now()}`;
+      const fetchUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}${cacheBuster}`;
+      
+      const response = await fetch(fetchUrl, { 
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
       if (response.ok) {
         return await response.json();
       }

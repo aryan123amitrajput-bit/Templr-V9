@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, ClipboardIcon, CheckCircleIcon, CpuIcon, ShieldCheckIcon, RocketIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
-import { supabase, Session } from '../api';
 
 interface SetupGuideModalProps {
   isOpen: boolean;
@@ -139,27 +138,13 @@ const SetupGuideModal: React.FC<SetupGuideModalProps> = ({ isOpen, onClose }) =>
   const [keyInput, setKeyInput] = useState('');
   const [isSaved, setIsSaved] = useState(false);
   
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<any | null>(null);
 
   useEffect(() => {
     if(isOpen) {
         setUrlInput(localStorage.getItem('templr_project_url') || '');
         setKeyInput(localStorage.getItem('templr_anon_key') || '');
         setIsSaved(false);
-
-        supabase.auth.getSession().then(({ data }) => {
-            const mapped = data.session ? {
-                user: {
-                    id: data.session.user.id,
-                    email: data.session.user.email,
-                    user_metadata: {
-                        full_name: data.session.user.user_metadata.full_name,
-                        avatar_url: data.session.user.user_metadata.avatar_url
-                    }
-                }
-            } : null;
-            setSession(mapped);
-        });
     }
   }, [isOpen]);
 

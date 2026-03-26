@@ -1,5 +1,6 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CheckCircleIcon, ShieldCheckIcon, LightbulbIcon } from './Icons';
 import { playNotificationSound, playClickSound } from '../audio';
 
@@ -12,10 +13,7 @@ interface NotificationProps {
 }
 
 const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onClose }) => {
-  const [isVisible, setIsVisible] = useState(false);
-
   useEffect(() => {
-    setIsVisible(true);
     playNotificationSound();
 
     // AUTO DISMISS RULES:
@@ -26,18 +24,13 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
     let timer: ReturnType<typeof setTimeout>;
     
     if (type === 'success') {
-        timer = setTimeout(() => handleClose(), 5000);
+        timer = setTimeout(() => onClose(), 5000);
     } else if (type === 'info') {
-        timer = setTimeout(() => handleClose(), 8000);
+        timer = setTimeout(() => onClose(), 8000);
     }
 
     return () => clearTimeout(timer);
-  }, [type]);
-
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onClose, 300); // Allow animation to finish
-  };
+  }, [message, type, onClose]);
 
   const styles = {
       success: "from-emerald-900/90 to-emerald-950/90 border-emerald-500/30 text-emerald-200",
@@ -52,8 +45,12 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
   };
 
   return (
-    <div 
-        className={`fixed top-6 left-1/2 -translate-x-1/2 z-[120] w-full max-w-md px-4 transition-all duration-500 ease-spring ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}
+    <motion.div 
+        initial={{ y: -20, opacity: 0, x: '-50%' }}
+        animate={{ y: 0, opacity: 1, x: '-50%' }}
+        exit={{ y: -20, opacity: 0, x: '-50%' }}
+        transition={{ type: "spring", damping: 25, stiffness: 350 }}
+        className="fixed top-6 left-1/2 z-[2147483647] w-full max-w-md px-4"
     >
       <div 
         className={`relative rounded-2xl p-[1px] bg-gradient-to-br ${type === 'error' ? 'from-red-500/40 to-transparent' : type === 'success' ? 'from-emerald-500/40 to-transparent' : 'from-blue-500/40 to-transparent'} shadow-2xl backdrop-blur-xl`}
@@ -71,7 +68,7 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
           </p>
           
           <button
-            onClick={() => { playClickSound(); handleClose(); }}
+            onClick={() => { playClickSound(); onClose(); }}
             className="p-2 -mr-2 rounded-full hover:bg-black/20 text-white/40 hover:text-white transition-colors flex-shrink-0"
             aria-label="Close"
           >
@@ -79,7 +76,7 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
           </button>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

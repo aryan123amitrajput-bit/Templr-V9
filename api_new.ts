@@ -161,6 +161,7 @@ export interface NewTemplateData {
   fileSize?: number; 
   externalLink?: string;
   fileUrl?: string;
+  template_url?: string;
   sourceCode?: string;
   initialStatus?: 'pending_review' | 'draft' | 'approved';
 }
@@ -196,6 +197,7 @@ export interface Template {
   tags?: string[];
   description: string;
   price: string; 
+  template_url?: string;
   sourceCode: string;
   
   fileUrl?: string;
@@ -568,7 +570,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
 
     const dbPayload: any = {
         title: templateData.title,
-        image_url: unfixUrl(templateData.imageUrl),
+        preview_image: unfixUrl(templateData.imageUrl),
         banner_url: unfixUrl(templateData.bannerUrl || templateData.imageUrl),
         category: templateData.category,
         price: templateData.price,
@@ -583,7 +585,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         description: templateData.description,
         video_url: unfixUrl(templateData.videoUrl),
         gallery_images: (templateData.galleryImages || []).map(unfixUrl),
-        source_code: templateData.sourceCode,
+        template_url: templateData.template_url || '',
         file_url: unfixUrl(templateData.fileUrl || templateData.externalLink),
         views: 0,
         likes: 0,
@@ -648,10 +650,10 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.category) dbPayload.category = data.category;
     if (data.tags) dbPayload.tags = data.tags;
     if (data.externalLink) dbPayload.file_url = unfixUrl(data.externalLink);
-    if (data.imageUrl) dbPayload.image_url = unfixUrl(data.imageUrl);
+    if (data.imageUrl) dbPayload.preview_image = unfixUrl(data.imageUrl);
     if (data.bannerUrl) dbPayload.banner_url = unfixUrl(data.bannerUrl);
     if (data.videoUrl) dbPayload.video_url = unfixUrl(data.videoUrl);
-    if (data.sourceCode) dbPayload.source_code = data.sourceCode;
+    if (data.template_url) dbPayload.template_url = data.template_url;
     if (data.fileUrl) dbPayload.file_url = unfixUrl(data.fileUrl);
 
     const attempt = async (retryCount = 0): Promise<void> => {

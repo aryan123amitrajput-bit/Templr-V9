@@ -104,6 +104,11 @@ export class RepoManager {
       }
       return projectPath;
     }).filter(Boolean);
+
+    if (this.githubRepos.length === 0 && this.gitlabProjects.length === 0) {
+      console.log('No repositories configured, adding default template repository.');
+      this.githubRepos.push({ owner: 'templr-app', repo: 'templates' });
+    }
   }
 
   async getAllRepos(): Promise<RepoConfig[]> {
@@ -166,48 +171,78 @@ export class RepoManager {
 
     let data: TemplateMetadata[] = [];
     if (repo.type === 'github') {
-      // Use jsDelivr CDN for faster public access
-      const url = `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`;
-      try {
-        const response = await fetch(url);
-        if (response.ok) {
-          data = await response.json();
-        } else if (response.status === 404) {
-          // File not found on CDN, could be new or private
-          data = [];
-        } else {
-          // Fallback to Octokit if CDN fails or for private repos
-          const octokit = new Octokit({ auth: repo.token });
-          try {
-            const { data: fileData }: any = await octokit.rest.repos.getContent({
-              owner: repo.owner!,
-              repo: repo.repo!,
-              path: 'registry.json'
-            });
-            const content = Buffer.from(fileData.content, 'base64').toString();
-            data = JSON.parse(content);
-          } catch (octoErr: any) {
-            if (octoErr.status === 404) {
-              data = [];
-            } else {
-              throw octoErr;
-            }
+      if (!useCache) {
+        // Bypass CDN when useCache is false to get the freshest data
+        const octokit = new Octokit({ auth: repo.token });
+        try {
+          const { data: fileData }: any = await octokit.rest.repos.getContent({
+            owner: repo.owner!,
+            repo: repo.repo!,
+            path: 'registry.json'
+          });
+          const content = Buffer.from(fileData.content, 'base64').toString();
+          data = JSON.parse(content);
+          console.log(`[RepoManager] Successfully fetched from Octokit (CDN bypassed). Found ${data.length} templates.`);
+        } catch (octoErr: any) {
+          if (octoErr.status === 404) {
+            console.warn(`[RepoManager] Octokit 404 for registry.json`);
+            data = [];
+          } else {
+            throw octoErr;
           }
         }
-      } catch (e: any) {
-        console.error(`GitHub registry fetch error for ${cacheKey}:`, e);
-        return [];
+      } else {
+        // Use jsDelivr CDN for faster public access
+        const url = `https://cdn.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`;
+        try {
+          console.log(`[RepoManager] Fetching registry from CDN: ${url}`);
+          const response = await fetch(url);
+          if (response.ok) {
+            data = await response.json();
+            console.log(`[RepoManager] Successfully fetched from CDN. Found ${data.length} templates.`);
+          } else if (response.status === 404) {
+            console.warn(`[RepoManager] CDN 404 for ${url}. Trying Octokit...`);
+            // File not found on CDN, could be new or private
+            // Fallback to Octokit if CDN fails or for private repos
+            const octokit = new Octokit({ auth: repo.token });
+            try {
+              const { data: fileData }: any = await octokit.rest.repos.getContent({
+                owner: repo.owner!,
+                repo: repo.repo!,
+                path: 'registry.json'
+              });
+              const content = Buffer.from(fileData.content, 'base64').toString();
+              data = JSON.parse(content);
+              console.log(`[RepoManager] Successfully fetched from Octokit. Found ${data.length} templates.`);
+            } catch (octoErr: any) {
+              if (octoErr.status === 404) {
+                console.warn(`[RepoManager] Octokit 404 for registry.json`);
+                data = [];
+              } else {
+                throw octoErr;
+              }
+            }
+          } else {
+            throw new Error(`CDN error: ${response.statusText}`);
+          }
+        } catch (e: any) {
+          console.error(`GitHub registry fetch error for ${cacheKey}:`, e);
+          return [];
+        }
       }
     } else {
       // GitLab Raw URL
       const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json/raw?ref=main`;
       try {
+        console.log(`[RepoManager] Fetching registry from GitLab: ${url}`);
         const response = await fetch(url, {
           headers: { 'PRIVATE-TOKEN': repo.token }
         });
         if (response.ok) {
           data = await response.json();
+          console.log(`[RepoManager] Successfully fetched from GitLab. Found ${data.length} templates.`);
         } else if (response.status === 404) {
+          console.warn(`[RepoManager] GitLab 404 for ${url}`);
           data = [];
         } else {
           throw new Error(`GitLab error: ${response.statusText}`);
@@ -261,6 +296,7 @@ export class RepoManager {
         id: template.id,
         title: template.title,
         author: template.author,
+        author_id: template.author_id,
         thumbnail: template.thumbnail,
         category: template.category,
         created_at: template.created_at || new Date().toISOString(),
@@ -291,6 +327,18 @@ export class RepoManager {
         content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
         sha: regSha
       });
+
+      // Invalidate and pre-populate cache with new registry
+      const cacheKey = `${repo.owner}/${repo.repo}`;
+      this.registryCache.set(cacheKey, { data: registry, timestamp: Date.now() });
+      
+      // Purge jsDelivr cache
+      try {
+        await fetch(`https://purge.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`);
+        console.log(`[RepoManager] Purged jsDelivr cache for ${cacheKey}`);
+      } catch (e) {
+        console.error(`[RepoManager] Failed to purge jsDelivr cache:`, e);
+      }
     } else {
       // GitLab API
       // 1. Upload template file
@@ -327,6 +375,7 @@ export class RepoManager {
         id: template.id,
         title: template.title,
         author: template.author,
+        author_id: template.author_id,
         thumbnail: template.thumbnail,
         category: template.category,
         created_at: template.created_at || new Date().toISOString(),
@@ -400,6 +449,7 @@ export class RepoManager {
 
   async getMergedRegistry(): Promise<TemplateMetadata[]> {
     const repos = await this.getAllRepos();
+    console.log(`[RepoManager] Found ${repos.length} repos:`, JSON.stringify(repos));
     
     // Fetch all registries in parallel
     const registryPromises = repos.map(repo => 
@@ -410,6 +460,7 @@ export class RepoManager {
     );
 
     const registries = await Promise.all(registryPromises);
+    console.log(`[RepoManager] Fetched ${registries.length} registries. Total templates:`, registries.reduce((acc, r) => acc + r.length, 0));
     
     // Merge registries while respecting priority (GitHub > GitLab)
     // and maintaining the order within those groups.
@@ -428,6 +479,7 @@ export class RepoManager {
       }
     }
     
+    console.log(`[RepoManager] Returning ${uniqueTemplates.length} unique templates.`);
     return uniqueTemplates;
   }
 
@@ -473,14 +525,37 @@ export class RepoManager {
             } catch (e2) {}
           }
 
-          await octokit.rest.repos.createOrUpdateFileContents({
-            owner: repo.owner!,
-            repo: repo.repo!,
-            path: actualPath,
-            message: `Update template ${templateId}`,
-            content: Buffer.from(content).toString('base64'),
-            sha
-          });
+          // Try to update the file
+          try {
+            await octokit.rest.repos.createOrUpdateFileContents({
+              owner: repo.owner!,
+              repo: repo.repo!,
+              path: actualPath,
+              message: `Update template ${templateId}`,
+              content: Buffer.from(content).toString('base64'),
+              sha
+            });
+          } catch (e: any) {
+            if (e.status === 409 || e.message.includes('does not match')) {
+              console.log(`[RepoManager] SHA mismatch for ${actualPath}, retrying...`);
+              // Re-fetch SHA
+              const { data: file }: any = await octokit.rest.repos.getContent({
+                owner: repo.owner!,
+                repo: repo.repo!,
+                path: actualPath
+              });
+              await octokit.rest.repos.createOrUpdateFileContents({
+                owner: repo.owner!,
+                repo: repo.repo!,
+                path: actualPath,
+                message: `Update template ${templateId}`,
+                content: Buffer.from(content).toString('base64'),
+                sha: file.sha
+              });
+            } else {
+              throw e;
+            }
+          }
 
           // Update registry entry
           const entry = registry[index];
@@ -504,6 +579,18 @@ export class RepoManager {
             content: Buffer.from(JSON.stringify(registry, null, 2)).toString('base64'),
             sha: regFile.sha
           });
+
+          // Invalidate and pre-populate cache with new registry
+          const cacheKey = `${repo.owner}/${repo.repo}`;
+          this.registryCache.set(cacheKey, { data: registry, timestamp: Date.now() });
+          
+          // Purge jsDelivr cache
+          try {
+            await fetch(`https://purge.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`);
+            console.log(`[RepoManager] Purged jsDelivr cache for ${cacheKey}`);
+          } catch (e) {
+            console.error(`[RepoManager] Failed to purge jsDelivr cache:`, e);
+          }
         } else {
           const fileUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}`;
           await fetch(fileUrl, {
@@ -590,6 +677,18 @@ export class RepoManager {
             content: Buffer.from(JSON.stringify(newRegistry, null, 2)).toString('base64'),
             sha: regFile.sha
           });
+          
+          // Invalidate and pre-populate cache with new registry
+          const cacheKey = `${repo.owner}/${repo.repo}`;
+          this.registryCache.set(cacheKey, { data: newRegistry, timestamp: Date.now() });
+          
+          // Purge jsDelivr cache
+          try {
+            await fetch(`https://purge.jsdelivr.net/gh/${repo.owner}/${repo.repo}/registry.json`);
+            console.log(`[RepoManager] Purged jsDelivr cache for ${cacheKey}`);
+          } catch (e) {
+            console.error(`[RepoManager] Failed to purge jsDelivr cache:`, e);
+          }
         } else {
           // GitLab Delete
           const filePath = `templates/${templateId}.json`;
@@ -622,6 +721,9 @@ export class RepoManager {
               commit_message: `Remove ${templateId} from registry`
             })
           });
+          
+          // Invalidate and pre-populate cache with new registry
+          this.registryCache.set(repo.projectId!, { data: newRegistry, timestamp: Date.now() });
         }
         return;
       }

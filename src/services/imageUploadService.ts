@@ -1,10 +1,8 @@
 /**
  * Templr Image Upload Service
  * 
- * Handles multi-host upload with fallback chain:
- * 1. i.111666.best (Primary)
- * 2. Pixhost (Fallback 1)
- * 3. GitHub (Fallback 2)
+ * Handles image upload via backend proxy which uses:
+ * External Hosting (i111666, ImgBB, etc.)
  */
 
 export interface UploadResult {
@@ -51,142 +49,13 @@ export const optimizeImage = async (file: File): Promise<Blob> => {
 };
 
 // 2. Providers
-const uploadToI111666 = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[i111666] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/i111666', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'i111666 upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: '0008888',
-        direct_url: data.direct_url,
-        thumbnail_url: data.direct_url,
-        viewer_url: data.direct_url,
-        auth_token: data.auth_token
-    };
-};
-
-const uploadToBeeIMG = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[BeeIMG] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/beeimg', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'BeeIMG upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'beeimg',
-        direct_url: data.direct_url,
-        thumbnail_url: data.direct_url,
-        viewer_url: data.direct_url
-    };
-};
-
-const uploadToCatbox = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[Catbox] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/catbox', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Catbox upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'catbox',
-        direct_url: data.direct_url,
-        thumbnail_url: data.thumbnail_url || data.direct_url,
-        viewer_url: data.viewer_url || data.direct_url
-    };
-};
-
-const uploadToGifyu = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[Gifyu] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/gifyu', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Gifyu upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'gifyu',
-        direct_url: data.direct_url,
-        thumbnail_url: data.thumbnail_url || data.direct_url,
-        viewer_url: data.viewer_url || data.direct_url
-    };
-};
-
-const uploadToImgBB = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[ImgBB] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/imgbb', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'ImgBB upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'imgbb',
-        direct_url: data.direct_url,
-        thumbnail_url: data.thumbnail_url || data.direct_url,
-        viewer_url: data.viewer_url || data.direct_url
-    };
-};
-
-const uploadToImgHippo = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[ImgHippo] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/imghippo', { method: 'POST', body: formData });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'ImgHippo upload failed');
-    }
-    
-    const data = await response.json();
-    return {
-        provider: 'imghippo',
-        direct_url: data.direct_url,
-        thumbnail_url: data.thumbnail_url,
-        viewer_url: data.viewer_url
-    };
-};
-
-const uploadToGitHub = async (file: Blob): Promise<Partial<UploadResult>> => {
-    console.log('[GitHub] Attempting upload via server proxy...');
-    const formData = new FormData();
-    formData.append('file', file, 'image.webp');
-    
-    const response = await fetch('/api/upload/github', { method: 'POST', body: formData });
-    if (!response.ok) throw new Error('GitHub upload failed');
-    
-    const data = await response.json();
-    return {
-        provider: 'github',
-        direct_url: data.url,
-        thumbnail_url: data.url, // GitHub raw doesn't have thumbnails
-        viewer_url: data.url
-    };
+const fileToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 };
 
 // 3. Main Upload Orchestrator
@@ -209,7 +78,7 @@ export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
         const data = await response.json();
         return {
             success: true,
-            provider: data.host,
+            provider: data.host || 'External URL',
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
@@ -223,39 +92,40 @@ export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
 };
 
 export const uploadImage = async (file: File): Promise<UploadResult> => {
-    const optimizedBlob = await optimizeImage(file);
-    
-    const providers = [
-        { name: 'beeimg', fn: uploadToBeeIMG },
-        { name: '0008888', fn: uploadToI111666 },
-        { name: 'catbox', fn: uploadToCatbox },
-        { name: 'gifyu', fn: uploadToGifyu },
-        { name: 'imgbb', fn: uploadToImgBB },
-        { name: 'github', fn: uploadToGitHub },
-        { name: 'imghippo', fn: uploadToImgHippo }
-    ];
+    try {
+        console.log(`[Orchestrator] Optimizing image: ${file.name}`);
+        const optimizedBlob = await optimizeImage(file);
+        const base64File = await fileToBase64(optimizedBlob);
+        
+        console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                file: base64File, 
+                path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
+            })
+        });
 
-    let lastError = '';
-    for (let i = 0; i < providers.length; i++) {
-        const provider = providers[i];
-        try {
-            console.log(`[Orchestrator] Attempting upload via ${provider.name}...`);
-            const result = await provider.fn(optimizedBlob);
-            
-            return {
-                success: true,
-                provider: result.provider!,
-                direct_url: result.direct_url!,
-                thumbnail_url: result.thumbnail_url || result.direct_url!,
-                viewer_url: result.viewer_url!,
-                fallback_used: i > 0,
-                auth_token: result.auth_token
-            };
-        } catch (error) {
-            lastError = error instanceof Error ? error.message : String(error);
-            console.warn(`[Orchestrator] ${provider.name} failed:`, lastError);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Backend upload failed: ${response.statusText}`);
         }
-    }
 
-    throw new Error(`CRITICAL: All image hosting providers failed. Last error: ${lastError}`);
+        const data = await response.json();
+        return {
+            success: true,
+            provider: data.host || 'Multi-service Proxy',
+            direct_url: data.url,
+            thumbnail_url: data.url,
+            viewer_url: data.url,
+            fallback_used: data.host !== '0008888 (Primary)'
+        };
+    } catch (error) {
+        const lastError = error instanceof Error ? error.message : String(error);
+        console.error(`[Orchestrator] Image upload failed:`, lastError);
+        throw new Error(`CRITICAL: Image upload failed. Last error: ${lastError}`);
+    }
 };

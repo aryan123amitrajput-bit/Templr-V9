@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
-import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon } from './Icons';
+import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
 
 interface TemplateCardProps {
@@ -23,11 +23,14 @@ interface TemplateCardProps {
   fileType?: string;
   videoUrl?: string; 
   index: number; 
+  author_uid?: string;
+  currentUserId?: string;
 
   onMessageCreator: (authorName: string) => void;
   onView: (id: string) => void;
   onLike: (id: string) => void;
   onFavorite: (id: string) => void;
+  onDelete?: (id: string) => void;
   onCreatorClick?: (authorName: string) => void;
 }
 
@@ -125,9 +128,12 @@ const CardContent: React.FC<TemplateCardProps> = ({
   fileType,
   videoUrl,
   index,
+  author_uid,
+  currentUserId,
   onView, 
   onLike,
   onFavorite,
+  onDelete,
   onCreatorClick
 }) => {
   const [videoReady, setVideoReady] = useState(false);
@@ -213,6 +219,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const handleViewButton = (e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log("View button clicked for template:", id);
     playClickSound();
     onView(id);
   };
@@ -222,6 +229,14 @@ const CardContent: React.FC<TemplateCardProps> = ({
       if (onCreatorClick) {
           playClickSound();
           onCreatorClick(author);
+      }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (onDelete) {
+          playClickSound();
+          onDelete(id);
       }
   };
 
@@ -235,58 +250,30 @@ const CardContent: React.FC<TemplateCardProps> = ({
       setSignedBanner(null);
   }, [displayBanner]);
 
-  const handleImageError = async () => {
-      if (signedBanner) {
-          // Already tried signed URL, give up
-          setImageError(true);
-          return;
-      }
-
-      // console.warn(`[TemplateCard] Image load failed for ${title}:`, displayBanner);
-
-      if (displayBanner && displayBanner.includes('/storage/v1/object/public/')) {
-          try {
-              const pathParts = displayBanner.split('/storage/v1/object/public/')[1].split('/');
-              const bucket = pathParts[0];
-              const path = pathParts.slice(1).join('/');
-              if (bucket && path) {
-                  // Dynamically import api to avoid circular dependencies if any
-                  const api = await import('../api');
-                  const { data, error } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
-                  if (data?.signedUrl) {
-                      // console.log("[TemplateCard] Attempting signed URL fallback for:", title);
-                      setSignedBanner(data.signedUrl);
-                      return;
-                  } else {
-                      // Try download as last resort
-                      const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
-                      if (blobData) {
-                          // Fix for "application/octet-stream" issues on old uploads
-                          let mimeType = blobData.type;
-                          if (!mimeType || mimeType === 'application/octet-stream') {
-                              const ext = path.split('.').pop()?.toLowerCase();
-                              if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-                              else if (ext === 'png') mimeType = 'image/png';
-                              else if (ext === 'webp') mimeType = 'image/webp';
-                              else if (ext === 'gif') mimeType = 'image/gif';
-                          }
-                          
-                          const correctedBlob = blobData.slice(0, blobData.size, mimeType);
-                          const objectUrl = URL.createObjectURL(correctedBlob);
-                          setSignedBanner(objectUrl);
-                          return;
-                      }
-                  }
-              }
-          } catch (e) {
-              // console.warn("[TemplateCard] Signed URL fallback failed:", e);
-          }
-      }
-      
+  const handleImageError = async (errorType: string) => {
       setImageError(true);
+      const errorContext = {
+          id,
+          title,
+          imageUrl,
+          bannerUrl,
+          videoUrl,
+          timestamp: new Date().toISOString(),
+          errorType
+      };
+      console.error(`[TemplateCard] ${errorType} failed to load:`, errorContext);
+      try {
+          await fetch('/api/log-error', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ error: `${errorType} failed to load`, context: errorContext })
+          });
+      } catch (e) {
+          console.error('Failed to log error to server', e);
+      }
   };
 
-  const cardVariants = {
+  const cardVariants: any = {
     hidden: { opacity: 0, y: 20 },
     visible: { 
         opacity: 1, 
@@ -301,8 +288,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      whileHover="hover"
-      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden"
+      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden transition-transform duration-300 ease-out hover:-translate-y-2"
     >
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
@@ -311,12 +297,13 @@ const CardContent: React.FC<TemplateCardProps> = ({
             <div className="absolute inset-0 z-0 bg-zinc-900">
                 {(signedBanner || displayBanner) && !imageError ? (
                     <img 
+                        key={signedBanner || displayBanner!}
                         src={signedBanner || displayBanner!} 
                         alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam
-                            handleImageError();
+                            handleImageError('Image');
                         }}
                         onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -349,6 +336,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         onError={(e) => {
                             console.error(`[TemplateCard] Video error for ${title}:`, videoUrl, e);
                             setVideoError(true);
+                            handleImageError('Video');
                         }}
                     >
                         <source src={videoUrl} type="video/mp4" />
@@ -391,7 +379,16 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                <div className="flex items-center gap-3 transition-opacity duration-200 pointer-events-auto opacity-0 group-hover:opacity-100">
+                     {currentUserId && author_uid === currentUserId && (
+                        <button 
+                            onClick={handleDelete} 
+                            className="group/btn w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500 backdrop-blur-md border border-red-500/30 flex items-center justify-center transition-all text-red-200 hover:text-white"
+                            title="Delete Template"
+                        >
+                            <XIcon className="w-5 h-5" />
+                        </button>
+                     )}
                      <button 
                         onClick={handleLike} 
                         className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
@@ -421,7 +418,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
             
             <div className="mt-4 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
             
-            <div className="flex justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div className="flex justify-between mt-3 transition-opacity duration-300">
                 <div className="flex gap-4">
                     <div className="flex items-center gap-1.5 text-slate-400">
                         <EyeIcon className="w-3 h-3" />

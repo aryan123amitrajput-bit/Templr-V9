@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { getSupabase, uploadPreviewImage } from '../server/services/supabaseService';
+import { getSupabase } from '../server/services/supabaseService';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToI111666 } from '../server/services/i111666Service';
@@ -18,7 +18,6 @@ import { freeHostService } from '../server/services/freeHostService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
 import admin from 'firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import crypto from 'crypto';
 import multer from 'multer';
@@ -127,7 +126,7 @@ async function deleteTemplateFromGitHub(templateId: string) {
 async function updateTemplateOnGitHub(templateId: string, updates: any) {
   const metadataUpdates: any = {};
   if (updates.title || updates.name) metadataUpdates.title = updates.title || updates.name;
-  if (updates.image_url || updates.image_preview) metadataUpdates.thumbnail = updates.image_url || updates.image_preview;
+  if (updates.image_url || updates.image_preview || updates.preview_image) metadataUpdates.thumbnail = updates.preview_image || updates.image_preview || updates.image_url;
   if (updates.category) metadataUpdates.category = updates.category;
   if (updates.tags) metadataUpdates.tags = updates.tags;
   
@@ -139,7 +138,7 @@ async function saveTemplateToGitHub(template: any) {
     id: template.id,
     title: template.name || template.title,
     author: template.creator || template.author_name,
-    thumbnail: template.image_preview || template.image_url,
+    thumbnail: template.preview_image || template.image_preview || template.image_url,
     category: template.category,
     created_at: template.created_at,
     tags: template.tags || [],
@@ -333,73 +332,53 @@ app.post('/api/upload/pastesrs', async (req, res) => {
   }
 });
 
-// Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
+// Upload File Proxy (New Workflow: External only)
 async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
     const isVideo = mimetype.startsWith('video/');
-    let imageUrl = '';
-    let hostUsed = 'Supabase Storage';
+    
+    console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
 
-    if (isVideo) {
-        console.log('[Upload] Video detected, using Supabase Storage');
-        imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
-        hostUsed = 'Supabase Storage';
-    } else {
-        console.log('[Upload] Image detected, trying 0008888 -> BeeIMG -> Catbox -> Gifyu -> ImgBB -> GitHub -> ImgHippo');
-        try {
-            const result = await uploadToI111666(buffer, originalname, mimetype);
-            imageUrl = result.direct_url;
-            hostUsed = '0008888 (Primary)';
-        } catch (error: any) {
-            console.error('[Upload] 0008888 failed, trying BeeIMG:', error.message);
-            try {
-                const { uploadToBeeIMG } = await import('../server/services/beeimgService');
-                const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
-                imageUrl = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-                hostUsed = 'BeeIMG (Secondary)';
-            } catch (error: any) {
-                console.error('[Upload] BeeIMG failed, trying Catbox:', error.message);
-                try {
-                    const userhash = process.env.CATBOX_USERHASH || '';
-                    const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-                    imageUrl = result.direct_url;
-                    hostUsed = 'Catbox (Tertiary)';
-                } catch (error: any) {
-                    console.error('[Upload] Catbox failed, trying Gifyu:', error.message);
-                    try {
-                        const result = await uploadToGifyu(buffer, originalname, mimetype);
-                        imageUrl = result.direct_url;
-                        hostUsed = 'Gifyu (Quaternary)';
-                    } catch (error: any) {
-                        console.error('[Upload] Gifyu failed, trying ImgBB:', error.message);
-                        try {
-                        const result = await uploadToImgBB(buffer, originalname, mimetype);
-                        imageUrl = result.direct_url;
-                        hostUsed = 'ImgBB';
-                    } catch (error: any) {
-                        console.error('[Upload] ImgBB failed, trying GitHub:', error.message);
-                        try {
-                            const path = `assets/${originalname}`;
-                            imageUrl = await repoManager.uploadAsset(buffer, path, mimetype);
-                            hostUsed = 'GitHub';
-                        } catch (error: any) {
-                            console.error('[Upload] GitHub failed, trying ImgHippo:', error.message);
-                            try {
-                                const result = await uploadToImgHippo(buffer, originalname);
-                                imageUrl = result.direct_url;
-                                hostUsed = 'ImgHippo';
-                            } catch (error: any) {
-                                console.error('[Upload] ImgHippo failed, falling back to Supabase:', error.message);
-                                imageUrl = await uploadPreviewImage(buffer, originalname, mimetype);
-                                hostUsed = 'Supabase Storage (Fallback)';
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    // 1. Try i111666 (Primary External)
+    try {
+        const result = await uploadToI111666(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'i111666' };
+    } catch (e: any) {
+        console.warn('[Upload] i111666 failed, trying ImgBB...', e.message);
     }
+
+    // 2. Try ImgBB
+    try {
+        const result = await uploadToImgBB(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
+    } catch (e: any) {
+        console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
     }
-    return { imageUrl, hostUsed };
+
+    // 3. Try Gifyu
+    try {
+        const result = await uploadToGifyu(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
+    } catch (e: any) {
+        console.warn('[Upload] Gifyu failed, trying ImgHippo...', e.message);
+    }
+
+    // 4. Try ImgHippo
+    try {
+        const result = await uploadToImgHippo(buffer, originalname);
+        return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+    } catch (e: any) {
+        console.warn('[Upload] ImgHippo failed, trying Catbox...', e.message);
+    }
+
+    // 5. Try Catbox
+    try {
+        const userhash = process.env.CATBOX_USERHASH || '';
+        const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+        return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+    } catch (e: any) {
+        console.error('[Upload] All external hosts failed:', e.message);
+        throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
+    }
 }
 
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
@@ -928,6 +907,9 @@ app.get('/api/templates', async (req, res) => {
 
     let registry = Array.from(templatesMap.values());
 
+    // Filter out templates without previews
+    registry = registry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+
     const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
     const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
     registry = registry.filter((t: any) => !deletedIds.has(t.id));
@@ -1112,7 +1094,7 @@ app.post('/api/templates', async (req, res) => {
     const { template } = req.body;
     if (!template) return res.status(400).json({ error: 'Template is required' });
     const templateId = crypto.randomUUID();
-    let finalImageUrl = template.image_url || template.imageUrl || '';
+    let finalImageUrl = template.preview_image || template.image_url || template.imageUrl || '';
     let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
     let finalGalleryImages = template.gallery_images || [];
 
@@ -1122,6 +1104,7 @@ app.post('/api/templates', async (req, res) => {
       name: template.title || template.name,
       description: template.description,
       preview_url: cleanPreviewUrl,
+      thumbnail: finalImageUrl,
       image_preview: finalImageUrl,
       banner_url: finalBannerUrl,
       gallery_images: finalGalleryImages,
@@ -1143,13 +1126,29 @@ app.post('/api/templates', async (req, res) => {
         const supabasePayload = {
           ...template,
           id: templateId,
-          image_url: finalImageUrl,
+          preview_image: finalImageUrl,
+          template_url: template.template_url || '',
           banner_url: finalBannerUrl,
           gallery_images: finalGalleryImages,
           created_at: metadata.created_at
         };
-        await supabase.from('templates').insert(supabasePayload);
-      } catch (e) {}
+        // Remove old fields if they exist in the spread
+        delete supabasePayload.image_url;
+        delete supabasePayload.image_preview;
+        delete supabasePayload.source_code;
+        delete supabasePayload.imageUrl;
+        delete supabasePayload.sourceCode;
+        
+        console.log(`[API] Inserting template into Supabase: ${templateId}`);
+        const { data, error } = await supabase.from('templates').insert(supabasePayload);
+        if (error) {
+          console.error('[API] Supabase insert error:', error);
+        } else {
+          console.log('[API] Supabase insert successful');
+        }
+      } catch (e) {
+        console.error('[API] Supabase insert exception:', e);
+      }
       return res.json({ success: true, id: templateId, preview_url: cleanPreviewUrl, template: metadata });
     } catch (saveError: any) {
       return res.status(500).json({ success: false, error: saveError.message });
@@ -1167,6 +1166,11 @@ app.put('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { updates } = req.body;
+
+    // Ensure thumbnail is updated if image_url is updated
+    if (updates.image_url && !updates.thumbnail) {
+      updates.thumbnail = updates.image_url;
+    }
 
     try { await updateTemplateOnGitHub(id, updates); } catch (e) {}
     try { await freeHostService.updateTemplate(id, updates); } catch (e) {}

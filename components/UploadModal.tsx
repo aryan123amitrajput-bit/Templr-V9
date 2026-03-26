@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
 import { uploadFile, NewTemplateData, Template } from '../api';
+import { assetManager } from '../lib/assetManager';
 import { NotificationType } from './Notification';
 
 interface UploadModalProps {
@@ -12,6 +13,7 @@ interface UploadModalProps {
   onAddTemplate: (templateData: NewTemplateData) => Promise<void>;
   onDashboardClick: () => void;
   isLoggedIn: boolean;
+  isAuthLoading: boolean;
   onLoginRequest: () => void;
   userEmail?: string;
   onShowNotification: (msg: string, type: NotificationType) => void;
@@ -229,6 +231,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
     onAddTemplate, 
     onDashboardClick,
     isLoggedIn, 
+    isAuthLoading,
     onLoginRequest, 
     onShowNotification,
     initialData,
@@ -290,6 +293,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   const handleSubmit = async () => {
+      if (isAuthLoading || isSubmitting) return;
       if (!isLoggedIn) {
           return onLoginRequest();
       }
@@ -309,35 +313,66 @@ const UploadModal: React.FC<UploadModalProps> = ({
           return;
       }
 
-      // Trigger instant navigation and notification
+      setIsSubmitting(true);
+      setUploadStatus("Initializing...");
+      // Trigger instant notification
       onShowNotification("Uploading Template...", 'info');
-      onDashboardClick();
 
       // Continue upload in background
       try {
           let imageUrl = existingImageUrl;
           let videoUrl = existingVideoUrl;
+          let uploadHost = '';
 
           if (previewFile) {
+              setUploadStatus(`Hosting ${previewType}...`);
               if (previewType === 'video') {
                   const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                  videoUrl = (await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`)).url;
+                  const result = await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`);
+                  videoUrl = result.url;
+                  uploadHost = result.host;
                   if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
-                  const safeName = previewFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                  imageUrl = (await uploadFile(previewFile, `images/${Date.now()}_${safeName}`)).url;
+                  const result = await assetManager.uploadImage(previewFile);
+                  imageUrl = result.url;
+                  uploadHost = result.provider;
+                  onShowNotification(`Image successfully hosted on ${uploadHost}`, 'info');
                   videoUrl = ''; 
               }
           }
 
           let zipUrl = '';
           if (zipFile) {
+              setUploadStatus("Uploading Zip...");
               const safeName = zipFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-              zipUrl = (await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`)).url;
+              const result = await uploadFile(zipFile, `templates/${Date.now()}_${safeName}`);
+              zipUrl = result.url;
+              if (!uploadHost) uploadHost = result.host;
           } else if (isEditing && initialData?.fileUrl?.endsWith('.zip')) {
               zipUrl = initialData.fileUrl;
           }
 
+          let templateUrl = '';
+          let textHost = '';
+          if (codeMode === 'paste' && sourceCode) {
+              setUploadStatus("Saving Code...");
+              try {
+                  // If sourceCode is valid JSON, upload it as JSON
+                  const parsedJson = JSON.parse(sourceCode);
+                  const result = await assetManager.uploadTemplateJSON(parsedJson);
+                  templateUrl = result.url;
+                  textHost = result.provider;
+                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
+              } catch (e) {
+                  // If not valid JSON, just upload it as text/code
+                  const result = await assetManager.uploadTemplateJSON({ code: sourceCode });
+                  templateUrl = result.url;
+                  textHost = result.provider;
+                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
+              }
+          }
+
+          setUploadStatus("Finalizing...");
           await onAddTemplate({
               title,
               description,
@@ -350,19 +385,37 @@ const UploadModal: React.FC<UploadModalProps> = ({
               galleryImages: [imageUrl],
               price: 'Free', 
               fileUrl: zipUrl, 
-              sourceCode: codeMode === 'paste' ? sourceCode : '',
+              template_url: templateUrl,
+              sourceCode: codeMode === 'paste' ? sourceCode : '', // Keep for backward compatibility if needed
               fileName: zipFile?.name || (isEditing ? initialData?.fileName : 'design-assets'),
               fileType: zipUrl ? 'zip' : (sourceCode ? 'code' : (link ? 'link' : 'image')),
               fileSize: zipFile?.size || 0,
-              initialStatus: visibility === 'public' ? 'approved' : 'draft'
+              initialStatus: visibility === 'public' ? 'approved' : 'draft',
+              uploadHost
           });
 
           playSuccessSound();
-          onShowNotification(isEditing ? "Updated successfully!" : "Published successfully!", 'success');
-          onClose(); // Close modal only after upload is finished
+          let successMsg = isEditing ? "Updated successfully!" : "Published successfully!";
+          if (uploadHost && textHost) {
+              successMsg = `Media hosted on ${uploadHost}, Code hosted on ${textHost}`;
+          } else if (uploadHost) {
+              successMsg = `Media hosted on ${uploadHost}`;
+          } else if (textHost) {
+              successMsg = `Code hosted on ${textHost}`;
+          }
+          onShowNotification(successMsg, 'success');
+          
+          // Small delay before navigating to ensure notification is processed
+          setTimeout(() => {
+              onDashboardClick();
+              setTimeout(() => onClose(), 500);
+          }, 100);
       } catch (e: any) {
           playNotificationSound();
           onShowNotification(e.message || "Operation failed", 'error');
+      } finally {
+          setIsSubmitting(false);
+          setUploadStatus('');
       }
   };
 
@@ -432,6 +485,33 @@ const UploadModal: React.FC<UploadModalProps> = ({
                         <div>
                             <SectionLabel optional>Tags</SectionLabel>
                             <TagInput value={tags} onChange={setTags} placeholder="Add..." />
+                        </div>
+                    </div>
+                </section>
+
+                <section className="p-5 rounded-xl bg-[#121214] border border-white/5">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <SectionLabel>Visibility</SectionLabel>
+                            <p className="text-[10px] text-zinc-500 font-medium">
+                                {visibility === 'public' ? 'Visible to everyone in the gallery' : 'Only visible to you in your dashboard'}
+                            </p>
+                        </div>
+                        <div className="flex bg-black/40 rounded-lg p-1 border border-zinc-800">
+                            <button 
+                                onClick={() => { setVisibility('public'); playClickSound(); }} 
+                                className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2 ${visibility === 'public' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                <GlobeIcon className="w-3.5 h-3.5" />
+                                Public
+                            </button>
+                            <button 
+                                onClick={() => { setVisibility('private'); playClickSound(); }} 
+                                className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all flex items-center gap-2 ${visibility === 'private' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            >
+                                <LockIcon className="w-3.5 h-3.5" />
+                                Private
+                            </button>
                         </div>
                     </div>
                 </section>

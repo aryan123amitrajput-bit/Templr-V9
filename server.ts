@@ -2,13 +2,20 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { getSupabase } from './server/services/supabaseService';
+import { uploadToImgBB } from './server/services/imgbbService';
+import { uploadToImgHippo } from './server/services/imghippoService';
+import { uploadToI111666 } from './server/services/i111666Service';
+import { uploadToGifyu } from './server/services/gifyuService';
+import { uploadToCatbox } from './server/services/catboxService';
+import { uploadToBeeIMG } from './server/services/beeimgService';
+import { uploadToPasteRs } from './server/services/pasteService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager } from './server/services/repoService';
+import { repoManager, TemplateMetadata } from './server/services/repoService';
+import { freeHostService } from './server/services/freeHostService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
 import admin from 'firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 import crypto from 'crypto';
 
@@ -16,9 +23,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
 const firebaseConfigPath = path.join(__dirname, 'firebase-applet-config.json');
+let firebaseConfig: any = null;
+
 if (fs.existsSync(firebaseConfigPath)) {
-  const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+  firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
   try {
+    // Initialize Admin SDK
     let credential;
     console.log("Checking FIREBASE_SERVICE_ACCOUNT...");
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -33,41 +43,13 @@ if (fs.existsSync(firebaseConfigPath)) {
       projectId: firebaseConfig.projectId,
     });
     console.log("Firebase Admin initialized:", admin.app().name);
+    console.log("Firebase Admin options:", JSON.stringify(admin.app().options));
   } catch (e) {
-    console.error("Firebase Admin initialization failed:", e);
-    throw e;
+    console.error("Firebase initialization failed:", e);
   }
 }
 
 // Environment Variables
-let supabase: any = null;
-try {
-  supabase = getSupabase();
-} catch (e) {
-  console.error("Supabase initialization failed, using mock client:", e);
-  supabase = {
-    from: () => ({
-      select: () => ({ eq: () => ({ single: () => ({ data: null, error: 'Supabase not configured' }) }), data: [], error: 'Supabase not configured' }),
-      update: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
-      delete: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
-    }),
-    auth: {
-      signInWithPassword: () => ({ data: null, error: 'Supabase not configured' }),
-      signUp: () => ({ data: null, error: 'Supabase not configured' }),
-      updateUser: () => ({ data: null, error: 'Supabase not configured' }),
-      getSession: () => ({ data: null, error: 'Supabase not configured' }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-      signOut: () => Promise.resolve(),
-    },
-    storage: {
-      from: () => ({
-        upload: () => ({ error: 'Supabase not configured' }),
-        getPublicUrl: () => ({ data: { publicUrl: '' } }),
-      }),
-    },
-  };
-}
-
 // GitHub Configuration
 const GITHUB_REPO_DEFAULT = 'Templr-V9';
 
@@ -110,11 +92,12 @@ async function deleteTemplateFromGitHub(templateId: string) {
 
 async function updateTemplateOnGitHub(templateId: string, updates: any) {
   // Map updates to TemplateMetadata fields
-  const metadataUpdates: any = {};
+  const metadataUpdates: any = { ...updates };
+  
+  // Ensure field names match what GitHub expects if they differ
   if (updates.title || updates.name) metadataUpdates.title = updates.title || updates.name;
-  if (updates.image_url || updates.image_preview) metadataUpdates.thumbnail = updates.image_url || updates.image_preview;
-  if (updates.category) metadataUpdates.category = updates.category;
-  if (updates.tags) metadataUpdates.tags = updates.tags;
+  if (updates.image_url || updates.image_preview || updates.preview_image) metadataUpdates.thumbnail = updates.preview_image || updates.image_preview || updates.image_url;
+  if (updates.author_name || updates.creator) metadataUpdates.author = updates.author_name || updates.creator;
   
   await repoManager.updateTemplate(templateId, metadataUpdates);
 }
@@ -124,13 +107,112 @@ async function saveTemplateToGitHub(template: any) {
     id: template.id,
     title: template.name || template.title,
     author: template.creator || template.author_name,
-    thumbnail: template.image_preview || template.image_url,
+    thumbnail: template.preview_image || template.image_preview || template.image_url,
     category: template.category,
     created_at: template.created_at,
     tags: template.tags || [],
     ...template // Keep everything else
   };
   await repoManager.uploadTemplate(metadata);
+  return true;
+}
+
+/**
+ * Processes a URL upload by fetching the content and then using Supabase Storage.
+ */
+async function processUrlUpload(url: string): Promise<string> {
+    if (!url || !url.startsWith('http')) return url;
+    
+    // Skip if already on Supabase or other known hosts
+    const hosts = ['supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'catbox.moe', 'gifyu.com', 'imghippo.com'];
+    if (hosts.some(host => url.includes(host))) {
+        return url;
+    }
+
+    try {
+        console.log(`[Url Upload] Fetching content from: ${url}`);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to fetch image from URL: ${url}`);
+        
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const originalName = url.split('/').pop()?.split('?')[0] || 'image.jpg';
+        
+        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
+        console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}`);
+        return imageUrl;
+    } catch (error: any) {
+        console.error(`[Url Upload] Failed to process URL ${url}:`, error.message);
+        return url; // Fallback to original URL
+    }
+}
+
+/**
+ * Upload logic using external hosting only (Requested by user).
+ */
+async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
+    const isVideo = mimetype.startsWith('video/');
+    
+    console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
+    
+    // 1. Try BeeIMG
+    try {
+        const apiKey = process.env.BEEIMG_API_KEY || '';
+        const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+        return { imageUrl: url, hostUsed: 'BeeIMG' };
+    } catch (e: any) {
+        console.warn('[Upload] BeeIMG failed, trying Catbox...', e.message);
+    }
+
+    // 2. Try Catbox
+    try {
+        const userhash = process.env.CATBOX_USERHASH || '';
+        const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+        return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+    } catch (e: any) {
+        console.warn('[Upload] Catbox failed, trying i111666...', e.message);
+    }
+
+    // 3. Try i111666
+    try {
+        const result = await uploadToI111666(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'i111666' };
+    } catch (e: any) {
+        console.warn('[Upload] i111666 failed, trying ImgHippo...', e.message);
+    }
+
+    // 4. Try ImgHippo
+    try {
+        const result = await uploadToImgHippo(buffer, originalname);
+        return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+    } catch (e: any) {
+        console.warn('[Upload] ImgHippo failed, trying ImgBB...', e.message);
+    }
+
+    // 5. Try ImgBB
+    try {
+        const result = await uploadToImgBB(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
+    } catch (e: any) {
+        console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
+    }
+
+    // 6. Try Gifyu
+    try {
+        const result = await uploadToGifyu(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
+    } catch (e: any) {
+        console.warn('[Upload] Gifyu failed, trying Supabase...', e.message);
+    }
+
+    // 7. Try Supabase (Last)
+    try {
+        const url = await uploadToSupabase(buffer, originalname, mimetype);
+        return { imageUrl: url, hostUsed: 'Supabase' };
+    } catch (e: any) {
+        console.error('[Upload] All external hosts failed:', e.message);
+        throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
+    }
 }
 
 async function startServer() {
@@ -139,10 +221,18 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' })); // Increased limit for base64 uploads
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Request Logging
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    if (req.url === '/api/upload') {
+      console.log(`[Debug Upload] Content-Type: ${req.headers['content-type']}`);
+      console.log(`[Debug Upload] Body defined: ${!!req.body}`);
+      if (req.body) {
+        console.log(`[Debug Upload] Body keys: ${Object.keys(req.body)}`);
+      }
+    }
     next();
   });
 
@@ -162,8 +252,8 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.get('/sitemap.xml', async (req, res) => {
     try {
       // Fetch from Supabase instead of Firestore
-      const { data: templates, error } = await supabase.from('templates').select('id, title, updated_at');
-      if (error) throw error;
+      const supabase = getSupabase();
+      const { data: templates } = await supabase.from('templates').select('*').eq('status', 'approved') as { data: any[] | null };
 
       const baseUrl = 'https://templr-v9.vercel.app';
       let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
@@ -196,18 +286,76 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
-  // --- API Routes ---
+  /**
+ * Maps Supabase template data to the frontend Template interface.
+ */
+function mapSupabaseToTemplate(t: any) {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description || '',
+    author: t.author_name || t.author || 'Anonymous',
+    author_id: t.author_id,
+    author_uid: t.author_id, // For compatibility
+    authorAvatar: t.author_avatar || '',
+    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || '',
+    bannerUrl: t.banner_url || t.image_url || t.thumbnail || '',
+    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || '',
+    likes: t.likes || 0,
+    views: t.views || 0,
+    category: t.category || 'Uncategorized',
+    tags: t.tags || [],
+    price: t.price || 'Free',
+    sourceCode: t.source_code || '',
+    fileUrl: t.file_url || '',
+    fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
+    status: t.status || 'approved',
+    sales: t.sales || 0,
+    earnings: t.earnings || 0,
+    created_at: t.created_at,
+    galleryImages: t.gallery_images || [],
+    videoUrl: t.video_url || ''
+  };
+}
 
-  // Upload File Proxy
+// --- API Routes ---
+  app.post('/api/upload/url', async (req, res) => {
+    try {
+      const { url } = req.body;
+      if (!url) return res.status(400).json({ error: 'URL is required' });
+      
+      console.log(`[Proxy Upload URL] Received request for: ${url}`);
+      const imageUrl = await processUrlUpload(url);
+      
+      res.json({ url: imageUrl, host: 'Multi-service' });
+    } catch (error: any) {
+      console.error('Upload URL Proxy Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Log client-side errors
+  app.post('/api/log-error', (req, res) => {
+    const { error, context } = req.body;
+    console.error('[Client Error]', error, JSON.stringify(context, null, 2));
+    res.status(200).json({ status: 'logged' });
+  });
+
   app.post('/api/upload', async (req, res) => {
     try {
-      const { file, path } = req.body;
-      if (!file || !path) throw new Error("File and path are required");
+      if (!req.body) {
+        console.error("[Proxy Upload] req.body is undefined. Check Content-Type and body-parser.");
+        return res.status(400).json({ error: "Request body is missing" });
+      }
+      const { file, path: filePath } = req.body;
+      if (!file || !filePath) {
+        console.error("[Proxy Upload] Missing file or path in body. Keys:", Object.keys(req.body));
+        throw new Error("File and path are required");
+      }
 
-      console.log(`[Proxy Upload] Received upload request for path: ${path}`);
+      console.log(`[Proxy Upload] Received upload request for path: ${filePath}`);
 
       // Extract mime type and buffer from base64 string
-      // Format: "data:image/png;base64,iVBORw0KGgo..."
       const matches = file.match(/^data:([A-Za-z-+\/]*);base64,(.+)$/);
       let buffer;
       let contentType = 'application/octet-stream';
@@ -216,14 +364,12 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         contentType = matches[1] || 'application/octet-stream';
         buffer = Buffer.from(matches[2], 'base64');
       } else {
-        // Fallback for raw base64 or other formats
-        console.warn("[Proxy Upload] No data URI prefix found, defaulting to octet-stream");
         buffer = Buffer.from(file.split(',')[1] || file, 'base64');
       }
 
-      // If content type is generic, try to guess from file extension
+      // Guess content type if needed
       if (contentType === 'application/octet-stream' || !contentType) {
-          const ext = path.split('.').pop()?.toLowerCase();
+          const ext = filePath.split('.').pop()?.toLowerCase();
           if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
           else if (ext === 'png') contentType = 'image/png';
           else if (ext === 'gif') contentType = 'image/gif';
@@ -231,28 +377,32 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
           else if (ext === 'svg') contentType = 'image/svg+xml';
           else if (ext === 'mp4') contentType = 'video/mp4';
           else if (ext === 'webm') contentType = 'video/webm';
-          console.log(`[Proxy Upload] Guessed Content-Type from extension .${ext}: ${contentType}`);
       }
 
-      console.log(`[Proxy Upload] Detected Content-Type: ${contentType}, Size: ${buffer.length} bytes`);
+      const originalName = filePath.split('/').pop() || 'upload';
+      console.log(`[Proxy Upload] Processing multi-service upload for: ${originalName} (${contentType})`);
 
-      const { data, error } = await supabase.storage
-        .from('assets')
-        .upload(path, buffer, {
-          contentType: contentType,
-          upsert: true
-        });
+      const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
 
-      if (error) {
-          console.error("[Proxy Upload] Supabase Storage Error:", error);
-          throw error;
-      }
-
-      const { data: publicUrlData } = supabase.storage.from('assets').getPublicUrl(path);
-      console.log(`[Proxy Upload] Success. Public URL: ${publicUrlData.publicUrl}`);
-      res.json({ url: publicUrlData.publicUrl });
+      console.log(`[Proxy Upload] Success. Host: ${hostUsed}, URL: ${imageUrl}`);
+      res.json({ url: imageUrl, host: hostUsed });
     } catch (error: any) {
       console.error('Upload Proxy Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Text Hosting Proxy (Paste.rs)
+  app.post('/api/upload/pastesrs', async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content) return res.status(400).json({ error: 'Content is required' });
+      
+      console.log('[Paste.rs Upload] Received request');
+      const url = await uploadToPasteRs(content);
+      res.json({ success: true, url, host: 'Paste.rs' });
+    } catch (error: any) {
+      console.error('Paste.rs Upload Error:', error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -261,68 +411,105 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.get('/api/templates', async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 0;
-      const limit = parseInt(req.query.limit as string) || 6;
+      const limitNum = parseInt(req.query.limit as string) || 6;
       const category = req.query.category as string;
       const searchQuery = req.query.searchQuery as string;
       const sortBy = req.query.sortBy as string || 'newest';
+      const userId = req.query.userId as string;
+      const email = req.query.email as string;
 
-      // Fetch Git and Supabase templates in parallel
-      const [gitRegistry, { data: supabaseData }] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        supabase.from('templates').select('*').order('created_at', { ascending: false })
-      ]);
+      // 1. Get templates from Supabase (Primary source for full metadata)
+      let data: any[] = [];
+      try {
+        const supabaseTemplates = await getSupabaseTemplates();
+        console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
+        data = supabaseTemplates.map(mapSupabaseToTemplate);
+      } catch (e) {
+        console.error('[API] Supabase fetch error:', e);
+      }
 
-      // Merge order priority: GitHub > GitLab > Supabase
-      // getMergedRegistry already returns GitHub > GitLab
-      const mappedSupabase = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' }));
+      // 2. Get templates from repositories (GitHub/GitLab)
+      try {
+        const repoTemplates = await repoManager.getMergedRegistry();
+        console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
+        data.push(...repoTemplates);
+      } catch (e) {
+        console.error('[API] Repo fetch error:', e);
+      }
+
+      // 3. Get templates from freeHostService
+      try {
+        const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
+        console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
+        const mappedFreeTemplates = freeTemplates.map((t: any) => ({
+          id: t.id,
+          title: t.name,
+          thumbnail: t.image_preview,
+          author: t.creator,
+          author_id: t.creator_id || t.author_id,
+          tags: t.tags || [],
+          category: t.category,
+          created_at: t.created_at,
+          likes: t.stats?.likes || 0,
+          views: t.stats?.views || 0,
+          status: 'approved'
+        }));
+        data.push(...mappedFreeTemplates);
+      } catch (e) {
+        console.error('[API] FreeHost fetch error:', e);
+      }
+
+      console.log(`[API] Total templates after merging: ${data.length}`);
       
-      // Use a Map to deduplicate by ID, keeping the first occurrence (highest priority)
-      const templatesMap = new Map();
-      gitRegistry.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, { ...t, _source: 'git' });
+      // Remove duplicates by ID
+      const uniqueTemplates: any[] = [];
+      const seenIds = new Set();
+      for (const t of data) {
+        if (t && t.id && !seenIds.has(t.id)) {
+          uniqueTemplates.push(t);
+          seenIds.add(t.id);
         }
-      });
-      mappedSupabase.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, t);
-        }
-      });
+      }
+      data = uniqueTemplates;
+      
+      console.log(`[API] All template IDs: ${JSON.stringify(data.map(t => t.id))}`);
 
-      let registry = Array.from(templatesMap.values());
+      // Filter by status 'approved' (or allow if status is missing)
+      data = data.filter((t: any) => !t.status || t.status === 'approved');
 
-      // Filter out deleted templates
-      const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
-      const deletedIds = new Set((deletedTemplates || []).map(t => t.id));
-      registry = registry.filter((t: any) => !deletedIds.has(t.id));
+      // Filter by userId or email if provided
+      if (userId || email) {
+        data = data.filter((t: any) => {
+          const matchId = userId && (t.author_id === userId || (t.author && t.author.id === userId));
+          const matchEmail = email && (t.author_email === email || (t.author && t.author.email === email));
+          return matchId || matchEmail;
+        });
+      }
 
-      // Filter by category
       if (category && category !== 'All') {
-        registry = registry.filter((t: any) => t.category === category);
-      }
-      
-      // Filter by search query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
-      }
-      
-      // Sort
-      if (sortBy === 'popular') {
-        registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
-      } else if (sortBy === 'likes') {
-        registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-      } else {
-        registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        data = data.filter((t: any) => t.category === category);
       }
 
-      // Paginate
-      const start = page * limit;
-      const paginatedData = registry.slice(start, start + limit);
+      if (searchQuery) {
+        const lowerQuery = searchQuery.toLowerCase();
+        data = data.filter((t: any) => 
+          t.title?.toLowerCase().includes(lowerQuery) || 
+          t.description?.toLowerCase().includes(lowerQuery)
+        );
+      }
+
+      if (sortBy === 'popular' || sortBy === 'likes') {
+        data = data.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
+      } else {
+        data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      }
+
+      const hasMore = data.length > (page + 1) * limitNum;
+      const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
 
       res.json({ 
         data: paginatedData, 
-        hasMore: start + limit < registry.length 
+        hasMore 
       });
     } catch (error: any) {
       console.error('API Error:', error);
@@ -330,20 +517,37 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
+  // Debug endpoint
+  app.get('/api/debug/registry', async (req, res) => {
+    try {
+      const templates = await repoManager.getMergedRegistry();
+      const freeTemplates = await freeHostService.getTemplates(0, 1000); // Fetch a large number to get all
+      const merged = [...templates, ...freeTemplates];
+      res.json({ 
+        repoManagerCount: templates.length, 
+        freeHostCount: freeTemplates.length,
+        totalCount: merged.length,
+        data: merged 
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
-      let registry = await repoManager.getMergedRegistry();
-
-      // Aggregate by email
+      const templates = await repoManager.getMergedRegistry();
+      const approvedTemplates = templates.filter((t: any) => t.status === 'approved');
+      
       const creatorsMap = new Map();
-      registry.forEach((t: any) => {
+      approvedTemplates.forEach((t: any) => {
         if (!t.author_email) return;
         if (!creatorsMap.has(t.author_email)) {
           creatorsMap.set(t.author_email, {
-            author_name: t.author,
+            author_name: t.author_name || 'Anonymous',
             author_email: t.author_email,
-            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author)}&background=random`,
+            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'Anonymous')}&background=random`,
             views: 0,
             likes: 0,
             templates: 0
@@ -366,46 +570,6 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
-  // Auth Proxy
-  app.post('/api/auth/signin', async (req, res) => {
-    console.log("POST /api/auth/signin", req.body?.email);
-    try {
-      const { email, password } = req.body;
-      console.log("Calling Supabase signInWithPassword...");
-      
-      const signInPromise = supabase.auth.signInWithPassword({ email, password });
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Supabase auth timeout")), 8000));
-      
-      const { data, error } = await Promise.race([signInPromise, timeoutPromise]) as any;
-      
-      console.log("Supabase signInWithPassword completed.");
-      if (error) {
-          console.error("Supabase signin error:", error.message);
-          throw error;
-      }
-      console.log("Supabase signin success for:", email);
-      res.json(data);
-    } catch (error: any) {
-      console.error('API Error (Signin):', error.message);
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-  app.post('/api/auth/signup', async (req, res) => {
-    try {
-      const { email, password, name } = req.body;
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: name, usage_count: 0, is_pro: false } }
-      });
-      if (error) throw error;
-      res.json(data);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
   // --- User & Template Management Routes ---
 
   // Get User Templates
@@ -414,46 +578,19 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const email = req.query.email as string;
       if (!email) throw new Error("Email required");
 
-      // Fetch Git and Supabase templates in parallel
-      const [gitRegistry, { data: supabaseData, error: supabaseError }, { data: deletedTemplates }] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        supabase.from('templates').select('*').eq('author_email', email),
-        supabase.from('deleted_templates').select('id')
-      ]);
-      
-      if (supabaseError) console.warn("Supabase user templates fetch failed:", supabaseError);
-
-      // Filter out deleted templates from Git registry
-      const deletedIds = new Set((deletedTemplates || []).map(t => t.id));
-      const filteredGit = gitRegistry.filter((t: any) => !deletedIds.has(t.id));
-
-      const userGitTemplates = filteredGit.filter((t: any) => 
-        t.author_email === email || t.creator_email === email || t.email === email
-      );
-
-      // Merge order priority: GitHub > GitLab > Supabase
-      const mappedSupabase = (supabaseData || []).map(t => ({ ...t, _source: 'supabase' }));
-      
-      // Use a Map to deduplicate by ID, keeping the first occurrence (highest priority)
-      const templatesMap = new Map();
-      userGitTemplates.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, { ...t, _source: 'git' });
-        }
-      });
-      mappedSupabase.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, t);
-        }
-      });
-
-      const allData = Array.from(templatesMap.values()).sort((a: any, b: any) => {
-        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      const supabaseData = await getSupabaseUserTemplates(email);
+      const allData = supabaseData.map(mapSupabaseToTemplate);
+        
+      // Sort manually if needed
+      allData.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
       });
 
       res.json({ data: allData });
     } catch (error: any) {
-      console.error('API Error (User Templates):', error);
+      console.error('API Error (User Templates):', error.message || error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -462,9 +599,48 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.get('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      const content = await repoManager.getTemplateById(id);
-      if (content) {
-        res.json({ data: content });
+      
+      // 1. Try GitHub/GitLab
+      let template = await repoManager.getTemplateById(id);
+      
+      // 2. Try FreeHost
+      if (!template) {
+        template = await freeHostService.getTemplateById(id);
+      }
+      
+      // 3. Try Supabase
+      if (!template) {
+        const supabaseTemplates = await getSupabaseTemplates();
+        const found = supabaseTemplates.find((t: any) => t.id === id);
+        if (found) {
+          template = mapSupabaseToTemplate(found);
+        }
+      }
+      
+      // 4. Try Firebase (Skipped as Firebase is only for Auth)
+      
+      if (template) {
+        // Handle bundle if it's a bundle
+        if (template.is_bundle && template.source_code && template.source_code.startsWith('http')) {
+            try {
+                console.log(`[API] Fetching bundle for template ${id} from ${template.source_code}`);
+                const response = await fetch(template.source_code);
+                if (response.ok) {
+                    const bundle = await response.json();
+                    template = { 
+                        ...template, 
+                        ...bundle.metadata, 
+                        sourceCode: bundle.sourceCode, 
+                        preview_url: bundle.demoLink,
+                        galleryImages: bundle.images?.gallery || [],
+                        bannerUrl: bundle.images?.banner || template.bannerUrl
+                    };
+                }
+            } catch (e: any) {
+                console.error(`[API] Failed to fetch bundle for template ${id}:`, e.message);
+            }
+        }
+        res.json({ template });
       } else {
         res.status(404).json({ error: 'Template not found' });
       }
@@ -477,61 +653,6 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   // Add Template
   // Create Template
 
-  // Helper: Upload image URL to ImgBB
-  async function uploadToImgBB(imageUrl: string): Promise<string> {
-    if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl;
-    
-    // Skip if already on ImgBB
-    if (imageUrl.includes('i.ibb.co') || imageUrl.includes('imgbb.com')) return imageUrl;
-
-    const apiKey = process.env.IMGBB_API_KEY || 'a7324da8420f04b2e6bae6035cf7e25d';
-    
-    try {
-      const formData = new URLSearchParams();
-      formData.append('key', apiKey);
-      formData.append('image', imageUrl);
-
-      const response = await fetch('https://api.imgbb.com/1/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      const data = await response.json();
-      if (data.success && data.data && data.data.url) {
-        console.log(`Successfully uploaded to ImgBB: ${data.data.url}`);
-        return data.data.url; // Direct image URL
-      } else {
-        console.error('ImgBB upload failed:', data);
-        return imageUrl;
-      }
-    } catch (error) {
-      console.error('Error uploading to ImgBB:', error);
-      return imageUrl;
-    }
-  }
-
-  // Helper: Delete temporary file from Supabase Storage
-  async function deleteFromSupabaseStorage(url: string) {
-    if (!url || !url.includes('supabase.co/storage/v1/object/public/')) return;
-    try {
-      const urlObj = new URL(url);
-      const pathParts = urlObj.pathname.split('/storage/v1/object/public/')[1].split('/');
-      const bucket = pathParts[0];
-      const filePath = pathParts.slice(1).join('/');
-      
-      if (bucket && filePath) {
-        const { error } = await supabase.storage.from(bucket).remove([filePath]);
-        if (error) {
-          console.error(`Failed to delete temporary file ${filePath} from Supabase:`, error);
-        } else {
-          console.log(`Deleted temporary file from Supabase: ${filePath}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting from Supabase storage:', error);
-    }
-  }
-
   app.post('/api/templates', async (req, res) => {
     try {
       const { template } = req.body;
@@ -540,27 +661,23 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         return res.status(400).json({ error: 'Template is required' });
       }
 
-      // 1. Generate unique ID (UUID for Supabase compatibility)
+      // 1. Generate unique ID
       const templateId = crypto.randomUUID();
 
-      // 2. Process Images (Upload to ImgBB)
-      let finalImageUrl = template.image_url || template.imageUrl || '';
+      // 2. Process Images (Upload to Multi-service)
+      let finalImageUrl = template.preview_image || template.image_url || template.imageUrl || '';
       let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
       let finalGalleryImages = template.gallery_images || [];
 
-      const originalImageUrl = finalImageUrl;
-      const originalBannerUrl = finalBannerUrl;
-      const originalGalleryImages = [...finalGalleryImages];
-
       // Upload main image
       if (finalImageUrl) {
-        finalImageUrl = await uploadToImgBB(finalImageUrl);
+        finalImageUrl = await processUrlUpload(finalImageUrl);
       }
       
       // Upload banner image
-      if (finalBannerUrl && finalBannerUrl !== originalImageUrl) {
-        finalBannerUrl = await uploadToImgBB(finalBannerUrl);
-      } else if (finalBannerUrl === originalImageUrl) {
+      if (finalBannerUrl && finalBannerUrl !== (template.preview_image || template.image_url || template.imageUrl)) {
+        finalBannerUrl = await processUrlUpload(finalBannerUrl);
+      } else {
         finalBannerUrl = finalImageUrl;
       }
 
@@ -568,82 +685,96 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       if (Array.isArray(finalGalleryImages)) {
         for (let i = 0; i < finalGalleryImages.length; i++) {
           if (finalGalleryImages[i]) {
-            finalGalleryImages[i] = await uploadToImgBB(finalGalleryImages[i]);
+            finalGalleryImages[i] = await processUrlUpload(finalGalleryImages[i]);
           }
         }
       }
 
-      // 3. Clean up temporary Supabase images (Background task)
-      setTimeout(async () => {
-        if (finalImageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-        if (finalBannerUrl !== originalBannerUrl && originalBannerUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-        for (let i = 0; i < originalGalleryImages.length; i++) {
-          if (finalGalleryImages[i] !== originalGalleryImages[i]) {
-            await deleteFromSupabaseStorage(originalGalleryImages[i]);
-          }
-        }
-      }, 1000);
-
-      // 4. Generate Clean Preview URL via Supabase Logic (Simplified here)
+      // 3. Process Source Code and Bundle Everything (Upload to Paste.rs)
+      let bundleUrl = '';
+      
+      // 4. Generate Clean Preview URL
       const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
 
-      // 5. Create metadata object (GitHub is Single Source of Truth)
-      const metadata = {
-        id: templateId,
-        name: template.title || template.name,
-        description: template.description,
-        preview_url: cleanPreviewUrl,
-        image_preview: finalImageUrl,
-        banner_url: finalBannerUrl,
-        gallery_images: finalGalleryImages,
-        file_url: template.file_url, // Keep original file URL (e.g. ZIP in Supabase)
-        tags: template.tags || [],
-        creator: template.author_name || 'Anonymous',
-        creator_email: template.author_email,
-        creator_avatar: template.author_avatar || '',
-        created_at: new Date().toISOString(),
-        category: template.category,
-        price: template.price,
-        stats: {
-          likes: 0,
-          views: 0
+      const templateBundle = {
+        metadata: {
+          id: templateId,
+          title: template.title || template.name,
+          description: template.description || '',
+          tags: template.tags || [],
+          author: template.author_name || 'Anonymous',
+          category: template.category || 'Uncategorized',
+          price: template.price || 'Free',
+          created_at: new Date().toISOString(),
+        },
+        sourceCode: template.sourceCode || '',
+        demoLink: cleanPreviewUrl,
+        images: {
+          thumbnail: finalImageUrl,
+          banner: finalBannerUrl,
+          gallery: finalGalleryImages
         }
       };
 
-      // 6. Save to GitHub
       try {
-        await saveTemplateToGitHub(metadata);
-        
-        // 7. Save to Supabase (Legacy / Fallback)
-        try {
-          const supabasePayload = {
-            ...template,
-            id: templateId,
-            image_url: finalImageUrl,
-            banner_url: finalBannerUrl,
-            gallery_images: finalGalleryImages,
-            created_at: metadata.created_at
-          };
-          const { error } = await supabase.from('templates').insert(supabasePayload);
-          if (error) console.error("Supabase Save Failed:", error);
-        } catch (e) {
-          console.warn("Supabase Save Failed or skipped:", e);
-        }
-
-        return res.json({ 
-          success: true, 
-          id: templateId, 
-          preview_url: cleanPreviewUrl,
-          message: "Saved to GitHub successfully.",
-          template: metadata
-        });
-      } catch (githubError: any) {
-        console.error("GitHub Save Failed:", githubError);
-        return res.status(500).json({ 
-          success: false, 
-          error: `GitHub Save Failed: ${githubError.message || 'Unknown error'}`
-        });
+          console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
+          bundleUrl = await uploadToPasteRs(JSON.stringify(templateBundle));
+          console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
+      } catch (e: any) {
+          console.error("Paste.rs Upload Failed:", e.message);
+          throw new Error("Failed to upload template bundle to Paste.rs");
       }
+
+      // 5. Create metadata object (pointing to the bundle)
+      const metadata: TemplateMetadata = {
+        id: templateId,
+        title: template.title || template.name,
+        description: template.description || '',
+        preview_url: cleanPreviewUrl,
+        thumbnail: finalImageUrl,
+        image_url: finalImageUrl,
+        banner_url: finalBannerUrl,
+        gallery_images: finalGalleryImages,
+        file_url: template.file_url || '',
+        source_code: bundleUrl, // Store the bundle URL here
+        tags: template.tags || [],
+        author: template.author_name || 'Anonymous',
+        author_name: template.author_name || 'Anonymous',
+        author_email: template.author_email || '',
+        author_avatar: template.author_avatar || '',
+        author_id: template.author_uid || template.author_id || '',
+        created_at: new Date().toISOString(),
+        category: template.category || 'Uncategorized',
+        price: template.price || 'Free',
+        views: 0,
+        likes: 0,
+        sales: 0,
+        earnings: 0,
+        status: template.status || 'approved',
+        is_bundle: true // Flag to indicate it's a bundle
+      };
+
+      // 6. Save to GitHub
+      await repoManager.uploadTemplate(metadata);
+
+      // 7. Save to Supabase (CRITICAL for persistence on refresh)
+      try {
+        console.log(`[API] Attempting to save template ${templateId} to Supabase...`);
+        await addSupabaseTemplate(metadata);
+        console.log(`[API] Successfully saved template ${templateId} to Supabase.`);
+      } catch (supabaseErr: any) {
+        console.error(`[API] Failed to save to Supabase: ${supabaseErr.message}`);
+        // For persistence, we should probably fail if it's the primary DB.
+        // But for now we'll just log it to avoid breaking the flow if Supabase is down.
+      }
+      
+      return res.json({ 
+        success: true, 
+        id: templateId, 
+        preview_url: cleanPreviewUrl,
+        message: "Saved to GitHub successfully.",
+        template: { id: templateId, ...metadata }
+      });
     } catch (error: any) {
       console.error('API Error (Create Template):', error);
       res.status(500).json({ error: error.message || 'Unknown error' });
@@ -672,58 +803,50 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.put('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      const { updates, userEmail } = req.body;
+      const { updates } = req.body;
       
-      // Process Images (Upload to ImgBB)
-      const originalImageUrl = updates.image_url || updates.imageUrl;
-      const originalBannerUrl = updates.banner_url || updates.bannerUrl;
-      const originalGalleryImages = updates.gallery_images ? [...updates.gallery_images] : null;
-
+      // Process Images (Upload to Multi-service)
       if (updates.image_url) {
-        updates.image_url = await uploadToImgBB(updates.image_url);
+        updates.image_url = await processUrlUpload(updates.image_url);
       }
       if (updates.imageUrl) {
-        updates.imageUrl = await uploadToImgBB(updates.imageUrl);
+        updates.image_url = await processUrlUpload(updates.imageUrl);
+        delete updates.imageUrl;
       }
       if (updates.banner_url) {
-        updates.banner_url = await uploadToImgBB(updates.banner_url);
+        updates.banner_url = await processUrlUpload(updates.banner_url);
       }
       if (updates.bannerUrl) {
-        updates.bannerUrl = await uploadToImgBB(updates.bannerUrl);
+        updates.banner_url = await processUrlUpload(updates.bannerUrl);
+        delete updates.bannerUrl;
       }
       if (updates.gallery_images && Array.isArray(updates.gallery_images)) {
         for (let i = 0; i < updates.gallery_images.length; i++) {
           if (updates.gallery_images[i]) {
-            updates.gallery_images[i] = await uploadToImgBB(updates.gallery_images[i]);
+            updates.gallery_images[i] = await processUrlUpload(updates.gallery_images[i]);
           }
         }
       }
 
-      // Clean up temporary Supabase images (Background task)
-      setTimeout(async () => {
-        if (updates.image_url && updates.image_url !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-        if (updates.imageUrl && updates.imageUrl !== originalImageUrl) await deleteFromSupabaseStorage(originalImageUrl);
-        if (updates.banner_url && updates.banner_url !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-        if (updates.bannerUrl && updates.bannerUrl !== originalBannerUrl) await deleteFromSupabaseStorage(originalBannerUrl);
-        if (updates.gallery_images && originalGalleryImages) {
-          for (let i = 0; i < originalGalleryImages.length; i++) {
-            if (updates.gallery_images[i] !== originalGalleryImages[i]) {
-              await deleteFromSupabaseStorage(originalGalleryImages[i]);
-            }
+      // Process Source Code (Upload to Paste.rs)
+      if (updates.sourceCode && updates.sourceCode.length > 0 && !updates.sourceCode.startsWith('http')) {
+          try {
+              console.log(`[Paste.rs Update] Uploading source code for template: ${id}`);
+              updates.source_code = await uploadToPasteRs(updates.sourceCode);
+              delete updates.sourceCode;
+              console.log(`[Paste.rs Update] Success: ${updates.source_code}`);
+          } catch (e: any) {
+              console.error("Paste.rs Upload Failed:", e.message);
           }
-        }
-      }, 1000);
+      }
+
+      // Ensure thumbnail is updated if image_url is updated
+      if (updates.image_url && !updates.thumbnail) {
+        updates.thumbnail = updates.image_url;
+      }
 
       // Update GitHub
-      try {
-        await updateTemplateOnGitHub(id, updates);
-      } catch (e) {
-        console.warn("GitHub update failed or skipped:", e);
-      }
-
-      // Update Supabase (legacy)
-      const { error } = await supabase.from('templates').update(updates).eq('id', id);
-      if (error) console.error("Supabase update error:", error);
+      await repoManager.updateTemplate(id, updates);
       
       res.json({ success: true });
     } catch (error: any) {
@@ -732,39 +855,68 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
+  // Delete all Supabase templates (Admin only)
+  app.delete('/api/admin/templates/supabase', async (req, res) => {
+    try {
+      // In a real app, verify admin auth here
+      const { deleteAllTemplates } = await import('./server/services/supabaseService.js');
+      await deleteAllTemplates();
+      res.json({ success: true, message: 'All Supabase templates deleted' });
+    } catch (error: any) {
+      console.error('API Error (Delete All Supabase Templates):', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Delete Template
-  // Delete Template by ID
   app.delete('/api/templates/:id', async (req, res) => {
     try {
       const { id } = req.params;
+      console.log(`[API] Deleting template: ${id}`);
       
-      // 1. Authoritative: Mark as deleted in Supabase
-      console.log(`Marking template ${id} as deleted in Supabase`);
-      const { error: insertError } = await supabase.from('deleted_templates').insert({ id });
-      if (insertError) {
-        console.error("Supabase deletion tracking failed:", insertError);
-        // Continue even if tracking fails, or should we stop?
-        // Let's stop if tracking fails to ensure consistency.
-        throw new Error(`Supabase deletion tracking failed: ${insertError.message}`);
-      }
-
-      // 2. Delete from GitHub
+      let deletedCount = 0;
+      let errors: string[] = [];
+      
+      // Delete from GitHub
       try {
-        await deleteTemplateFromGitHub(id);
-      } catch (e) {
-        console.warn("GitHub deletion failed or skipped:", e);
-      }
-
-      // 3. Delete from Supabase (legacy)
-      console.log(`Deleting template ${id} from Supabase legacy table`);
-      const { error } = await supabase.from('templates').delete().eq('id', id);
-      if (error) {
-        console.error("Supabase legacy deletion error:", error);
-      } else {
-        console.log(`Successfully deleted template ${id} from Supabase legacy table`);
+        await repoManager.deleteTemplate(id);
+        console.log(`[API] Deleted from GitHub: ${id}`);
+        deletedCount++;
+      } catch (error: any) {
+        console.error(`[API] Failed to delete from GitHub: ${id}`, error);
+        errors.push(`GitHub: ${error.message}`);
       }
       
-      res.json({ success: true });
+      // Delete from Supabase
+      try {
+        await deleteSupabaseTemplate(id);
+        console.log(`[API] Deleted from Supabase: ${id}`);
+        deletedCount++;
+      } catch (error: any) {
+        console.error(`[API] Failed to delete from Supabase: ${id}`, error);
+        errors.push(`Supabase: ${error.message}`);
+      }
+
+      // Delete from FreeHost
+      try {
+        const deleted = await freeHostService.deleteTemplate(id);
+        if (deleted) {
+          console.log(`[API] Deleted from FreeHost: ${id}`);
+          deletedCount++;
+        }
+      } catch (error: any) {
+        console.error(`[API] Failed to delete from FreeHost: ${id}`, error);
+        errors.push(`FreeHost: ${error.message}`);
+      }
+
+      // Delete from Firebase (Skipped as Firebase is only for Auth)
+      
+      if (deletedCount === 0 && errors.length > 0) {
+        // All attempted deletions failed
+        return res.status(500).json({ error: `Failed to delete template: ${errors.join(', ')}` });
+      }
+      
+      res.json({ success: true, deletedCount, errors: errors.length > 0 ? errors : undefined });
     } catch (error: any) {
       console.error('API Error (Delete Template):', error);
       res.status(500).json({ error: error.message });
@@ -780,20 +932,14 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   // Update User Profile
   app.post('/api/user/update', async (req, res) => {
       try {
-          const { updates, token } = req.body;
-          // In a real app, we'd verify the token. 
-          // Here we might need to use the service role key if we are updating auth user data,
-          // but we are using the anon key in this file. 
-          // Supabase Auth updates usually require the user's JWT.
+          const { updates, uid } = req.body;
+          if (!uid) throw new Error("User ID required");
           
-          // Since we can't easily pass the JWT to the server client (which is init with anon key),
-          // this is tricky. 
-          // However, for the purpose of "fixing failed to fetch", we can try to rely on the client 
-          // for auth updates IF they work, or mock it.
+          await updateSupabaseUser(uid, updates);
           
-          // Let's just return success for now to stop errors if it's blocking.
-          res.json({ user: { user_metadata: updates } });
+          res.json({ success: true });
       } catch (error: any) {
+          console.error('API Error (Update User):', error);
           res.status(500).json({ error: error.message });
       }
   });

@@ -8,7 +8,8 @@ import { playClickSound, playSuccessSound, playNotificationSound } from '../audi
 interface DashboardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userEmail: string | undefined;
+  userId: string | undefined;
+  userEmail?: string;
   onEdit?: (template: Template) => void;
 }
 
@@ -98,37 +99,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
         setSignedBanner(null);
     }, [template.bannerUrl]);
 
-    const handleImageError = async () => {
-        if (signedBanner) {
-            setImageError(true);
-            return;
-        }
-
-        if (template.bannerUrl && template.bannerUrl.includes('/storage/v1/object/public/')) {
-            try {
-                const pathParts = template.bannerUrl.split('/storage/v1/object/public/')[1].split('/');
-                const bucket = pathParts[0];
-                const path = pathParts.slice(1).join('/');
-                if (bucket && path) {
-                    const api = await import('../api');
-                    const { data } = await api.supabase.storage.from(bucket).createSignedUrl(path, 31536000);
-                    if (data?.signedUrl) {
-                        setSignedBanner(data.signedUrl);
-                        return;
-                    } else {
-                        const { data: blobData } = await api.supabase.storage.from(bucket).download(path);
-                        if (blobData) {
-                            const objectUrl = URL.createObjectURL(blobData);
-                            setSignedBanner(objectUrl);
-                            return;
-                        }
-                    }
-                }
-            } catch (e) {
-                console.warn("Signed URL fallback failed:", e);
-            }
-        }
-        
+    const handleImageError = () => {
         setImageError(true);
     };
     
@@ -181,10 +152,10 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                              <h4 className="text-white font-bold text-sm truncate pr-4">{template.title}</h4>
                              <button 
                                 onClick={(e) => { e.stopPropagation(); onDelete(); }} 
-                                className="text-slate-600 hover:text-red-400 transition-colors z-30"
+                                className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded border border-red-500/20 transition-all z-30"
                                 title="Delete Asset"
                              >
-                                 <XIcon className="w-4 h-4" />
+                                 Delete
                              </button>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">{template.category}</p>
@@ -230,7 +201,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
     );
 };
 
-const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEmail, onEdit }) => {
+const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userId, userEmail, onEdit }) => {
   const [myTemplates, setMyTemplates] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
@@ -239,9 +210,9 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    if (isOpen && userEmail) {
+    if (isOpen && userId) {
         setIsLoading(true);
-        unsubscribe = listenForUserTemplates(userEmail, (data) => {
+        unsubscribe = listenForUserTemplates(userId, userEmail, (data) => {
             setMyTemplates(data);
             setIsLoading(false);
         }).unsubscribe;
@@ -249,7 +220,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEm
     return () => {
         if (unsubscribe) unsubscribe();
     };
-  }, [isOpen, userEmail]);
+  }, [isOpen, userId, userEmail]);
 
   const confirmDelete = (id: string) => {
       const template = myTemplates.find(t => t.id === id);

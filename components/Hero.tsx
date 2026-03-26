@@ -21,7 +21,7 @@ const ParticleText: React.FC<{
   colors,
 }) => {
   
-  const containerVariants = {
+  const containerVariants: any = {
     hidden: { 
       opacity: 0,
       transition: { staggerChildren: 0.05 } 
@@ -43,7 +43,7 @@ const ParticleText: React.FC<{
     }
   };
 
-  const charVariants = {
+  const charVariants: any = {
     hidden: { 
       opacity: 0, 
       y: 50, 

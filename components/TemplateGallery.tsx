@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import TemplateCard from './TemplateCard';
-import { Template, getPublicTemplates, isApiConfigured } from '../api';
+import { Template, getPublicTemplates } from '../api';
 import { playClickSound } from '../audio';
 import { SearchIcon, NoResultsIcon, XIcon, FilterIcon, SortIcon, ArrowRightIcon } from './Icons';
 import { ScrollReveal } from './ScrollReveal';
@@ -22,6 +22,8 @@ interface TemplateGalleryProps {
   likedIds: Set<string>; 
   favoriteIds: Set<string>;
   isLoggedIn: boolean; 
+  currentUserId?: string;
+  onDelete?: (id: string) => void;
 }
 
 type SortOption = 'newest' | 'popular' | 'likes';
@@ -37,7 +39,9 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     isLoading: initialLoading,
     likedIds,
     favoriteIds,
-    isLoggedIn
+    isLoggedIn,
+    currentUserId,
+    onDelete
 }) => {
   const [activeFilter, setActiveFilter] = useState(initialCategory);
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,7 +108,8 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
               6, // Limit to 6 items per load
               debouncedSearch, 
               activeFilter, 
-              sortBy
+              sortBy,
+              currentUserId
           );
 
           const msg = error?.toLowerCase() || '';
@@ -142,12 +147,18 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       }
   }, [page, debouncedSearch, activeFilter, sortBy]);
 
-  // Trigger Fetch on Filter Changes
+  // Trigger Fetch on Filter Changes or Mount
   useEffect(() => {
-      if (activeFilter !== 'All' || debouncedSearch !== '' || sortBy !== 'newest') {
-          setPage(0);
-          fetchData(true);
+      let mounted = true;
+      if (mounted) {
+          // Only fetch if we don't have initial templates or if filters are NOT default
+          const isDefault = activeFilter === 'All' && debouncedSearch === '' && sortBy === 'newest';
+          if (!isDefault || !initialTemplates || initialTemplates.length === 0) {
+              setPage(0);
+              fetchData(true);
+          }
       }
+      return () => { mounted = false; };
   }, [debouncedSearch, activeFilter, sortBy]);
 
   // Load More Handler
@@ -429,14 +440,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         <NoResultsIcon className="w-8 h-8 opacity-50" />
                     </div>
                     
-                    {!isApiConfigured ? (
-                        <>
-                            <h4 className="text-xl font-bold text-white mb-2 tracking-tight">Database Not Connected</h4>
-                            <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">
-                                Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.
-                            </p>
-                        </>
-                    ) : (searchQuery || activeFilter !== 'All') ? (
+                    {(searchQuery || activeFilter !== 'All') ? (
                         <>
                             <h4 className="text-xl font-bold text-white mb-2 tracking-tight">No results found</h4>
                             <p className="text-slate-500 max-w-md mb-8 text-sm leading-relaxed">
@@ -506,7 +510,10 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             onView={handleView}
                             onLike={handleLocalLike}
                             onFavorite={onFavorite}
+                            onDelete={onDelete}
                             onCreatorClick={handleCreatorClick}
+                            author_uid={template.author_uid}
+                            currentUserId={currentUserId}
                         />
                     ))
                 )}

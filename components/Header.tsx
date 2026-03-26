@@ -4,7 +4,6 @@ import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckC
 import { playClickSound } from '../audio';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
-import { isApiConfigured } from '../api';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface HeaderProps {
@@ -70,20 +69,10 @@ const Header: React.FC<HeaderProps> = ({
                 <span className="font-display font-bold text-sm tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 drop-shadow-[0_0_8px_rgba(59,130,246,0.4)] transition-all">Templr</span>
                 
                 {/* Status Indicator */}
-                {isApiConfigured ? (
-                    <div className="hidden sm:flex items-center gap-1.5 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                         <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
-                         <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wide">Online</span>
-                    </div>
-                ) : (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onOpenSetup(); }}
-                        className="hidden sm:flex items-center gap-1.5 ml-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-2 py-0.5 rounded-full transition-colors cursor-pointer"
-                    >
-                         <span className="w-1 h-1 bg-red-400 rounded-full"></span>
-                         <span className="text-[9px] font-bold uppercase text-red-400 tracking-wide">Connect Backend</span>
-                    </button>
-                )}
+                <div className="hidden sm:flex items-center gap-1.5 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                     <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse"></span>
+                     <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wide">Online</span>
+                </div>
             </div>
 
             {/* Actions */}
