@@ -303,15 +303,28 @@ export const getPublicTemplates = async (
     try {
         const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
         const response = await fetch(url);
-        if (!response.ok) throw new Error("Failed to fetch templates");
+        
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`[API Debug] Server returned ${response.status} for ${url}. Body: ${text.substring(0, 100)}`);
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error(`[API Debug] Expected JSON but received ${contentType} for ${url}. Body start: ${text.substring(0, 100)}`);
+            throw new Error(`Invalid response format: Expected JSON but received ${contentType}`);
+        }
+
         const result = await response.json();
         
         // Map data to Template interface
-        const data = result.data.map((t: any) => mapTemplate(t));
+        const data = (result.data || []).map((t: any) => mapTemplate(t));
         
-        return { data, hasMore: result.hasMore };
+        return { data, hasMore: result.hasMore || false };
     } catch (e: any) {
-        console.error("Error fetching public templates:", e);
+        console.error("Error fetching public templates:", e.message || e);
         return { data: [], hasMore: false, error: e.message || "Connection failed" };
     }
 };
@@ -348,15 +361,28 @@ export const listenForUserTemplates = (userId: string, userEmail: string | undef
         try {
             const url = `/api/user/templates?email=${encodeURIComponent(userEmail || '')}`;
             const response = await fetch(url);
+            
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`Error fetching user templates: ${response.status} ${text.substring(0, 100)}`);
-                return;
+                console.error(`[API Debug] Server returned ${response.status} for ${url}. Body: ${text.substring(0, 100)}`);
+                throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
             }
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error(`[API Debug] Expected JSON but received ${contentType} for ${url}. Body start: ${text.substring(0, 100)}`);
+                throw new Error(`Invalid response format: Expected JSON but received ${contentType}`);
+            }
+
             const result = await response.json();
+            if (result.error) {
+                console.error(`[API Debug] Server returned error in JSON for ${url}: ${result.error}`);
+                throw new Error(result.error);
+            }
             callback(result.data.map((t: any) => mapTemplate(t)));
-        } catch (e) {
-            console.error("Error fetching user templates:", e);
+        } catch (e: any) {
+            console.error("Error fetching user templates:", e.message || e);
         }
     };
     

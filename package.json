@@ -32,7 +32,8 @@
     "octokit": "^5.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "threads-api": "^1.6.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

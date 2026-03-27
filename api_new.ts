@@ -522,15 +522,32 @@ export const listenForUserTemplates = (userEmail: string, callback: (templates: 
 
     const fetchUserTemplates = async () => {
         try {
-            const response = await fetch(`/api/user/templates?email=${encodeURIComponent(userEmail)}`);
-            if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+            const url = `/api/user/templates?email=${encodeURIComponent(userEmail)}`;
+            const response = await fetch(url);
             
-            const { data } = await response.json();
-            const mappedTemplates = (data || []).map(mapTemplate);
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`[API Debug] Server returned ${response.status} for ${url}. Body: ${text.substring(0, 100)}`);
+                throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
+            }
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error(`[API Debug] Expected JSON but received ${contentType} for ${url}. Body start: ${text.substring(0, 100)}`);
+                throw new Error(`Invalid response format: Expected JSON but received ${contentType}`);
+            }
+
+            const result = await response.json();
+            if (result.error) {
+                console.error(`[API Debug] Server returned error in JSON for ${url}: ${result.error}`);
+                throw new Error(result.error);
+            }
             
+            const mappedTemplates = (result.data || []).map(mapTemplate);
             callback(mappedTemplates);
         } catch (e: any) {
-            console.error("Error fetching user templates:", e);
+            console.error("Error fetching user templates:", e.message || e);
             
             // Fallback to Supabase directly
             if (isApiConfigured) {
