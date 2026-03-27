@@ -5,9 +5,9 @@ let supabaseClient: ReturnType<typeof createClient> | null = null;
 
 export function getSupabase() {
   if (!supabaseClient) {
-    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     // Prefer service role key for backend operations, fallback to anon key
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     
     console.log("Initializing Supabase client...");
     console.log("SUPABASE_URL:", supabaseUrl ? "Set" : "Not Set");

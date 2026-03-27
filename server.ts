@@ -38,15 +38,16 @@ if (fs.existsSync(firebaseConfigPath)) {
       console.log("FIREBASE_SERVICE_ACCOUNT is set.");
       credential = admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT));
     } else {
-      console.log("FIREBASE_SERVICE_ACCOUNT is NOT set, using applicationDefault().");
-      credential = admin.credential.applicationDefault();
+      console.log("FIREBASE_SERVICE_ACCOUNT is NOT set, skipping Admin SDK initialization.");
     }
-    admin.initializeApp({
-      credential: credential,
-      projectId: firebaseConfig.projectId,
-    });
-    console.log("Firebase Admin initialized:", admin.app().name);
-    console.log("Firebase Admin options:", JSON.stringify(admin.app().options));
+    if (credential) {
+        admin.initializeApp({
+          credential: credential,
+          projectId: firebaseConfig.projectId,
+        });
+        console.log("Firebase Admin initialized:", admin.app().name);
+        console.log("Firebase Admin options:", JSON.stringify(admin.app().options));
+    }
   } catch (e) {
     console.error("Firebase initialization failed:", e);
   }
@@ -1222,6 +1223,7 @@ function mapThreadsToTemplate(t: any) {
   });
 
   // --- Vite Middleware ---
+  console.log("NODE_ENV:", process.env.NODE_ENV);
   try {
     if (process.env.NODE_ENV !== 'production') {
       console.log("Initializing Vite middleware...");
