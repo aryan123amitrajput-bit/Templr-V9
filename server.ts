@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -1245,6 +1244,7 @@ function mapThreadsToTemplate(t: any) {
     // Continue starting the server even if Vite fails, so API routes still work
   }
 
+  console.log("Attempting to start server...");
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
