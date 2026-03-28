@@ -146,24 +146,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             return { imageUrl: result.mediaUrls[0], hostUsed: 'Threads', postId: result.postId };
         } catch (e: any) {
             console.warn('[Upload] Threads failed. Error:', e.message);
-            console.warn('[Upload] Falling back to Telegram...');
-        }
-    }
-
-    // 2. Try Telegram
-    if (telegramService.isConfigured() && !isVideo) {
-        try {
-            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
-            // Return a URL that points to our proxy endpoint
-            const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-            return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
-        } catch (e: any) {
-            if (e.message.includes('Telegram Chat Not Found')) {
-                console.warn('[Upload] Telegram skipped: Chat not found or bot lacks permissions. Falling back to Catbox...');
-            } else {
-                console.warn('[Upload] Telegram failed. Error:', e.message);
-                console.warn('[Upload] Falling back to Catbox...');
-            }
+            console.warn('[Upload] Falling back to Catbox...');
         }
     }
 
@@ -920,30 +903,12 @@ function mapThreadsToTemplate(t: any) {
 
       try {
           const bundleString = JSON.stringify(templateBundle);
-          const bundleBuffer = Buffer.from(bundleString, 'utf-8');
-          
-          if (telegramService.isConfigured()) {
-              console.log(`[Telegram Upload] Uploading template bundle for: ${template.title || template.name}`);
-              const tgUri = await telegramService.uploadDocument(bundleBuffer, `${templateId}.json`);
-              bundleUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-              console.log(`[Telegram Upload] Success: ${bundleUrl}`);
-          } else {
-              throw new Error("Telegram not configured");
-          }
-      } catch (tgError: any) {
-          if (tgError.message.includes('Telegram Chat Not Found')) {
-              console.warn(`[Telegram Upload] Skipped: Chat not found or bot lacks permissions. Falling back to Paste.rs...`);
-          } else {
-              console.warn(`[Telegram Upload] Failed (${tgError.message}), falling back to Paste.rs...`);
-          }
-          try {
-              console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
-              bundleUrl = await uploadToPasteRs(JSON.stringify(templateBundle));
-              console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
-          } catch (e: any) {
-              console.error("Paste.rs Upload Failed:", e.message);
-              throw new Error("Failed to upload template bundle to both Telegram and Paste.rs");
-          }
+          console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
+          bundleUrl = await uploadToPasteRs(bundleString);
+          console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
+      } catch (e: any) {
+          console.error("Paste.rs Upload Failed:", e.message);
+          throw new Error("Failed to upload template bundle to Paste.rs");
       }
 
       // 5. Create metadata object (pointing to the bundle)

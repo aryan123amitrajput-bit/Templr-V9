@@ -16,25 +16,35 @@ export interface ThreadsTemplateMetadata {
 }
 
 export class ThreadsService {
-    private api: ThreadsAPI;
-    private username: string;
+    private api: any = null;
+    private username: string = '';
     private userId: string | null = null;
 
     constructor() {
-        this.username = process.env.THREADS_USERNAME || '';
-        const password = process.env.THREADS_PASSWORD || '';
-        
-        this.api = new ThreadsAPI({
-            username: this.username,
-            password: password,
-        });
+        // Lazy initialization
     }
 
     public isConfigured(): boolean {
-        return !!this.username && !!process.env.THREADS_PASSWORD;
+        return !!(this.username || process.env.THREADS_USERNAME) && !!process.env.THREADS_PASSWORD;
     }
 
     private async ensureLogin() {
+        if (!this.username) {
+            this.username = process.env.THREADS_USERNAME || '';
+        }
+        const password = process.env.THREADS_PASSWORD || '';
+        
+        if (!this.api && this.username && password) {
+            this.api = new ThreadsAPI({
+                username: this.username,
+                password: password,
+            });
+        }
+
+        if (!this.api) {
+            throw new Error('Threads API not initialized. Missing credentials.');
+        }
+
         if (!this.userId) {
             this.userId = await this.api.getUserIDfromUsername(this.username);
         }
