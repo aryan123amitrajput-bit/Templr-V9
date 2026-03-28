@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -545,6 +546,8 @@ function mapThreadsToTemplate(t: any) {
           } catch (e) {
               console.error('[API] Threads fetch error:', e);
           }
+      } else {
+          console.log('[API] Threads service not configured.');
       }
 
       // 2. Get templates from Supabase (Secondary/Backup source)
@@ -556,7 +559,7 @@ function mapThreadsToTemplate(t: any) {
         console.error('[API] Supabase fetch error:', e);
       }
 
-      // 2. Get templates from repositories (GitHub/GitLab)
+      // 3. Get templates from repositories (GitHub/GitLab)
       try {
         const repoTemplates = await repoManager.getMergedRegistry();
         console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
@@ -565,7 +568,7 @@ function mapThreadsToTemplate(t: any) {
         console.error('[API] Repo fetch error:', e);
       }
 
-      // 3. Get templates from freeHostService
+      // 4. Get templates from freeHostService
       try {
         const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
         console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
