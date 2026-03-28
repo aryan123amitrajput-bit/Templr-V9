@@ -1,15 +1,5 @@
 
-import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  signOut,
-  User as FirebaseUser,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile
-} from 'firebase/auth';
-import { auth } from './firebase';
+import { supabase } from './src/services/supabaseClient';
 import { uploadImage } from './src/services/imageUploadService';
 
 // ==========================================
@@ -17,80 +7,88 @@ import { uploadImage } from './src/services/imageUploadService';
 // ==========================================
 
 export const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-        const result = await signInWithPopup(auth, provider);
-        return { session: { user: result.user } };
-    } catch (error) {
-        console.error("Google Sign-In Error:", error);
-        throw error;
-    }
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+    });
+    if (error) throw error;
+    return data;
 };
 
 export const signInWithEmail = async (email: string, password: string) => {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    const user = result.user;
-    const session = {
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+    });
+    if (error) throw error;
+    
+    if (!data.session) return { ...data, session: null };
+
+    const mappedSession: Session = {
         user: {
-            id: user.uid,
-            uid: user.uid,
-            email: user.email || '',
+            id: data.session.user.id,
+            uid: data.session.user.id,
+            email: data.session.user.email || '',
             user_metadata: {
-                full_name: user.displayName || '',
-                avatar_url: fixUrl(user.photoURL || ''),
-                usage_count: 0,
-                is_pro: false
+                full_name: data.session.user.user_metadata?.full_name || '',
+                avatar_url: fixUrl(data.session.user.user_metadata?.avatar_url || ''),
             }
         }
     };
-    return { session };
+    return { ...data, session: mappedSession };
 };
 
 export const signUpWithEmail = async (email: string, password: string, name: string) => {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(result.user, { displayName: name });
-    const user = result.user;
-    const session = {
-        user: {
-            id: user.uid,
-            uid: user.uid,
-            email: user.email || '',
-            user_metadata: {
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
                 full_name: name,
-                avatar_url: fixUrl(user.photoURL || ''),
-                usage_count: 0,
-                is_pro: false
+            },
+        },
+    });
+    if (error) throw error;
+    
+    if (!data.session) return { ...data, session: null };
+
+    const mappedSession: Session = {
+        user: {
+            id: data.session.user.id,
+            uid: data.session.user.id,
+            email: data.session.user.email || '',
+            user_metadata: {
+                full_name: data.session.user.user_metadata?.full_name || '',
+                avatar_url: fixUrl(data.session.user.user_metadata?.avatar_url || ''),
             }
         }
     };
-    return { session };
+    return { ...data, session: mappedSession };
 };
 
 export const signOutUser = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
 };
 
-export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
-    return onAuthStateChanged(auth, (user) => {
-        if (user) {
-            const session = {
+export const onAuthStateChange = (callback: (event: string, session: Session | null) => void) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+            const mappedSession: Session = {
                 user: {
-                    id: user.uid,
-                    uid: user.uid,
-                    email: user.email,
+                    id: session.user.id,
+                    uid: session.user.id,
+                    email: session.user.email || '',
                     user_metadata: {
-                        full_name: user.displayName,
-                        avatar_url: user.photoURL,
-                        usage_count: 0, // Will be fetched from Firestore
-                        is_pro: false   // Will be fetched from Firestore
+                        full_name: session.user.user_metadata?.full_name || '',
+                        avatar_url: fixUrl(session.user.user_metadata?.avatar_url || ''),
                     }
                 }
             };
-            callback('SIGNED_IN', session);
-        } else {
+            callback('SIGNED_IN', mappedSession);
+        } else if (event === 'SIGNED_OUT') {
             callback('SIGNED_OUT', null);
         }
     });
+    return { unsubscribe: () => subscription.unsubscribe() };
 };
 
 export interface NewTemplateData {
@@ -393,17 +391,9 @@ export const listenForUserTemplates = (userId: string, userEmail: string | undef
 };
 
 export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<Template> => {
-    const currentUser = user || (auth.currentUser ? { 
-        uid: auth.currentUser.uid, 
-        id: auth.currentUser.uid, 
-        email: auth.currentUser.email || '', 
-        user_metadata: { 
-            full_name: auth.currentUser.displayName || '', 
-            avatar_url: auth.currentUser.photoURL || '' 
-        } 
-    } : null);
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-    if (!currentUser || !currentUser.uid) throw new Error("Authentication required.");
+    if (!currentUser) throw new Error("Authentication required.");
 
     const templatePayload = {
         title: templateData.title,
@@ -411,7 +401,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         banner_url: unfixUrl(templateData.bannerUrl || templateData.imageUrl),
         category: templateData.category,
         price: templateData.price,
-        author_name: currentUser.user_metadata?.full_name || currentUser.email.split('@')[0],
+        author_name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Anonymous',
         author_email: currentUser.email,
         author_avatar: unfixUrl(currentUser.user_metadata?.avatar_url),
         file_name: templateData.fileName || 'Project Files',
@@ -425,7 +415,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         template_url: templateData.template_url || '',
         file_url: unfixUrl(templateData.fileUrl || templateData.externalLink),
         upload_host: templateData.uploadHost,
-        author_uid: currentUser.uid
+        author_uid: currentUser.id
     };
 
     try {
@@ -475,7 +465,7 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
 };
 
 export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string; banner_url?: string }) => {
-  const user = auth.currentUser;
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Authentication required.");
   
   const dbUpdates: any = { ...updates };
@@ -487,12 +477,12 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
       const response = await fetch('/api/user/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates, uid: user.uid })
+          body: JSON.stringify({ updates, uid: user.id })
       });
       
       if (!response.ok) throw new Error("Failed to update profile");
       
-      return { user: { ...user, user_metadata: { ...user.providerData[0], ...updates } } };
+      return { user: { ...user, user_metadata: { ...user.user_metadata, ...updates } } };
   } catch (e: any) {
       console.error("Error updating profile:", e);
       throw e;
@@ -500,7 +490,7 @@ export const updateUserProfile = async (updates: { full_name?: string; avatar_ur
 };
 
 export const updateUserUsage = async (count: number) => {
-  const user = auth.currentUser;
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   
   try {
@@ -508,7 +498,7 @@ export const updateUserUsage = async (count: number) => {
       await fetch('/api/user/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates: { usage_count: count }, uid: user.uid })
+          body: JSON.stringify({ updates: { usage_count: count }, uid: user.id })
       });
   } catch (e: any) {
       console.error("Sync usage error:", e);
@@ -516,7 +506,7 @@ export const updateUserUsage = async (count: number) => {
 };
 
 export const setProStatus = async (status: boolean) => {
-    const user = auth.currentUser;
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
     try {
@@ -524,7 +514,7 @@ export const setProStatus = async (status: boolean) => {
         await fetch('/api/user/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates: { is_pro: status }, uid: user.uid })
+            body: JSON.stringify({ updates: { is_pro: status }, uid: user.id })
         });
     } catch (e: any) {
         console.error("Pro Status update failed:", e);
@@ -570,17 +560,17 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export const getSession = async (): Promise<Session | null> => {
-    const user = auth.currentUser;
-    if (!user) return null;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
     
     return {
         user: {
-            id: user.uid,
-            uid: user.uid,
-            email: user.email || '',
+            id: session.user.id,
+            uid: session.user.id,
+            email: session.user.email || '',
             user_metadata: {
-                full_name: user.displayName || '',
-                avatar_url: fixUrl(user.photoURL || ''),
+                full_name: session.user.user_metadata?.full_name || '',
+                avatar_url: fixUrl(session.user.user_metadata?.avatar_url || ''),
             }
         }
     };

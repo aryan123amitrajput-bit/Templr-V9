@@ -260,7 +260,7 @@ const App: React.FC = () => {
     return () => {
         mounted = false;
         clearTimeout(splashTimer);
-        authSubPromise.then(sub => sub?.());
+        authSubPromise.then(sub => sub?.unsubscribe?.());
     };
   }, []);
 

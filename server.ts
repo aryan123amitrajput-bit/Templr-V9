@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -18,40 +17,10 @@ import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './server/services/repoService';
 import { freeHostService } from './server/services/freeHostService';
 import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
-import admin from 'firebase-admin';
 import fs from 'fs';
 import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
-const firebaseConfigPath = path.join(__dirname, 'firebase-applet-config.json');
-let firebaseConfig: any = null;
-
-if (fs.existsSync(firebaseConfigPath)) {
-  firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
-  try {
-    // Initialize Admin SDK
-    let credential;
-    console.log("Checking FIREBASE_SERVICE_ACCOUNT...");
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      console.log("FIREBASE_SERVICE_ACCOUNT is set.");
-      credential = admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT));
-    } else {
-      console.log("FIREBASE_SERVICE_ACCOUNT is NOT set, skipping Admin SDK initialization.");
-    }
-    if (credential) {
-        admin.initializeApp({
-          credential: credential,
-          projectId: firebaseConfig.projectId,
-        });
-        console.log("Firebase Admin initialized:", admin.app().name);
-        console.log("Firebase Admin options:", JSON.stringify(admin.app().options));
-    }
-  } catch (e) {
-    console.error("Firebase initialization failed:", e);
-  }
-}
 
 // Environment Variables
 // GitHub Configuration
