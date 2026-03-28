@@ -665,9 +665,72 @@ function mapThreadsToTemplate(t: any) {
         return res.status(400).json({ error: "Email required" });
       }
 
-      const supabaseData = await getSupabaseUserTemplates(email);
-      console.log(`[API Debug] Supabase returned ${supabaseData?.length || 0} templates for ${email}`);
-      const allData = supabaseData.map(mapSupabaseToTemplate);
+      let allData: any[] = [];
+
+      // 1. Supabase
+      try {
+        const supabaseData = await getSupabaseUserTemplates(email);
+        console.log(`[API Debug] Supabase returned ${supabaseData?.length || 0} templates for ${email}`);
+        allData.push(...supabaseData.map(mapSupabaseToTemplate));
+      } catch (e) {
+        console.error('[API] Supabase fetch error:', e);
+      }
+
+      // 2. Threads
+      if (threadsService.isConfigured()) {
+          try {
+              const threadsTemplates = await threadsService.fetchTemplates();
+              const userThreads = threadsTemplates.filter((t: any) => t.author_email === email || t.authorEmail === email);
+              console.log(`[API Debug] Threads returned ${userThreads.length} templates for ${email}`);
+              allData.push(...userThreads.map(mapThreadsToTemplate));
+          } catch (e) {
+              console.error('[API] Threads fetch error:', e);
+          }
+      }
+
+      // 3. RepoManager
+      try {
+        const repoTemplates = await repoManager.getMergedRegistry();
+        const userRepos = repoTemplates.filter((t: any) => t.author_email === email || t.authorEmail === email);
+        console.log(`[API Debug] RepoManager returned ${userRepos.length} templates for ${email}`);
+        allData.push(...userRepos);
+      } catch (e) {
+        console.error('[API] Repo fetch error:', e);
+      }
+
+      // 4. FreeHostService
+      try {
+        const freeTemplates = await freeHostService.getTemplates(0, 1000);
+        const userFree = freeTemplates.filter((t: any) => t.creator_email === email || t.author_email === email);
+        console.log(`[API Debug] FreeHostService returned ${userFree.length} templates for ${email}`);
+        const mappedFree = userFree.map((t: any) => ({
+          id: t.id,
+          title: t.name,
+          thumbnail: t.image_preview,
+          author: t.creator,
+          author_id: t.creator_id || t.author_id,
+          tags: t.tags || [],
+          category: t.category,
+          created_at: t.created_at,
+          likes: t.stats?.likes || 0,
+          views: t.stats?.views || 0,
+          status: 'approved'
+        }));
+        allData.push(...mappedFree);
+      } catch (e) {
+        console.error('[API] FreeHost fetch error:', e);
+      }
+
+      // Remove duplicates by ID
+      const uniqueTemplates: any[] = [];
+      const seenIds = new Set();
+      for (const t of allData) {
+        if (t && t.id && !seenIds.has(t.id)) {
+          uniqueTemplates.push(t);
+          seenIds.add(t.id);
+        }
+      }
+      allData = uniqueTemplates;
         
       // Sort manually if needed
       allData.sort((a, b) => {
