@@ -1,4 +1,5 @@
-import { ThreadsAPI } from 'threads-api';
+import threadsApi from 'threads-api';
+const { ThreadsAPI } = threadsApi;
 import fs from 'fs';
 import path from 'path';
 

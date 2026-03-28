@@ -1188,7 +1188,7 @@ function mapThreadsToTemplate(t: any) {
   });
 
   // --- API Catch-all (before Vite) ---
-  app.all('/api/*', (req, res) => {
+  app.all('/api/*all', (req, res) => {
     console.warn(`[API Debug] 404 Not Found: ${req.method} ${req.url}`);
     res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
@@ -1207,7 +1207,7 @@ function mapThreadsToTemplate(t: any) {
     } else {
       // Production: Serve static files
       app.use(express.static(path.resolve(__dirname, 'dist')));
-      app.get('*', (req, res) => {
+      app.get('*all', (req, res) => {
         res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
       });
     }

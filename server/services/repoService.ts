@@ -106,8 +106,10 @@ export class RepoManager {
     }).filter(Boolean);
 
     if (this.githubRepos.length === 0 && this.gitlabProjects.length === 0) {
-      console.log('No repositories configured, adding default template repository.');
-      this.githubRepos.push({ owner: 'templr-app', repo: 'templates' });
+      const defaultOwner = process.env.GITHUB_OWNER || 'aryan123amitrajput-bit';
+      const defaultRepo = process.env.GITHUB_REPO || 'Templr-V9';
+      console.log(`No repositories configured, adding default template repository: ${defaultOwner}/${defaultRepo}`);
+      this.githubRepos.push({ owner: defaultOwner, repo: defaultRepo });
     }
   }
 

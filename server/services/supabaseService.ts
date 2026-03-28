@@ -64,17 +64,22 @@ export async function uploadPreviewImage(fileBuffer: Buffer, originalName: strin
 }
 
 export async function getTemplates(): Promise<any[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('templates')
-    .select('*');
-  
-  if (error) {
-    console.error('[Supabase Fetch Error]', error);
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('templates')
+      .select('*');
+    
+    if (error) {
+      console.error('[Supabase Fetch Error]', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (e: any) {
+    console.warn('[Supabase] Skipping templates fetch:', e.message);
     return [];
   }
-  
-  return data || [];
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
