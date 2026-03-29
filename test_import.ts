@@ -1,6 +1,6 @@
 async function test() {
     try {
-        const { uploadToBeeIMG } = await import('./server/services/beeimgService.ts');
+        const { uploadToBeeIMG } = await import('./api/services/beeimgService.ts');
         console.log('Import successful');
     } catch (e) {
         console.error('Import failed:', e);

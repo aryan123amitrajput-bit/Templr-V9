@@ -1,4 +1,4 @@
-import { uploadToBeeIMG } from './server/services/beeimgService';
+import { uploadToBeeIMG } from './api/services/beeimgService';
 import fs from 'fs';
 
 async function test() {

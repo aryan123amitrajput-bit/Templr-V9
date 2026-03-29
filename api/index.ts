@@ -3,27 +3,27 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { uploadQueue } from '../server/services/queueService';
+import { uploadQueue } from './services/queueService';
 import multer from 'multer';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { getSupabase, addTemplate as addSupabaseTemplate, getTemplates as getSupabaseTemplates } from '../server/services/supabaseService';
-import { uploadToCatbox } from '../server/services/catboxService';
-import { uploadToSupabase } from '../server/services/supabaseService';
-import { uploadToI111666 } from '../server/services/i111666Service';
-import { uploadToImgBB } from '../server/services/imgbbService';
-import { uploadToGifyu } from '../server/services/gifyuService';
-import { uploadToImgHippo } from '../server/services/imghippoService';
-import { repoManager } from '../server/services/repoService';
-import { freeHostService } from '../server/services/freeHostService';
-import { threadsService } from '../server/services/threadsService';
-import { traffService } from '../server/services/traffService';
-import { templrAuditor } from '../server/services/templrAuditor';
-import { uploadToPasteRs } from '../server/services/pasteService';
-import { telegramService } from '../server/services/telegramService';
+import { getSupabase, addTemplate as addSupabaseTemplate, getTemplates as getSupabaseTemplates } from './services/supabaseService';
+import { uploadToCatbox } from './services/catboxService';
+import { uploadToSupabase } from './services/supabaseService';
+import { uploadToI111666 } from './services/i111666Service';
+import { uploadToImgBB } from './services/imgbbService';
+import { uploadToGifyu } from './services/gifyuService';
+import { uploadToImgHippo } from './services/imghippoService';
+import { repoManager } from './services/repoService';
+import { freeHostService } from './services/freeHostService';
+import { threadsService } from './services/threadsService';
+import { traffService } from './services/traffService';
+import { templrAuditor } from './services/templrAuditor';
+import { uploadToPasteRs } from './services/pasteService';
+import { telegramService } from './services/telegramService';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -739,7 +739,7 @@ app.post('/api/upload/beeimg', (req, res, next) => {
       return res.status(400).json({ error: "file is required" });
     }
 
-    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+    const { uploadToBeeIMG } = await import('./services/beeimgService');
     const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
     const directUrl = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
     

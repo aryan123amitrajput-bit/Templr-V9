@@ -1,4 +1,4 @@
-import { getSupabase } from './server/services/supabaseService.js';
+import { getSupabase } from './api/services/supabaseService.js';
 import 'dotenv/config';
 
 async function check() {

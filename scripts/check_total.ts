@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getSupabase } from '../server/services/supabaseService';
+import { getSupabase } from '../api/services/supabaseService';
 
 async function check() {
   const supabase = getSupabase();

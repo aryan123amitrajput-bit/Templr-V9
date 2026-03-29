@@ -1,7 +1,7 @@
-import { uploadQueue } from '../services/queueService';
-import { telegramService } from '../services/telegramService';
-import { uploadToCatbox } from '../services/catboxService';
-import { updateTemplate } from '../services/supabaseService';
+import { uploadQueue } from '../../api/services/queueService';
+import { telegramService } from '../../api/services/telegramService';
+import { uploadToCatbox } from '../../api/services/catboxService';
+import { updateTemplate } from '../../api/services/supabaseService';
 
 uploadQueue.setProcessor(async (job) => {
     const { templateId, fileBuffer, metadata } = job.data;

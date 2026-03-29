@@ -1,4 +1,4 @@
-import { uploadQueue } from '../server/services/queueService';
+import { uploadQueue } from '../api/services/queueService';
 import '../server/workers/uploadWorker';
 import axios from 'axios';
 import crypto from 'crypto';
