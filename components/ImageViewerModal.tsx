@@ -24,11 +24,9 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     usageCount, 
     isSubscribed 
 }) => {
-  const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview'>('preview');
   const [imageError, setImageError] = useState(false);
   const [signedImage, setSignedImage] = useState<string | null>(null);
-  const [fetchedCode, setFetchedCode] = useState<string | null>(null);
-  const [isFetchingCode, setIsFetchingCode] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -43,27 +41,6 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
     if (template) {
         setActiveTab('preview');
         setImageError(false);
-        
-        // Fetch source code if it's a URL
-        const codeUrl = template.template_url || template.sourceCode;
-        if (codeUrl && codeUrl.startsWith('http')) {
-            setIsFetchingCode(true);
-            setFetchedCode(null);
-            fetch(codeUrl)
-                .then(res => res.text())
-                .then(text => {
-                    setFetchedCode(text);
-                    setIsFetchingCode(false);
-                })
-                .catch(err => {
-                    console.error("Failed to fetch source code:", err);
-                    setFetchedCode("// Failed to load source code from URL: " + codeUrl);
-                    setIsFetchingCode(false);
-                });
-        } else {
-            setFetchedCode(null);
-            setIsFetchingCode(false);
-        }
     }
   }, [template]);
 
@@ -127,45 +104,11 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
           link.click();
           document.body.removeChild(link);
       } 
-      else if (displayCode && !isZip) {
-          const blob = new Blob([displayCode], { type: 'text/plain' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          const cleanTitle = template.title.toLowerCase().replace(/[^a-z0-9]/g, '-');
-          link.download = `${cleanTitle}.tsx`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-      }
-  };
-
-  const handleCopyCode = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      
-      if (isLimitReached) {
-          playNotificationSound();
-          onOpenSubscription();
-          return;
-      }
-
-      if (!onUsageAttempt()) return;
-      
-      const codeToCopy = fetchedCode || template?.sourceCode;
-      if (codeToCopy) {
-          navigator.clipboard.writeText(codeToCopy);
-          playSuccessSound();
-      }
   };
   
   if (!template) return null;
 
-  const rawCode = template.template_url || template.sourceCode || '';
-  const displayCode = fetchedCode || rawCode;
   const isZip = template.fileType === 'zip';
-  const hasCode = (rawCode.trim().length > 0) || isZip;
   const rawUrl = template.fileUrl || '';
   const hasLink = !!rawUrl && rawUrl.trim() !== '' && rawUrl !== '#' && !isZip;
 
@@ -219,89 +162,38 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                 {/* --- LEFT: PREVIEW AREA --- */}
                 <div className="relative flex-1 h-[45vh] lg:h-full bg-[#020203] flex flex-col overflow-hidden">
                     
-                    {hasCode && (
-                        <div className="absolute top-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
-                            <div className="flex bg-black/80 backdrop-blur-md border border-white/10 rounded-full p-1 pointer-events-auto">
-                                <button onClick={() => setActiveTab('preview')} className={`px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'preview' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}>Preview</button>
-                                <button onClick={() => setActiveTab('code')} className={`px-6 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'code' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}>
-                                    Code
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
                     <div className="relative w-full h-full flex items-center justify-center p-4 md:p-12 lg:p-20">
                         <AnimatePresence mode="wait">
-                            {activeTab === 'preview' ? (
-                                <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full h-full flex items-center justify-center">
-                                    {template.videoUrl && template.videoUrl.trim() !== '' ? (
-                                        <div className="relative w-full h-full max-w-full max-h-full rounded-xl overflow-hidden shadow-2xl bg-black">
-                                            <video 
-                                                src={template.videoUrl} 
-                                                className="w-full h-full object-contain" 
-                                                controls 
-                                                autoPlay 
-                                                muted 
-                                                loop 
-                                                controlsList="nodownload"
-                                                poster={signedImage || displayImage || undefined}
-                                            />
-                                        </div>
+                            <motion.div key="preview" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full h-full flex items-center justify-center">
+                                {template.videoUrl && template.videoUrl.trim() !== '' ? (
+                                    <div className="relative w-full h-full max-w-full max-h-full rounded-xl overflow-hidden shadow-2xl bg-black">
+                                        <video 
+                                            src={template.videoUrl} 
+                                            className="w-full h-full object-contain" 
+                                            controls 
+                                            autoPlay 
+                                            muted 
+                                            loop 
+                                            controlsList="nodownload"
+                                            poster={signedImage || displayImage || undefined}
+                                        />
+                                    </div>
+                                ) : (
+                                    (signedImage || displayImage) && !imageError ? (
+                                        <img 
+                                            src={signedImage || displayImage} 
+                                            alt={`${template.title} - ${template.category} Landing Page Template Preview`} 
+                                            onError={handleImageError}
+                                            className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
+                                        />
                                     ) : (
-                                        (signedImage || displayImage) && !imageError ? (
-                                            <img 
-                                                src={signedImage || displayImage} 
-                                                alt={`${template.title} - ${template.category} Landing Page Template Preview`} 
-                                                onError={handleImageError}
-                                                className="w-auto h-auto max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
-                                            />
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center text-slate-600">
-                                                <LayersIcon className="w-16 h-16 mb-4 opacity-20" />
-                                                <p className="text-sm font-medium opacity-40">Preview Image Unavailable</p>
-                                            </div>
-                                        )
-                                    )}
-                                </motion.div>
-                            ) : (
-                                <motion.div key="code" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full h-full max-w-5xl bg-[#0A0A0A] rounded-xl border border-white/10 flex flex-col overflow-hidden shadow-2xl">
-                                    <div className="h-12 bg-[#111] border-b border-white/5 flex items-center px-4 gap-4">
-                                        <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500/50"></div><div className="w-3 h-3 rounded-full bg-yellow-500/50"></div><div className="w-3 h-3 rounded-full bg-green-500/50"></div></div>
-                                        <span className="text-slate-500 text-xs font-mono">source_code_snapshot.tsx</span>
-                                        <div className="ml-auto flex gap-2">
-                                            <button 
-                                                onClick={handleCopyCode} 
-                                                className={`text-[10px] flex items-center gap-1 bg-white/5 px-2 py-1 rounded transition-colors ${isLimitReached ? 'text-zinc-600 hover:text-zinc-500' : 'text-slate-400 hover:text-white'}`}
-                                            >
-                                                {isLimitReached ? <LockIcon className="w-3 h-3" /> : null}
-                                                {isLimitReached ? 'Unlock to Copy' : 'Copy Code'}
-                                            </button>
+                                        <div className="flex flex-col items-center justify-center text-slate-600">
+                                            <LayersIcon className="w-16 h-16 mb-4 opacity-20" />
+                                            <p className="text-sm font-medium opacity-40">Preview Image Unavailable</p>
                                         </div>
-                                    </div>
-                                    <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 custom-scrollbar whitespace-pre-wrap leading-relaxed bg-[#050505] relative">
-                                        {isLimitReached ? (
-                                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#050505]/95 backdrop-blur-sm">
-                                                <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-3">
-                                                    <LockIcon className="w-6 h-6 text-slate-500" />
-                                                </div>
-                                                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest mb-4">Source Code Locked</p>
-                                                <button onClick={() => onOpenSubscription()} className="px-6 py-2 bg-white text-black text-xs font-bold uppercase rounded-full hover:bg-slate-200 transition-colors">
-                                                    Unlock with Pro
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            isFetchingCode ? (
-                                                <div className="flex flex-col items-center justify-center h-full gap-3">
-                                                    <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-                                                    <p className="text-slate-500 text-[10px] uppercase tracking-widest">Fetching Code...</p>
-                                                </div>
-                                            ) : (
-                                                displayCode || "// No source code provided."
-                                            )
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
+                                    )
+                                )}
+                            </motion.div>
                         </AnimatePresence>
                     </div>
                 </div>
@@ -417,7 +309,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                     <button 
                                         onClick={handleVisitLive}
                                         className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group relative overflow-hidden
-                                        ${hasCode ? 'flex-1' : 'w-full'}
+                                        ${isZip ? 'flex-1' : 'w-full'}
                                         ${isLimitReached 
                                             ? 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-white hover:bg-zinc-800' 
                                             : 'bg-white text-black hover:bg-slate-200 border-transparent'}`}
@@ -430,7 +322,7 @@ const ImageViewerModal: React.FC<ImageViewerModalProps> = ({
                                     </button>
                                 )}
 
-                                {hasCode && (
+                                {isZip && (
                                     <button 
                                         onClick={handleDownload} 
                                         className={`h-14 rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-3 transition-all border group relative overflow-hidden

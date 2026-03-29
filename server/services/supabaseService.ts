@@ -140,8 +140,8 @@ export async function addTemplate(template: any): Promise<void> {
     'author_name', 'author_email', 'image_url', 'banner_url', 
     'gallery_images', 'video_url', 'file_url', 'file_name', 
     'file_type', 'file_size', 'likes', 'views', 'sales', 
-    'earnings', 'status', 'source_code', 'tags', 'author_avatar',
-    'catbox_url'
+    'earnings', 'status', 'tags', 'author_avatar',
+    'catbox_url', 'upload_host'
   ];
 
   const filteredTemplate: any = {};
@@ -150,8 +150,6 @@ export async function addTemplate(template: any): Promise<void> {
       filteredTemplate[col] = template[col];
     } else if (col === 'image_url' && template.thumbnail) {
       filteredTemplate[col] = template.thumbnail;
-    } else if (col === 'source_code' && template.sourceCode) {
-      filteredTemplate[col] = template.sourceCode;
     }
   });
 

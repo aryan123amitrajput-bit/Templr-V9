@@ -19,7 +19,6 @@ interface TemplateCardProps {
   price?: string;
   
   fileUrl?: string;
-  sourceCode?: string;
   fileType?: string;
   videoUrl?: string; 
   index: number; 
@@ -125,7 +124,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
   category, 
   price = 'Free', 
   fileUrl,
-  sourceCode,
   fileType,
   videoUrl,
   index,
@@ -146,7 +144,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const playerRef = useRef<any>(null); // Lottie ref
 
   const isZip = fileType === 'zip';
-  const hasCode = (sourceCode && sourceCode.trim().length > 0) || isZip;
   const hasLink = fileUrl && fileUrl.trim() !== '' && fileUrl !== '#' && !isZip;
 
   // Lottie Animation Logic
@@ -438,7 +435,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                 </div>
                 
                 <div className="flex items-center gap-2">
-                    {hasCode && <span className="text-[10px] font-mono text-cyan-400/80 uppercase tracking-widest flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Code</span></span>}
+                    {isZip && <span className="text-[10px] font-mono text-cyan-400/80 uppercase tracking-widest flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Zip</span></span>}
                     {hasLink && <span className="text-[10px] font-mono text-blue-400/80 uppercase tracking-widest flex items-center gap-1"><GlobeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Live</span></span>}
                 </div>
             </div>

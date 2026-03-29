@@ -107,8 +107,6 @@ export interface NewTemplateData {
   fileSize?: number; 
   externalLink?: string;
   fileUrl?: string;
-  template_url?: string;
-  sourceCode?: string;
   uploadHost?: string;
   initialStatus?: 'pending_review' | 'draft' | 'approved';
 }
@@ -145,8 +143,6 @@ export interface Template {
   tags?: string[];
   description: string;
   price: string; 
-  template_url?: string;
-  sourceCode: string;
   
   fileUrl?: string;
   fileName?: string; 
@@ -208,15 +204,12 @@ export const unfixUrl = (url?: string): string => url || '';
 const mapTemplate = (data: any): Template => {
     try {
         let inferredType = data.file_type || 'link';
-        const hasSource = data.source_code && data.source_code.trim().length > 0;
         const hasLink = data.file_url && data.file_url.trim().length > 0 && data.file_url !== '#';
         const hasZip = data.file_url && (data.file_url.endsWith('.zip') || data.file_url.endsWith('.rar'));
 
         if (hasZip) inferredType = 'zip';
-        else if (hasSource && !hasLink) inferredType = 'code';
-        else if (!hasSource && hasLink) inferredType = 'link';
-        else if (hasSource && hasLink) inferredType = 'code';
-        else if (!hasSource && !hasLink) inferredType = 'image';
+        else if (hasLink) inferredType = 'link';
+        else inferredType = 'image';
 
         // Robustly check multiple possible column names for images (snake_case and camelCase)
         const rawImage = data.preview_media || data.image_url || data.imageUrl || data.image || data.thumbnail || data.thumbnail_url || data.thumbnailUrl || data.preview_image || data.previewImage || data.preview_url || data.previewUrl || data.preview || data.cover_image || data.coverImage || data.cover || data.photo || data.picture || data.screenshot || data.screenshot_url || data.screenshotUrl || data.media || data.media_url || data.mediaUrl || (data.images && data.images[0]) || (data.gallery_images && data.gallery_images[0]) || (data.galleryImages && data.galleryImages[0]);
@@ -228,8 +221,6 @@ const mapTemplate = (data: any): Template => {
         console.log(`[API] Mapping template ${data.id}. Data:`, {
             file_url: data.file_url,
             fileUrl: data.fileUrl,
-            source_code: data.source_code,
-            sourceCode: data.sourceCode,
             data: data
         });
 
@@ -254,7 +245,6 @@ const mapTemplate = (data: any): Template => {
             fileName: data.file_name || data.fileName,
             fileType: inferredType,
             fileSize: data.file_size || data.fileSize,
-            sourceCode: data.source_code || data.sourceCode || '', 
             status: (() => {
                 console.log(`[API] Mapping template ${data.id}. Full data:`, data);
                 const s = data.status || 'pending_review';
@@ -284,7 +274,6 @@ const mapTemplate = (data: any): Template => {
             category: 'Error',
             description: 'Failed to parse template data',
             price: 'Free',
-            sourceCode: '',
             status: 'rejected',
             sales: 0,
             earnings: 0
@@ -414,7 +403,6 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         description: templateData.description,
         video_url: unfixUrl(templateData.videoUrl),
         gallery_images: (templateData.galleryImages || []).map(unfixUrl),
-        template_url: templateData.template_url || '',
         file_url: unfixUrl(templateData.fileUrl || templateData.externalLink),
         upload_host: templateData.uploadHost,
         author_uid: currentUser.id
@@ -445,7 +433,6 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.imageUrl) updates.preview_image = unfixUrl(data.imageUrl);
     if (data.bannerUrl) updates.banner_url = unfixUrl(data.bannerUrl);
     if (data.videoUrl) updates.video_url = unfixUrl(data.videoUrl);
-    if (data.template_url) updates.template_url = data.template_url;
     if (data.fileUrl) updates.file_url = unfixUrl(data.fileUrl);
     if (data.initialStatus) updates.status = data.initialStatus === 'draft' ? 'draft' : 'approved';
 

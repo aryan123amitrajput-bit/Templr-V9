@@ -22,7 +22,7 @@ import { freeHostService } from '../server/services/freeHostService';
 import { threadsService } from '../server/services/threadsService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
-import { uploadToPasteRs } from '../server/services/pasteRsService';
+import { uploadToPasteRs } from '../server/services/pasteService';
 import { telegramService } from '../server/services/telegramService';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -207,7 +207,6 @@ function mapSupabaseToTemplate(t: any) {
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    sourceCode: t.source_code || '',
     fileUrl: t.file_url || '',
     fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
     status: t.status || 'approved',
@@ -236,7 +235,6 @@ function mapThreadsToTemplate(t: any) {
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    sourceCode: '',
     fileUrl: '',
     fileType: 'html',
     status: 'approved',
@@ -1198,7 +1196,6 @@ app.post('/api/templates', async (req, res) => {
           ...template,
           id: templateId,
           preview_image: finalImageUrl,
-          template_url: template.template_url || '',
           banner_url: finalBannerUrl,
           gallery_images: finalGalleryImages,
           created_at: metadata.created_at
@@ -1206,9 +1203,7 @@ app.post('/api/templates', async (req, res) => {
         // Remove old fields if they exist in the spread
         delete supabasePayload.image_url;
         delete supabasePayload.image_preview;
-        delete supabasePayload.source_code;
         delete supabasePayload.imageUrl;
-        delete supabasePayload.sourceCode;
         
         console.log(`[API] Inserting template into Supabase: ${templateId}`);
         const { data, error } = await supabase.from('templates').insert(supabasePayload);

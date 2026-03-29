@@ -250,9 +250,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
   const [existingImageUrl, setExistingImageUrl] = useState('');
   const [existingVideoUrl, setExistingVideoUrl] = useState('');
 
-  const [codeMode, setCodeMode] = useState<'zip' | 'paste'>('zip');
   const [zipFile, setZipFile] = useState<File | null>(null);
-  const [sourceCode, setSourceCode] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(''); // "Uploading Video...", "Saving..."
@@ -270,15 +268,13 @@ const UploadModal: React.FC<UploadModalProps> = ({
               setExistingImageUrl(initialData.bannerUrl || '');
               setExistingVideoUrl(initialData.videoUrl || '');
               setPreviewType(initialData.videoUrl ? 'video' : 'image');
-              setSourceCode(initialData.sourceCode || '');
-              setCodeMode(initialData.sourceCode ? 'paste' : 'zip');
               setVisibility(initialData.status === 'approved' ? 'public' : 'private');
           } else {
               setTitle(''); setDescription(''); setCategory(''); setTags([]); 
               setLink(''); setVisibility('public'); 
               setPreviewType('image'); setPreviewFile(null); 
               setExistingImageUrl(''); setExistingVideoUrl('');
-              setCodeMode('zip'); setZipFile(null); setSourceCode('');
+              setZipFile(null);
           }
           setErrors({}); setIsSubmitting(false); setUploadStatus('');
       }
@@ -352,27 +348,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
               zipUrl = initialData.fileUrl;
           }
 
-          let templateUrl = '';
-          let textHost = '';
-          if (codeMode === 'paste' && sourceCode) {
-              setUploadStatus("Saving Code...");
-              try {
-                  // If sourceCode is valid JSON, upload it as JSON
-                  const parsedJson = JSON.parse(sourceCode);
-                  const result = await assetManager.uploadTemplateJSON(parsedJson);
-                  templateUrl = result.url;
-                  textHost = result.provider;
-                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
-              } catch (e) {
-                  // If not valid JSON, just upload it as text/code
-                  const result = await assetManager.uploadTemplateJSON({ code: sourceCode });
-                  templateUrl = result.url;
-                  textHost = result.provider;
-                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
-              }
-          }
-
           setUploadStatus("Finalizing...");
+
+          let finalUploadHost = uploadHost;
+
           await onAddTemplate({
               title,
               description,
@@ -385,23 +364,17 @@ const UploadModal: React.FC<UploadModalProps> = ({
               galleryImages: [imageUrl],
               price: 'Free', 
               fileUrl: zipUrl, 
-              template_url: templateUrl,
-              sourceCode: codeMode === 'paste' ? sourceCode : '', // Keep for backward compatibility if needed
               fileName: zipFile?.name || (isEditing ? initialData?.fileName : 'design-assets'),
-              fileType: zipUrl ? 'zip' : (sourceCode ? 'code' : (link ? 'link' : 'image')),
+              fileType: zipUrl ? 'zip' : (link ? 'link' : 'image'),
               fileSize: zipFile?.size || 0,
               initialStatus: visibility === 'public' ? 'approved' : 'draft',
-              uploadHost
+              uploadHost: finalUploadHost
           });
 
           playSuccessSound();
           let successMsg = isEditing ? "Updated successfully!" : "Published successfully!";
-          if (uploadHost && textHost) {
-              successMsg = `Media hosted on ${uploadHost}, Code hosted on ${textHost}`;
-          } else if (uploadHost) {
+          if (uploadHost) {
               successMsg = `Media hosted on ${uploadHost}`;
-          } else if (textHost) {
-              successMsg = `Code hosted on ${textHost}`;
           }
           onShowNotification(successMsg, 'success');
           
@@ -526,34 +499,24 @@ const UploadModal: React.FC<UploadModalProps> = ({
 
                 <section>
                     <div className="flex items-center justify-between mb-3">
-                        <SectionLabel optional>Source Code</SectionLabel>
-                        <div className="flex bg-[#121214] rounded-lg p-1 border border-zinc-800">
-                            <button onClick={() => setCodeMode('zip')} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${codeMode === 'zip' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>Zip</button>
-                            <button onClick={() => setCodeMode('paste')} className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${codeMode === 'paste' ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>Paste</button>
-                        </div>
+                        <SectionLabel optional>Asset File (Zip)</SectionLabel>
                     </div>
                     <div className="rounded-xl border border-zinc-800 overflow-hidden">
-                        {codeMode === 'zip' ? (
-                            <>
-                                {zipFile ? (
-                                    <FileCard 
-                                        file={zipFile} 
-                                        onRemove={() => { setZipFile(null); playClickSound(); }} 
-                                        isUploading={isSubmitting && !!zipFile}
-                                    />
-                                ) : (
-                                    <div onClick={() => !isSubmitting && zipInputRef.current?.click()} className={`h-32 bg-[#121214] flex flex-col items-center justify-center cursor-pointer hover:bg-[#18181b] transition-colors border border-dashed border-transparent hover:border-zinc-700 m-1 rounded-lg ${isSubmitting ? 'cursor-not-allowed opacity-50' : ''}`}>
-                                        <input ref={zipInputRef} type="file" accept=".zip" className="hidden" onChange={e => { setZipFile(e.target.files?.[0] || null); playClickSound(); }} disabled={isSubmitting} />
-                                        <div className="text-center">
-                                            <UploadIcon className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
-                                            <p className="text-zinc-400 text-xs font-bold uppercase">Upload Zip File</p>
-                                            {isEditing && initialData?.fileUrl?.endsWith('.zip') && <p className="text-[10px] text-zinc-600 mt-1">(Existing file will be kept if empty)</p>}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
+                        {zipFile ? (
+                            <FileCard 
+                                file={zipFile} 
+                                onRemove={() => { setZipFile(null); playClickSound(); }} 
+                                isUploading={isSubmitting && !!zipFile}
+                            />
                         ) : (
-                            <textarea value={sourceCode} onChange={e => setSourceCode(e.target.value)} className="w-full h-32 bg-[#0c0c0e] p-4 font-mono text-xs text-zinc-300 outline-none resize-none" placeholder="Paste code here..." disabled={isSubmitting} />
+                            <div onClick={() => !isSubmitting && zipInputRef.current?.click()} className={`h-32 bg-[#121214] flex flex-col items-center justify-center cursor-pointer hover:bg-[#18181b] transition-colors border border-dashed border-transparent hover:border-zinc-700 m-1 rounded-lg ${isSubmitting ? 'cursor-not-allowed opacity-50' : ''}`}>
+                                <input ref={zipInputRef} type="file" accept=".zip" className="hidden" onChange={e => { setZipFile(e.target.files?.[0] || null); playClickSound(); }} disabled={isSubmitting} />
+                                <div className="text-center">
+                                    <UploadIcon className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+                                    <p className="text-zinc-400 text-xs font-bold uppercase">Upload Zip File</p>
+                                    {isEditing && initialData?.fileUrl?.endsWith('.zip') && <p className="text-[10px] text-zinc-600 mt-1">(Existing file will be kept if empty)</p>}
+                                </div>
+                            </div>
                         )}
                     </div>
                 </section>

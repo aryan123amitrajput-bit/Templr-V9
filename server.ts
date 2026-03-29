@@ -9,7 +9,7 @@ import { uploadToImgHippo } from './server/services/imghippoService';
 import { uploadToI111666 } from './server/services/i111666Service';
 import { uploadToGifyu } from './server/services/gifyuService';
 import { uploadToBeeIMG } from './server/services/beeimgService';
-import { uploadToPasteRs } from './server/services/pasteRsService';
+import { uploadToPasteRs } from './server/services/pasteService';
 import { uploadToCatbox } from './server/services/catboxService';
 import { telegramService } from './server/services/telegramService';
 import { threadsService } from './server/services/threadsService';
@@ -368,7 +368,6 @@ function mapSupabaseToTemplate(t: any) {
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    sourceCode: t.source_code || '',
     fileUrl: t.file_url || '',
     fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
     status: t.status || 'approved',
@@ -397,7 +396,6 @@ function mapThreadsToTemplate(t: any) {
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    sourceCode: '',
     fileUrl: '',
     fileType: 'html',
     status: 'approved',
@@ -855,49 +853,6 @@ function mapThreadsToTemplate(t: any) {
       // 4. Try Firebase (Skipped as Firebase is only for Auth)
       
       if (template) {
-        // Handle bundle if it's a bundle
-        if (template.is_bundle && template.source_code) {
-            try {
-                let bundleData: any = null;
-                
-                if (template.source_code.startsWith('/api/tg-file/')) {
-                    // It's a Telegram file, fetch it directly via the service
-                    const match = template.source_code.match(/^\/api\/tg-file\/(\d+)\/(.+)$/);
-                    if (match) {
-                        const botIndex = match[1];
-                        const fileId = match[2];
-                        const tgUri = `tg://${botIndex}/${fileId}`;
-                        console.log(`[API] Fetching bundle for template ${id} from Telegram: ${tgUri}`);
-                        
-                        const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
-                        const response = await fetch(downloadUrl);
-                        if (response.ok) {
-                            bundleData = await response.json();
-                        }
-                    }
-                } else if (template.source_code.startsWith('http')) {
-                    // It's a Paste.rs or other HTTP URL
-                    console.log(`[API] Fetching bundle for template ${id} from ${template.source_code}`);
-                    const response = await fetch(template.source_code);
-                    if (response.ok) {
-                        bundleData = await response.json();
-                    }
-                }
-
-                if (bundleData) {
-                    template = { 
-                        ...template, 
-                        ...bundleData.metadata, 
-                        sourceCode: bundleData.sourceCode, 
-                        preview_url: bundleData.demoLink,
-                        galleryImages: bundleData.images?.gallery || [],
-                        bannerUrl: bundleData.images?.banner || template.bannerUrl
-                    };
-                }
-            } catch (e: any) {
-                console.error(`[API] Failed to fetch bundle for template ${id}:`, e.message);
-            }
-        }
         res.json({ template });
       } else {
         res.status(404).json({ error: 'Template not found' });
@@ -1015,43 +970,10 @@ function mapThreadsToTemplate(t: any) {
         }
       }
 
-      // 3. Process Source Code and Bundle Everything (Upload to Paste.rs)
-      let bundleUrl = '';
-      
       // 4. Generate Clean Preview URL
       const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
 
-      const templateBundle = {
-        metadata: {
-          id: templateId,
-          title: template.title || template.name,
-          description: template.description || '',
-          tags: template.tags || [],
-          author: template.author_name || 'Anonymous',
-          category: template.category || 'Uncategorized',
-          price: template.price || 'Free',
-          created_at: new Date().toISOString(),
-        },
-        sourceCode: template.sourceCode || '',
-        demoLink: cleanPreviewUrl,
-        images: {
-          thumbnail: finalImageUrl,
-          banner: finalBannerUrl,
-          gallery: finalGalleryImages
-        }
-      };
-
-      try {
-          const bundleString = JSON.stringify(templateBundle);
-          console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
-          bundleUrl = await uploadToPasteRs(bundleString);
-          console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
-      } catch (e: any) {
-          console.error("Paste.rs Upload Failed:", e.message);
-          throw new Error("Failed to upload template bundle to Paste.rs");
-      }
-
-      // 5. Create metadata object (pointing to the bundle)
+      // 5. Create metadata object
       const metadata: TemplateMetadata = {
         id: templateId,
         title: template.title || template.name,
@@ -1062,7 +984,6 @@ function mapThreadsToTemplate(t: any) {
         banner_url: finalBannerUrl,
         gallery_images: finalGalleryImages,
         file_url: template.file_url || '',
-        source_code: bundleUrl, // Store the bundle URL here
         tags: template.tags || [],
         author: template.author_name || 'Anonymous',
         author_name: template.author_name || 'Anonymous',
@@ -1078,7 +999,6 @@ function mapThreadsToTemplate(t: any) {
         earnings: 0,
         status: template.status || 'approved',
         telegram_file_id: telegramFileId,
-        is_bundle: true, // Flag to indicate it's a bundle
         threads_post_id: threadsPostId,
         threads_post_url: threadsPostId ? `https://www.threads.net/t/${threadsPostId}` : ''
       };
@@ -1157,18 +1077,6 @@ function mapThreadsToTemplate(t: any) {
         }
       }
 
-      // Process Source Code (Upload to Paste.rs)
-      if (updates.sourceCode && updates.sourceCode.length > 0 && !updates.sourceCode.startsWith('http')) {
-          try {
-              console.log(`[Paste.rs Update] Uploading source code for template: ${id}`);
-              updates.source_code = await uploadToPasteRs(updates.sourceCode);
-              delete updates.sourceCode;
-              console.log(`[Paste.rs Update] Success: ${updates.source_code}`);
-          } catch (e: any) {
-              console.error("Paste.rs Upload Failed:", e.message);
-          }
-      }
-
       // Ensure thumbnail is updated if image_url is updated
       if (updates.image_url && !updates.thumbnail) {
         updates.thumbnail = updates.image_url;
@@ -1176,6 +1084,14 @@ function mapThreadsToTemplate(t: any) {
 
       // Update GitHub
       await repoManager.updateTemplate(id, updates);
+      
+      // Update Supabase
+      try {
+          const { updateTemplate } = await import('./server/services/supabaseService.js');
+          await updateTemplate(id, updates);
+      } catch (e) {
+          console.error('[Supabase Update Error]:', e);
+      }
       
       res.json({ success: true });
     } catch (error: any) {

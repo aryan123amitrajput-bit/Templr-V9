@@ -1,4 +1,3 @@
-
 export const uploadToPasteRs = async (content: string): Promise<string> => {
   try {
     const response = await fetch('https://paste.rs/', {

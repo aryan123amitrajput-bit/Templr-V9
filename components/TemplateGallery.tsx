@@ -500,7 +500,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             category={template.category}
                             price={template.price}
                             fileUrl={template.fileUrl}
-                            sourceCode={template.sourceCode}
                             fileType={template.fileType}
                             videoUrl={template.videoUrl}
                             index={index}

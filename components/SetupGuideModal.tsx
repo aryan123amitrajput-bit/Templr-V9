@@ -29,7 +29,6 @@ create table if not exists public.templates (
   file_name text,
   file_type text,
   file_size bigint,
-  source_code text,
   status text default 'approved',
   views bigint default 0,
   likes bigint default 0,
@@ -42,9 +41,6 @@ do $$
 begin
   if not exists (select 1 from information_schema.columns where table_name='templates' and column_name='video_url') then
     alter table public.templates add column video_url text;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name='templates' and column_name='source_code') then
-    alter table public.templates add column source_code text;
   end if;
   if not exists (select 1 from information_schema.columns where table_name='templates' and column_name='tags') then
     alter table public.templates add column tags text[];
