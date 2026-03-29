@@ -141,7 +141,7 @@ export async function addTemplate(template: any): Promise<void> {
     'gallery_images', 'video_url', 'file_url', 'file_name', 
     'file_type', 'file_size', 'likes', 'views', 'sales', 
     'earnings', 'status', 'source_code', 'tags', 'author_avatar',
-    'snapchatStatus', 'catbox_url', 'telegram_file_id', 'snap_id', 'account_snap_id'
+    'catbox_url'
   ];
 
   const filteredTemplate: any = {};

@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { getSupabase, addTemplate as addSupabaseTemplate } from '../server/services/supabaseService';
+import { getSupabase, addTemplate as addSupabaseTemplate, getTemplates as getSupabaseTemplates } from '../server/services/supabaseService';
 import { uploadToCatbox } from '../server/services/catboxService';
 import { uploadToSupabase } from '../server/services/supabaseService';
 import { uploadToI111666 } from '../server/services/i111666Service';
@@ -19,6 +19,7 @@ import { uploadToGifyu } from '../server/services/gifyuService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { repoManager } from '../server/services/repoService';
 import { freeHostService } from '../server/services/freeHostService';
+import { threadsService } from '../server/services/threadsService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
 import { uploadToPasteRs } from '../server/services/pasteRsService';
@@ -184,6 +185,67 @@ async function saveTemplateToGitHub(template: any) {
     console.error('Failed to save to GitHub:', e);
     return false;
   }
+}
+
+/**
+ * Maps Supabase template data to the frontend Template interface.
+ */
+function mapSupabaseToTemplate(t: any) {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description || '',
+    author: t.author_name || t.author || 'Anonymous',
+    author_id: t.author_id,
+    author_uid: t.author_id, // For compatibility
+    authorAvatar: t.author_avatar || '',
+    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || '',
+    bannerUrl: t.banner_url || t.image_url || t.thumbnail || '',
+    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || '',
+    likes: t.likes || 0,
+    views: t.views || 0,
+    category: t.category || 'Uncategorized',
+    tags: t.tags || [],
+    price: t.price || 'Free',
+    sourceCode: t.source_code || '',
+    fileUrl: t.file_url || '',
+    fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
+    status: t.status || 'approved',
+    sales: t.sales || 0,
+    earnings: t.earnings || 0,
+    created_at: t.created_at,
+    galleryImages: t.gallery_images || [],
+    videoUrl: t.video_url || ''
+  };
+}
+
+function mapThreadsToTemplate(t: any) {
+  return {
+    id: t.id,
+    title: t.title,
+    description: t.description || '',
+    author: t.author || 'Anonymous',
+    author_id: '',
+    author_uid: '',
+    authorAvatar: '',
+    imageUrl: t.demoLink || '', // Threads CDN URL
+    bannerUrl: t.demoLink || '',
+    thumbnail: t.demoLink || '',
+    likes: 0,
+    views: 0,
+    category: t.category || 'Uncategorized',
+    tags: t.tags || [],
+    price: t.price || 'Free',
+    sourceCode: '',
+    fileUrl: '',
+    fileType: 'html',
+    status: 'approved',
+    sales: 0,
+    earnings: 0,
+    created_at: t.timestamp,
+    galleryImages: [],
+    videoUrl: ''
+  };
 }
 
 const app = express();
@@ -353,6 +415,40 @@ app.get('/sitemap.xml', async (req, res) => {
 
 // --- API Routes ---
 
+// Unified Text Upload Proxy
+app.post('/api/upload/text', async (req, res) => {
+  try {
+    const { content, filename = 'template.json' } = req.body;
+    if (!content) return res.status(400).json({ error: 'Content is required' });
+    
+    console.log('[Text Upload] Received request');
+    
+    // 1. Try Telegram (User Preferred)
+    if (telegramService.isConfigured()) {
+      try {
+        const buffer = Buffer.from(content, 'utf-8');
+        const tgUri = await telegramService.uploadDocument(buffer, filename, 'application/json');
+        const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
+        if (match) {
+          const botIndex = match[1];
+          const fileId = match[2];
+          const url = `/api/tg-file/${botIndex}/${fileId}`;
+          return res.json({ success: true, url, host: 'Telegram' });
+        }
+      } catch (e: any) {
+        console.warn('[Text Upload] Telegram failed, trying Paste.rs...', e.message);
+      }
+    }
+
+    // 2. Fallback to Paste.rs
+    const url = await uploadToPasteRs(content);
+    res.json({ success: true, url, host: 'Paste.rs' });
+  } catch (error: any) {
+    console.error('Text Upload Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Paste.rs Upload Proxy (Backup Text Hosting)
 app.post('/api/upload/pastesrs', async (req, res) => {
   try {
@@ -469,7 +565,6 @@ app.post('/api/upload', (req, res, next) => {
             description,
             image_url: imageUrl,
             catbox_url: catboxUrl,
-            snapchatStatus: 'pending',
             created_at: new Date().toISOString()
         });
 
@@ -746,114 +841,152 @@ app.post('/api/upload/pixhost', (req, res, next) => {
 
 // Get Public Templates
 app.get('/api/templates', async (req, res) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
-  
   try {
     const page = parseInt(req.query.page as string) || 0;
-    const limit = parseInt(req.query.limit as string) || 6;
+    const limitNum = parseInt(req.query.limit as string) || 6;
     const category = req.query.category as string;
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
+    const userId = req.query.userId as string;
+    const email = req.query.email as string;
 
-    const [gitRegistry, { data: supabaseData }] = await Promise.all([
-      repoManager.getMergedRegistry(),
-      supabase.from('templates').select('*').order('created_at', { ascending: false })
-    ]);
+    // 1. Get templates from Threads (Primary Database)
+    let data: any[] = [];
+    if (threadsService.isConfigured()) {
+        try {
+            const threadsTemplates = await threadsService.fetchTemplates();
+            console.log(`[API] Threads returned ${threadsTemplates.length} templates.`);
+            data = threadsTemplates.map(mapThreadsToTemplate);
+        } catch (e) {
+            console.error('[API] Threads fetch error:', e);
+        }
+    } else {
+        console.log('[API] Threads service not configured.');
+    }
 
-    clearTimeout(timeoutId);
+    // 2. Get templates from Supabase (Secondary/Backup source)
+    try {
+      const supabaseTemplates = await getSupabaseTemplates();
+      console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
+      data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
+    } catch (e) {
+      console.error('[API] Supabase fetch error:', e);
+    }
 
-    const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+    // 3. Get templates from repositories (GitHub/GitLab)
+    try {
+      const repoTemplates = await repoManager.getMergedRegistry();
+      console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
+      data.push(...repoTemplates);
+    } catch (e) {
+      console.error('[API] Repo fetch error:', e);
+    }
+
+    // 4. Get templates from freeHostService
+    try {
+      // Fetch a large number to get all for merging and filtering
+      const freeTemplates = await freeHostService.getTemplates(0, 1000, category, searchQuery);
+      console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
+      const mappedFreeTemplates = freeTemplates.map((t: any) => ({
+        id: t.id,
+        title: t.name,
+        thumbnail: t.image_preview,
+        author: t.creator,
+        author_id: t.creator_id || t.author_id,
+        tags: t.tags || [],
+        category: t.category,
+        created_at: t.created_at,
+        likes: t.stats?.likes || 0,
+        views: t.stats?.views || 0,
+        status: 'approved'
+      }));
+      data.push(...mappedFreeTemplates);
+    } catch (e) {
+      console.error('[API] FreeHost fetch error:', e);
+    }
+
+    console.log(`[API] Total templates after merging: ${data.length}`);
     
-    const templatesMap = new Map();
-    gitRegistry.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, { ...t, _source: 'git' });
+    // Remove duplicates by ID
+    const uniqueTemplates: any[] = [];
+    const seenIds = new Set();
+    for (const t of data) {
+      if (t && t.id && !seenIds.has(t.id)) {
+        uniqueTemplates.push(t);
+        seenIds.add(t.id);
       }
-    });
-    mappedSupabase.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, t);
-      }
-    });
+    }
+    data = uniqueTemplates;
 
-    let registry = Array.from(templatesMap.values());
+    // Filter by status 'approved' (or allow if status is missing)
+    data = data.filter((t: any) => !t.status || t.status === 'approved');
 
-    // Filter out templates without previews
-    registry = registry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
-
-    const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
-    const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
-    registry = registry.filter((t: any) => !deletedIds.has(t.id));
+    // Filter by userId or email if provided
+    if (userId || email) {
+      data = data.filter((t: any) => {
+        const matchId = userId && (t.author_id === userId || (t.author && t.author.id === userId));
+        const matchEmail = email && (t.author_email === email || (t.author && t.author.email === email));
+        return matchId || matchEmail;
+      });
+    }
 
     if (category && category !== 'All') {
-      registry = registry.filter((t: any) => t.category === category);
+      data = data.filter((t: any) => t.category === category);
     }
-    
+
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
-    }
-    
-    if (sortBy === 'popular') {
-      registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
-    } else if (sortBy === 'likes') {
-      registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-    } else {
-      registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      const lowerQuery = searchQuery.toLowerCase();
+      data = data.filter((t: any) => 
+        t.title?.toLowerCase().includes(lowerQuery) || 
+        t.description?.toLowerCase().includes(lowerQuery)
+      );
     }
 
-    const start = page * limit;
-    const gitSupabaseCount = registry.length;
-    
-    let paginatedData = [];
-    if (start < gitSupabaseCount) {
-      paginatedData = registry.slice(start, start + limit);
-      if (paginatedData.length < limit) {
-        const needed = limit - paginatedData.length;
-        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-        paginatedData.push(...extra);
-      }
+    if (sortBy === 'popular' || sortBy === 'likes') {
+      data = data.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
     } else {
-      const freeHostOffset = start - gitSupabaseCount;
-      const freeHostPage = Math.floor(freeHostOffset / limit);
-      const freeHostLimit = limit;
-      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+      data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     }
 
-    const totalCount = gitSupabaseCount + freeHostService.getRegistry().totalTemplates;
+    const hasMore = data.length > (page + 1) * limitNum;
+    const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
 
     res.json({ 
       data: paginatedData, 
-      hasMore: start + limit < totalCount 
+      hasMore 
     });
   } catch (error: any) {
     console.error('API Error:', error);
     res.status(500).json({ error: error.message });
-  } finally {
-    clearTimeout(timeoutId);
   }
 });
 
 // Get Featured Creators
 app.get('/api/creators', async (req, res) => {
   try {
-    let registry = await repoManager.getMergedRegistry();
+    const [gitRegistry, supabaseTemplates] = await Promise.all([
+      repoManager.getMergedRegistry(),
+      getSupabaseTemplates()
+    ]);
+
+    const allTemplates = [...gitRegistry, ...supabaseTemplates.map(mapSupabaseToTemplate)];
+    const approvedTemplates = allTemplates.filter((t: any) => !t.status || t.status === 'approved');
 
     const creatorsMap = new Map();
-    registry.forEach((t: any) => {
-      if (!t.author_email) return;
-      if (!creatorsMap.has(t.author_email)) {
-        creatorsMap.set(t.author_email, {
-          author_name: t.author,
-          author_email: t.author_email,
-          author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author)}&background=random`,
+    approvedTemplates.forEach((t: any) => {
+      const email = t.author_email || t.creator_email || t.email;
+      if (!email) return;
+      if (!creatorsMap.has(email)) {
+        creatorsMap.set(email, {
+          author_name: t.author || t.author_name || 'Anonymous',
+          author_email: email,
+          author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author || 'Anonymous')}&background=random`,
           views: 0,
           likes: 0,
           templates: 0
         });
       }
-      const creator = creatorsMap.get(t.author_email);
+      const creator = creatorsMap.get(email);
       creator.views += (t.views || 0);
       creator.likes += (t.likes || 0);
       creator.templates += 1;
@@ -903,35 +1036,75 @@ app.get('/api/user/templates', async (req, res) => {
     const email = req.query.email as string;
     if (!email) throw new Error("Email required");
 
-    const [gitRegistry, { data: supabaseData }, { data: deletedTemplates }] = await Promise.all([
-      repoManager.getMergedRegistry(),
-      supabase.from('templates').select('*').eq('author_email', email),
-      supabase.from('deleted_templates').select('id')
-    ]);
-    
-    const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
-    const filteredGit = gitRegistry.filter((t: any) => !deletedIds.has(t.id));
+    let allData: any[] = [];
 
-    const userGitTemplates = filteredGit.filter((t: any) => 
-      t.author_email === email || t.creator_email === email || t.email === email
-    );
-
-    const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
-    
-    const templatesMap = new Map();
-    userGitTemplates.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, { ...t, _source: 'git' });
+    // 1. Threads
+    if (threadsService.isConfigured()) {
+      try {
+        const threadsTemplates = await threadsService.fetchTemplates();
+        const userThreads = threadsTemplates.filter((t: any) => t.author_email === email || t.author === email);
+        allData.push(...userThreads.map(mapThreadsToTemplate));
+      } catch (e) {
+        console.error('[API] Threads fetch error:', e);
       }
-    });
-    mappedSupabase.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, t);
-      }
-    });
+    }
 
-    const allData = Array.from(templatesMap.values()).sort((a: any, b: any) => {
-      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    // 2. Supabase
+    try {
+      const supabaseTemplates = await getSupabaseTemplates();
+      const userSupabase = supabaseTemplates.filter((t: any) => t.author_email === email || t.author_id === email);
+      allData.push(...userSupabase.map(mapSupabaseToTemplate));
+    } catch (e) {
+      console.error('[API] Supabase fetch error:', e);
+    }
+
+    // 3. Repositories
+    try {
+      const repoTemplates = await repoManager.getMergedRegistry();
+      const userRepos = repoTemplates.filter((t: any) => t.author_email === email || t.authorEmail === email);
+      allData.push(...userRepos);
+    } catch (e) {
+      console.error('[API] Repo fetch error:', e);
+    }
+
+    // 4. FreeHostService
+    try {
+      const freeTemplates = await freeHostService.getTemplates(0, 1000);
+      const userFree = freeTemplates.filter((t: any) => t.creator_email === email || t.author_email === email);
+      const mappedFree = userFree.map((t: any) => ({
+        id: t.id,
+        title: t.name,
+        thumbnail: t.image_preview,
+        author: t.creator,
+        author_id: t.creator_id || t.author_id,
+        tags: t.tags || [],
+        category: t.category,
+        created_at: t.created_at,
+        likes: t.stats?.likes || 0,
+        views: t.stats?.views || 0,
+        status: 'approved'
+      }));
+      allData.push(...mappedFree);
+    } catch (e) {
+      console.error('[API] FreeHost fetch error:', e);
+    }
+
+    // Remove duplicates by ID
+    const uniqueTemplates: any[] = [];
+    const seenIds = new Set();
+    for (const t of allData) {
+      if (t && t.id && !seenIds.has(t.id)) {
+        uniqueTemplates.push(t);
+        seenIds.add(t.id);
+      }
+    }
+    allData = uniqueTemplates;
+      
+    // Sort manually
+    allData.sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
     });
 
     res.json({ data: allData });
@@ -945,13 +1118,39 @@ app.get('/api/user/templates', async (req, res) => {
 app.get('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    let content = await repoManager.getTemplateById(id);
-    if (!content) {
-      content = await freeHostService.getTemplateById(id);
+    let template: any = null;
+
+    // 1. Try Repository Manager
+    template = await repoManager.getTemplateById(id);
+
+    // 2. Try FreeHostService
+    if (!template) {
+      template = await freeHostService.getTemplateById(id);
     }
 
-    if (content) {
-      res.json({ data: content });
+    // 3. Try Supabase
+    if (!template) {
+      const supabaseTemplates = await getSupabaseTemplates();
+      const found = supabaseTemplates.find((t: any) => t.id === id);
+      if (found) {
+        template = mapSupabaseToTemplate(found);
+      }
+    }
+
+    // 4. Try Threads
+    if (!template && threadsService.isConfigured()) {
+      try {
+        const threadsTemplate = await threadsService.getTemplateById(id);
+        if (threadsTemplate) {
+          template = mapThreadsToTemplate(threadsTemplate);
+        }
+      } catch (e) {
+        console.warn(`[API] Threads lookup failed for ${id}:`, e);
+      }
+    }
+
+    if (template) {
+      res.json({ data: template });
     } else {
       res.status(404).json({ error: 'Template not found' });
     }

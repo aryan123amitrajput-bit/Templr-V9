@@ -323,7 +323,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
           let imageUrl = existingImageUrl;
           let videoUrl = existingVideoUrl;
           let uploadHost = '';
-          let telegramFileId = initialData?.telegram_file_id || '';
 
           if (previewFile) {
               setUploadStatus(`Hosting ${previewType}...`);
@@ -332,13 +331,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
                   const result = await uploadFile(previewFile, `videos/${Date.now()}_${safeName}`);
                   videoUrl = result.url;
                   uploadHost = result.host;
-                  if (result.telegram_file_id) telegramFileId = result.telegram_file_id;
                   if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
                   const result = await assetManager.uploadImage(previewFile);
                   imageUrl = result.url;
                   uploadHost = result.provider;
-                  if (result.telegram_file_id) telegramFileId = result.telegram_file_id;
                   onShowNotification(`Image successfully hosted on ${uploadHost}`, 'info');
                   videoUrl = ''; 
               }
@@ -384,7 +381,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
               externalLink: link,
               imageUrl,
               videoUrl,
-              telegram_file_id: telegramFileId,
               bannerUrl: imageUrl,
               galleryImages: [imageUrl],
               price: 'Free', 

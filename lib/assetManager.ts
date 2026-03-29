@@ -19,12 +19,15 @@ export const assetManager = {
    */
   uploadTemplateJSON: async (data: object): Promise<{ url: string; provider: string }> => {
     try {
-      const response = await fetch('/api/upload/pastesrs', {
+      const response = await fetch('/api/upload/text', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ content: JSON.stringify(data, null, 2) })
+        body: JSON.stringify({ 
+          content: JSON.stringify(data, null, 2),
+          filename: `template-${Date.now()}.json`
+        })
       });
 
       if (!response.ok) {
@@ -36,7 +39,7 @@ export const assetManager = {
         throw new Error('Invalid response from text hosting');
       }
 
-      return { url: result.url, provider: result.host || 'Paste.rs' };
+      return { url: result.url, provider: result.host || 'Text Host' };
     } catch (error: any) {
       console.error('[AssetManager] Failed to upload template JSON:', error);
       throw new Error(`Failed to upload template JSON: ${error.message}`);

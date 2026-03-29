@@ -161,9 +161,7 @@ export interface Template {
   createdAt?: number;
   uploadHost?: string;
   author_uid?: string;
-  snapchatStatus?: 'pending' | 'uploaded' | 'failed';
   catbox_url?: string;
-  telegram_file_id?: string;
 }
 
 export interface CreatorStats {
@@ -267,7 +265,6 @@ const mapTemplate = (data: any): Template => {
             earnings: data.earnings || 0,
             uploadHost: data.upload_host || data.uploadHost,
             author_uid: data.author_uid || data.authorUid,
-            telegram_file_id: data.telegram_file_id || data.telegramFileId,
             createdAt: data.created_at?.seconds ? data.created_at.seconds * 1000 : 
                       (data.created_at instanceof Date ? data.created_at.getTime() : 
                       (typeof data.created_at === 'string' ? new Date(data.created_at).getTime() : 

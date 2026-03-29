@@ -11,7 +11,6 @@ import { uploadToGifyu } from './server/services/gifyuService';
 import { uploadToBeeIMG } from './server/services/beeimgService';
 import { uploadToPasteRs } from './server/services/pasteRsService';
 import { uploadToCatbox } from './server/services/catboxService';
-import { snapchatService } from './server/services/snapchatService';
 import { telegramService } from './server/services/telegramService';
 import { threadsService } from './server/services/threadsService';
 import { Octokit } from 'octokit';
@@ -118,9 +117,9 @@ async function processUrlUpload(url: string): Promise<{ imageUrl: string; telegr
         const contentType = response.headers.get('content-type') || 'image/jpeg';
         const originalName = url.split('/').pop()?.split('?')[0] || 'image.jpg';
         
-        const { imageUrl, telegramFileId, hostUsed } = await processFileUpload(buffer, originalName, contentType);
+        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
         console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}`);
-        return { imageUrl, telegramFileId };
+        return { imageUrl };
     } catch (error: any) {
         console.error(`[Url Upload] Failed to process URL ${url}:`, error.message);
         return { imageUrl: url }; // Fallback to original URL
@@ -144,7 +143,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
                 const botIndex = match[1];
                 const fileId = match[2];
                 const imageUrl = `/api/tg-file/${botIndex}/${fileId}`;
-                return { imageUrl, hostUsed: 'Telegram', telegramFileId: fileId };
+                return { imageUrl, hostUsed: 'Telegram' };
             }
         } catch (e: any) {
             console.warn('[Upload] Telegram failed, trying Catbox...', e.message);
@@ -476,7 +475,7 @@ function mapThreadsToTemplate(t: any) {
       const originalname = filePath.split('/').pop() || 'upload';
       
       // Process upload synchronously to return URL and host to client
-      const { imageUrl, hostUsed, telegramFileId } = await processFileUpload(buffer, originalname, mimetype);
+      const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
       
       // Create record in Supabase
       const templateId = crypto.randomUUID();
@@ -486,35 +485,51 @@ function mapThreadsToTemplate(t: any) {
           description: description || 'Direct upload',
           status: 'active',
           image_url: imageUrl,
-          telegram_file_id: telegramFileId,
-          snapchatStatus: 'pending',
           created_at: new Date().toISOString()
       });
-
-      // Trigger background Snapchat share if it's an image/video
-      if (mimetype.startsWith('image/') || mimetype.startsWith('video/')) {
-          snapchatService.shareTemplate(imageUrl, originalname, description || 'New template shared on Snapchat!')
-              .then(async (snapResult) => {
-                  console.log(`[Snapchat] Background share success for ${templateId}:`, snapResult.snapId);
-                  await addSupabaseTemplate({
-                      id: templateId,
-                      snapchatStatus: 'shared',
-                      snap_id: snapResult.snapId,
-                      account_snap_id: snapResult.accountSnapId
-                  });
-              })
-              .catch(err => console.error(`[Snapchat] Background share failed for ${templateId}:`, err.message));
-      }
       
       return res.status(200).json({ 
           success: true, 
           url: imageUrl, 
           host: hostUsed, 
-          telegram_file_id: telegramFileId,
           templateId 
       });
     } catch (error: any) {
       console.error('Upload Proxy Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Text Hosting Proxy (Unified Text Upload)
+  app.post('/api/upload/text', async (req, res) => {
+    try {
+      const { content, filename = 'template.json' } = req.body;
+      if (!content) return res.status(400).json({ error: 'Content is required' });
+      
+      console.log('[Text Upload] Received request');
+      
+      // 1. Try Telegram (User Preferred)
+      if (telegramService.isConfigured()) {
+        try {
+          const buffer = Buffer.from(content, 'utf-8');
+          const tgUri = await telegramService.uploadDocument(buffer, filename, 'application/json');
+          const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
+          if (match) {
+            const botIndex = match[1];
+            const fileId = match[2];
+            const url = `/api/tg-file/${botIndex}/${fileId}`;
+            return res.json({ success: true, url, host: 'Telegram' });
+          }
+        } catch (e: any) {
+          console.warn('[Text Upload] Telegram failed, trying Paste.rs...', e.message);
+        }
+      }
+
+      // 2. Fallback to Paste.rs
+      const url = await uploadToPasteRs(content);
+      res.json({ success: true, url, host: 'Paste.rs' });
+    } catch (error: any) {
+      console.error('Text Upload Error:', error);
       res.status(500).json({ error: error.message });
     }
   });
