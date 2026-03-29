@@ -5,7 +5,9 @@
   "preview_url": "https://preview.templr.io/v/tuca4hmc",
   "thumbnail": "/api/tg-file/0/AgACAgUAAxkDAAMPacj14XRu-V25nEoqp0AqBxhtZ3gAApANaxsQYEhWySAKCOrcvSgBAAMCAAN5AAM6BA",
   "image_url": "/api/tg-file/0/AgACAgUAAxkDAAMPacj14XRu-V25nEoqp0AqBxhtZ3gAApANaxsQYEhWySAKCOrcvSgBAAMCAAN5AAM6BA",
-  "banner_url": "/api/tg-file/0/AgACAgUAAxkDAAMPacj14XRu-V25nEoqp0AqBxhtZ3gAApANaxsQYEhWySAKCOrcvSgBAAMCAAN5AAM6BA",
+  "banner_url": {
+    "imageUrl": "/api/tg-file/0/AgACAgUAAxkDAAMQacj2F-kLBMLzJwsw3Z2bpGrlg9wAApENaxsQYEhW6FO8aNQ9xG8BAAMCAAN5AAM6BA"
+  },
   "gallery_images": [
     "/api/tg-file/0/AgACAgUAAxkDAAMPacj14XRu-V25nEoqp0AqBxhtZ3gAApANaxsQYEhWySAKCOrcvSgBAAMCAAN5AAM6BA"
   ],
@@ -28,5 +30,7 @@
   "telegram_file_id": "",
   "is_bundle": true,
   "threads_post_id": "",
-  "threads_post_url": ""
+  "threads_post_url": "",
+  "preview_image": "/api/tg-file/0/AgACAgUAAxkDAAMQacj2F-kLBMLzJwsw3Z2bpGrlg9wAApENaxsQYEhW6FO8aNQ9xG8BAAMCAAN5AAM6BA",
+  "template_url": "https://paste.rs/8Lddv"
 }
