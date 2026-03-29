@@ -298,7 +298,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     <img 
                         key={signedBanner || displayBanner!}
                         src={signedBanner || displayBanner!} 
-                        alt={`${title} - ${category} Landing Page Template Preview`}
+                        alt={`${title} Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam
@@ -348,9 +348,6 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
         <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-30 pointer-events-none">
              <div className="flex gap-2 pointer-events-auto">
-                 <div className="px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-200">
-                    {category}
-                 </div>
                  {catbox_url && (
                      <div className="px-3 py-1.5 rounded-lg bg-emerald-500/20 backdrop-blur-xl border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-200">
                         Catbox Hosted 📦

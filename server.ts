@@ -592,7 +592,7 @@ function mapThreadsToTemplate(t: any) {
 
       // 4. Get templates from freeHostService
       try {
-        const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
+        const freeTemplates = await freeHostService.getTemplates(0, 1000, category, searchQuery);
         console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
         const mappedFreeTemplates = freeTemplates.map((t: any) => ({
           id: t.id,
