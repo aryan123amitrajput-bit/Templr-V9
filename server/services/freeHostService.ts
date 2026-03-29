@@ -53,6 +53,7 @@ class FreeHostService {
   private async loadRegistry() {
     try {
       // Try to load from GitHub repo first
+      console.log('[FreeHostService] Loading registry...');
       const content = await repoManager.getFile('master_registry.json');
       if (content) {
         const parsed = JSON.parse(content);
@@ -61,10 +62,12 @@ class FreeHostService {
           totalTemplates: parsed.totalTemplates || 0,
           lastUpdated: parsed.lastUpdated || new Date().toISOString()
         };
-        console.log('Loaded master registry from GitHub');
+        console.log(`[FreeHostService] Loaded master registry from GitHub. Batches: ${this.registry.batches.length}`);
+      } else {
+        console.log('[FreeHostService] No content found in master_registry.json');
       }
     } catch (e) {
-      console.log('No master registry found, starting fresh');
+      console.error('[FreeHostService] Error loading registry:', e);
     }
   }
 

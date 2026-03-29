@@ -850,6 +850,7 @@ app.get('/api/templates', async (req, res) => {
 
     // 1. Get templates from Threads (Primary Database)
     let data: any[] = [];
+    console.log('[API] Starting template fetch...');
     if (threadsService.isConfigured()) {
         try {
             const threadsTemplates = await threadsService.fetchTemplates();
@@ -883,6 +884,7 @@ app.get('/api/templates', async (req, res) => {
     // 4. Get templates from freeHostService
     try {
       // Fetch a large number to get all for merging and filtering
+      console.log('[API] Fetching from FreeHostService...');
       const freeTemplates = await freeHostService.getTemplates(0, 1000, category, searchQuery);
       console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
       const mappedFreeTemplates = freeTemplates.map((t: any) => ({
