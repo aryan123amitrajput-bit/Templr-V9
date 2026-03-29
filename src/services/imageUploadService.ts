@@ -13,6 +13,7 @@ export interface UploadResult {
     viewer_url: string;
     fallback_used: boolean;
     auth_token?: string; // Added to support deletion
+    telegram_file_id?: string;
 }
 
 // 1. Image Optimization
@@ -82,7 +83,8 @@ export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: false
+            fallback_used: false,
+            telegram_file_id: data.telegram_file_id
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);
@@ -121,7 +123,8 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: data.host !== '0008888 (Primary)'
+            fallback_used: data.host !== '0008888 (Primary)',
+            telegram_file_id: data.telegram_file_id
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);

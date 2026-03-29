@@ -4,10 +4,10 @@ export const assetManager = {
   /**
    * Uploads an image to a CDN and returns the public URL.
    */
-  uploadImage: async (file: File): Promise<{ url: string; provider: string }> => {
+  uploadImage: async (file: File): Promise<{ url: string; provider: string; telegram_file_id?: string }> => {
     try {
       const result = await uploadImageService(file);
-      return { url: result.direct_url, provider: result.provider };
+      return { url: result.direct_url, provider: result.provider, telegram_file_id: result.telegram_file_id };
     } catch (error: any) {
       console.error('[AssetManager] Failed to upload image:', error);
       throw new Error(`Failed to upload image: ${error.message}`);

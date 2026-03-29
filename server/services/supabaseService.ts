@@ -31,7 +31,7 @@ export function getSupabase() {
  * @param mimetype The file mimetype (e.g., image/png)
  * @returns The public URL of the uploaded image
  */
-export async function uploadPreviewImage(fileBuffer: Buffer, originalName: string, mimetype: string): Promise<string> {
+export async function uploadToSupabase(fileBuffer: Buffer, originalName: string, mimetype: string): Promise<string> {
   const supabase = getSupabase();
   const bucketName = process.env.SUPABASE_BUCKET || 'templates';
   
@@ -140,7 +140,8 @@ export async function addTemplate(template: any): Promise<void> {
     'author_name', 'author_email', 'image_url', 'banner_url', 
     'gallery_images', 'video_url', 'file_url', 'file_name', 
     'file_type', 'file_size', 'likes', 'views', 'sales', 
-    'earnings', 'status', 'source_code', 'tags', 'author_avatar'
+    'earnings', 'status', 'source_code', 'tags', 'author_avatar',
+    'snapchatStatus', 'catbox_url', 'telegram_file_id', 'snap_id', 'account_snap_id'
   ];
 
   const filteredTemplate: any = {};
@@ -163,6 +164,19 @@ export async function addTemplate(template: any): Promise<void> {
   if (error) {
     console.error('[Supabase Add Template Error]', error);
     throw new Error(`Supabase add template failed: ${error.message}`);
+  }
+}
+
+export async function updateTemplate(id: string, updates: any): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await (supabase
+    .from('templates') as any)
+    .update(updates)
+    .eq('id', id);
+  
+  if (error) {
+    console.error('[Supabase Update Template Error]', error);
+    throw new Error(`Supabase update template failed: ${error.message}`);
   }
 }
 

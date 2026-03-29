@@ -97,6 +97,7 @@ export interface NewTemplateData {
   bannerUrl: string; 
   galleryImages: string[]; 
   videoUrl?: string; 
+  telegram_file_id?: string;
   description?: string;
   category: string;
   tags?: string[];
@@ -160,6 +161,9 @@ export interface Template {
   createdAt?: number;
   uploadHost?: string;
   author_uid?: string;
+  snapchatStatus?: 'pending' | 'uploaded' | 'failed';
+  catbox_url?: string;
+  telegram_file_id?: string;
 }
 
 export interface CreatorStats {
@@ -263,6 +267,7 @@ const mapTemplate = (data: any): Template => {
             earnings: data.earnings || 0,
             uploadHost: data.upload_host || data.uploadHost,
             author_uid: data.author_uid || data.authorUid,
+            telegram_file_id: data.telegram_file_id || data.telegramFileId,
             createdAt: data.created_at?.seconds ? data.created_at.seconds * 1000 : 
                       (data.created_at instanceof Date ? data.created_at.getTime() : 
                       (typeof data.created_at === 'string' ? new Date(data.created_at).getTime() : 
@@ -576,7 +581,7 @@ export const getSession = async (): Promise<Session | null> => {
     };
 };
 
-export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
+export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string; telegram_file_id?: string }> => {
     if (!url) throw new Error("No URL provided for upload.");
     
     try {
@@ -594,13 +599,13 @@ export const uploadFileFromUrl = async (url: string): Promise<{ url: string; hos
         }
 
         const data = await response.json();
-        return { url: data.url, host: data.host };
+        return { url: data.url, host: data.host, telegram_file_id: data.telegram_file_id };
     } catch (err: any) {
         throw new Error("Upload from URL failed: " + err.message);
     }
 };
 
-export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
+export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string; telegram_file_id?: string }> => {
     if (!file) throw new Error("No file provided for upload.");
     
     // Use specialized image upload service for images to ensure external hosting prioritization
@@ -616,7 +621,7 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
     // Sanitize path just in case
     const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
 
-    const attempt = async (retryCount = 0): Promise<{ url: string; host: string }> => {
+    const attempt = async (retryCount = 0): Promise<{ url: string; host: string; telegram_file_id?: string }> => {
         try {
             const base64File = await fileToBase64(file);
             
@@ -639,7 +644,7 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
                 }
             }
             const data = await response.json();
-            return { url: data.url, host: data.host };
+            return { url: data.url, host: data.host, telegram_file_id: data.telegram_file_id };
         } catch (err: any) {
             if (retryCount < 2) {
                 await new Promise(r => setTimeout(r, 1000));

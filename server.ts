@@ -1,3 +1,5 @@
+import { uploadQueue } from './server/services/queueService';
+import './server/workers/uploadWorker';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -6,9 +8,10 @@ import { uploadToImgBB } from './server/services/imgbbService';
 import { uploadToImgHippo } from './server/services/imghippoService';
 import { uploadToI111666 } from './server/services/i111666Service';
 import { uploadToGifyu } from './server/services/gifyuService';
-import { uploadToCatbox } from './server/services/catboxService';
 import { uploadToBeeIMG } from './server/services/beeimgService';
-import { uploadToPasteRs } from './server/services/pasteService';
+import { uploadToPasteRs } from './server/services/pasteRsService';
+import { uploadToCatbox } from './server/services/catboxService';
+import { snapchatService } from './server/services/snapchatService';
 import { telegramService } from './server/services/telegramService';
 import { threadsService } from './server/services/threadsService';
 import { Octokit } from 'octokit';
@@ -16,9 +19,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './server/services/repoService';
 import { freeHostService } from './server/services/freeHostService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from './server/services/supabaseService';
 import fs from 'fs';
 import crypto from 'crypto';
+
+// Load environment variables
+import dotenv from 'dotenv';
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -93,13 +100,13 @@ async function saveTemplateToGitHub(template: any) {
 /**
  * Processes a URL upload by fetching the content and then using Supabase Storage.
  */
-async function processUrlUpload(url: string): Promise<string> {
-    if (!url || !url.startsWith('http')) return url;
+async function processUrlUpload(url: string): Promise<{ imageUrl: string; telegramFileId?: string }> {
+    if (!url || !url.startsWith('http')) return { imageUrl: url };
     
     // Skip if already on Supabase or other known hosts
     const hosts = ['threads.net', 'supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'catbox.moe', 'gifyu.com', 'imghippo.com'];
     if (hosts.some(host => url.includes(host))) {
-        return url;
+        return { imageUrl: url };
     }
 
     try {
@@ -111,12 +118,12 @@ async function processUrlUpload(url: string): Promise<string> {
         const contentType = response.headers.get('content-type') || 'image/jpeg';
         const originalName = url.split('/').pop()?.split('?')[0] || 'image.jpg';
         
-        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
+        const { imageUrl, telegramFileId, hostUsed } = await processFileUpload(buffer, originalName, contentType);
         console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}`);
-        return imageUrl;
+        return { imageUrl, telegramFileId };
     } catch (error: any) {
         console.error(`[Url Upload] Failed to process URL ${url}:`, error.message);
-        return url; // Fallback to original URL
+        return { imageUrl: url }; // Fallback to original URL
     }
 }
 
@@ -128,7 +135,31 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
     
-    // 1. Try Threads (Primary)
+    // 1. Try Telegram (User Preferred)
+    if (telegramService.isConfigured()) {
+        try {
+            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
+            const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
+            if (match) {
+                const botIndex = match[1];
+                const fileId = match[2];
+                const imageUrl = `/api/tg-file/${botIndex}/${fileId}`;
+                return { imageUrl, hostUsed: 'Telegram', telegramFileId: fileId };
+            }
+        } catch (e: any) {
+            console.warn('[Upload] Telegram failed, trying Catbox...', e.message);
+        }
+    }
+
+    // 2. Try Catbox
+    try {
+        const result = await uploadToCatbox(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, catboxUrl: result.direct_url, hostUsed: 'Catbox' };
+    } catch (e: any) {
+        console.warn('[Upload] Catbox failed, trying Threads...', e.message);
+    }
+
+    // 2. Try Threads
     if (threadsService.isConfigured() && !isVideo) {
         try {
             // For general image uploads, we'll use a generic metadata
@@ -146,17 +177,16 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             return { imageUrl: result.mediaUrls[0], hostUsed: 'Threads', postId: result.postId };
         } catch (e: any) {
             console.warn('[Upload] Threads failed. Error:', e.message);
-            console.warn('[Upload] Falling back to Catbox...');
+            console.warn('[Upload] Falling back to Supabase...');
         }
     }
 
-    // 2. Try Catbox
+    // 2. Try Supabase
     try {
-        const userhash = process.env.CATBOX_USERHASH || '';
-        const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-        return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+        const url = await uploadToSupabase(buffer, originalname, mimetype);
+        return { imageUrl: url, hostUsed: 'Supabase' };
     } catch (e: any) {
-        console.warn('[Upload] Catbox failed, trying i111666...', e.message);
+        console.warn('[Upload] Supabase failed, trying i111666...', e.message);
     }
 
     // 3. Try i111666
@@ -197,21 +227,13 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
         return { imageUrl: url, hostUsed: 'BeeIMG' };
     } catch (e: any) {
-        console.warn('[Upload] BeeIMG failed, trying Supabase...', e.message);
-    }
-
-    // 7. Try Supabase (Last)
-    try {
-        const url = await uploadToSupabase(buffer, originalname, mimetype);
-        return { imageUrl: url, hostUsed: 'Supabase' };
-    } catch (e: any) {
         console.error('[Upload] All external hosts failed:', e.message);
         throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
     }
 }
 
 async function startServer() {
-  const app = express();
+const app = express();
   const PORT = 3000;
 
   app.use(cors());
@@ -391,13 +413,33 @@ function mapThreadsToTemplate(t: any) {
 // --- API Routes ---
   app.post('/api/upload/url', async (req, res) => {
     try {
-      const { url } = req.body;
+      const { url, description } = req.body;
+      console.log(`[DEBUG] HIT /api/upload/url with url: ${url}`);
       if (!url) return res.status(400).json({ error: 'URL is required' });
       
-      console.log(`[Proxy Upload URL] Received request for: ${url}`);
-      const imageUrl = await processUrlUpload(url);
+      console.log(`[Proxy Upload URL] Enqueuing request for: ${url}`);
       
-      res.json({ url: imageUrl, host: 'Multi-service' });
+      const response = await axios.get(url, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(response.data, 'binary');
+      
+      const templateId = crypto.randomUUID();
+      
+      // Create initial record in Supabase
+      await addSupabaseTemplate({
+          id: templateId,
+          title: url.split('/').pop() || 'url-upload',
+          description: description || 'URL upload',
+          status: 'pending',
+          created_at: new Date().toISOString()
+      });
+
+      await uploadQueue.add('process-upload', { 
+          templateId, 
+          fileBuffer: buffer, 
+          metadata: { template_name: url.split('/').pop() || 'url-upload', description: description || 'URL upload' } 
+      });
+      
+      res.json({ success: true, message: 'Upload queued', templateId });
     } catch (error: any) {
       console.error('Upload URL Proxy Error:', error);
       res.status(500).json({ error: error.message });
@@ -413,49 +455,64 @@ function mapThreadsToTemplate(t: any) {
 
   app.post('/api/upload', async (req, res) => {
     try {
-      if (!req.body) {
-        console.error("[Proxy Upload] req.body is undefined. Check Content-Type and body-parser.");
-        return res.status(400).json({ error: "Request body is missing" });
-      }
-      const { file, path: filePath } = req.body;
+      const { file, path: filePath, description } = req.body;
       if (!file || !filePath) {
-        console.error("[Proxy Upload] Missing file or path in body. Keys:", Object.keys(req.body));
         throw new Error("File and path are required");
       }
 
-      console.log(`[Proxy Upload] Received upload request for path: ${filePath}`);
+      console.log(`[Upload] Processing upload for path: ${filePath}`);
 
       // Extract mime type and buffer from base64 string
       const matches = file.match(/^data:([A-Za-z-+\/]*);base64,(.+)$/);
       let buffer;
-      let contentType = 'application/octet-stream';
-
+      let mimetype = 'application/octet-stream';
       if (matches && matches.length === 3) {
-        contentType = matches[1] || 'application/octet-stream';
+        mimetype = matches[1];
         buffer = Buffer.from(matches[2], 'base64');
       } else {
         buffer = Buffer.from(file.split(',')[1] || file, 'base64');
       }
 
-      // Guess content type if needed
-      if (contentType === 'application/octet-stream' || !contentType) {
-          const ext = filePath.split('.').pop()?.toLowerCase();
-          if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
-          else if (ext === 'png') contentType = 'image/png';
-          else if (ext === 'gif') contentType = 'image/gif';
-          else if (ext === 'webp') contentType = 'image/webp';
-          else if (ext === 'svg') contentType = 'image/svg+xml';
-          else if (ext === 'mp4') contentType = 'video/mp4';
-          else if (ext === 'webm') contentType = 'video/webm';
+      const originalname = filePath.split('/').pop() || 'upload';
+      
+      // Process upload synchronously to return URL and host to client
+      const { imageUrl, hostUsed, telegramFileId } = await processFileUpload(buffer, originalname, mimetype);
+      
+      // Create record in Supabase
+      const templateId = crypto.randomUUID();
+      await addSupabaseTemplate({
+          id: templateId,
+          title: originalname,
+          description: description || 'Direct upload',
+          status: 'active',
+          image_url: imageUrl,
+          telegram_file_id: telegramFileId,
+          snapchatStatus: 'pending',
+          created_at: new Date().toISOString()
+      });
+
+      // Trigger background Snapchat share if it's an image/video
+      if (mimetype.startsWith('image/') || mimetype.startsWith('video/')) {
+          snapchatService.shareTemplate(imageUrl, originalname, description || 'New template shared on Snapchat!')
+              .then(async (snapResult) => {
+                  console.log(`[Snapchat] Background share success for ${templateId}:`, snapResult.snapId);
+                  await addSupabaseTemplate({
+                      id: templateId,
+                      snapchatStatus: 'shared',
+                      snap_id: snapResult.snapId,
+                      account_snap_id: snapResult.accountSnapId
+                  });
+              })
+              .catch(err => console.error(`[Snapchat] Background share failed for ${templateId}:`, err.message));
       }
-
-      const originalName = filePath.split('/').pop() || 'upload';
-      console.log(`[Proxy Upload] Processing multi-service upload for: ${originalName} (${contentType})`);
-
-      const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
-
-      console.log(`[Proxy Upload] Success. Host: ${hostUsed}, URL: ${imageUrl}`);
-      res.json({ url: imageUrl, host: hostUsed });
+      
+      return res.status(200).json({ 
+          success: true, 
+          url: imageUrl, 
+          host: hostUsed, 
+          telegram_file_id: telegramFileId,
+          templateId 
+      });
     } catch (error: any) {
       console.error('Upload Proxy Error:', error);
       res.status(500).json({ error: error.message });
@@ -916,15 +973,19 @@ function mapThreadsToTemplate(t: any) {
       }
 
       let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
+      let telegramFileId = '';
 
       // Upload main image
       if (finalImageUrl) {
-        finalImageUrl = await processUrlUpload(finalImageUrl);
+        const result = await processUrlUpload(finalImageUrl);
+        finalImageUrl = result.imageUrl;
+        if (result.telegramFileId) telegramFileId = result.telegramFileId;
       }
       
       // Upload banner image
       if (finalBannerUrl && finalBannerUrl !== (template.preview_image || template.image_url || template.imageUrl)) {
-        finalBannerUrl = await processUrlUpload(finalBannerUrl);
+        const result = await processUrlUpload(finalBannerUrl);
+        finalBannerUrl = result.imageUrl;
       } else {
         finalBannerUrl = finalImageUrl;
       }
@@ -933,7 +994,8 @@ function mapThreadsToTemplate(t: any) {
       if (Array.isArray(finalGalleryImages)) {
         for (let i = 0; i < finalGalleryImages.length; i++) {
           if (finalGalleryImages[i]) {
-            finalGalleryImages[i] = await processUrlUpload(finalGalleryImages[i]);
+            const result = await processUrlUpload(finalGalleryImages[i]);
+            finalGalleryImages[i] = result.imageUrl;
           }
         }
       }
@@ -1000,6 +1062,7 @@ function mapThreadsToTemplate(t: any) {
         sales: 0,
         earnings: 0,
         status: template.status || 'approved',
+        telegram_file_id: telegramFileId,
         is_bundle: true, // Flag to indicate it's a bundle
         threads_post_id: threadsPostId,
         threads_post_url: threadsPostId ? `https://www.threads.net/t/${threadsPostId}` : ''

@@ -514,6 +514,8 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             onCreatorClick={handleCreatorClick}
                             author_uid={template.author_uid}
                             currentUserId={currentUserId}
+                            snapchatStatus={template.snapchatStatus}
+                            catbox_url={template.catbox_url}
                         />
                     ))
                 )}

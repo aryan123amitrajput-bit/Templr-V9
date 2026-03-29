@@ -3,26 +3,59 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { getSupabase } from '../server/services/supabaseService';
-import { uploadToImgBB } from '../server/services/imgbbService';
-import { uploadToImgHippo } from '../server/services/imghippoService';
-import { uploadToI111666 } from '../server/services/i111666Service';
-import { uploadToGifyu } from '../server/services/gifyuService';
-import { uploadToCatbox } from '../server/services/catboxService';
-import { Octokit } from 'octokit';
+import { uploadQueue } from '../server/services/queueService';
+import multer from 'multer';
+import admin from 'firebase-admin';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+import { getSupabase, addTemplate as addSupabaseTemplate } from '../server/services/supabaseService';
+import { uploadToCatbox } from '../server/services/catboxService';
+import { uploadToSupabase } from '../server/services/supabaseService';
+import { uploadToI111666 } from '../server/services/i111666Service';
+import { uploadToImgBB } from '../server/services/imgbbService';
+import { uploadToGifyu } from '../server/services/gifyuService';
+import { uploadToImgHippo } from '../server/services/imghippoService';
 import { repoManager } from '../server/services/repoService';
-import { uploadToPasteRs } from '../server/services/pasteService';
 import { freeHostService } from '../server/services/freeHostService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
-import admin from 'firebase-admin';
-import fs from 'fs';
-import crypto from 'crypto';
-import multer from 'multer';
+import { uploadToPasteRs } from '../server/services/pasteRsService';
+import { telegramService } from '../server/services/telegramService';
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+async function enqueueUpload(req: any, res: any, description: string) {
+    try {
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'No file provided' });
+
+        const templateId = crypto.randomUUID();
+        console.log(`[Upload] Creating template record: ${templateId}`);
+        
+        // Create initial record in Supabase
+        await addSupabaseTemplate({
+            id: templateId,
+            title: file.originalname,
+            description: description || 'New upload',
+            status: 'pending',
+            created_at: new Date().toISOString()
+        });
+
+        console.log(`[Upload] Enqueuing ${description} upload`);
+        await uploadQueue.add('process-upload', { 
+            templateId, 
+            fileBuffer: file.buffer, 
+            metadata: { template_name: file.originalname, description } 
+        });
+        
+        return res.status(200).json({ success: true, message: 'Upload queued' });
+    } catch (error: any) {
+        console.error(`[Upload] Error enqueuing ${description} upload:`, error);
+        return res.status(500).json({ error: 'Failed to enqueue upload' });
+    }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -338,7 +371,39 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
 
-    // 1. Try i111666 (Primary External)
+    // 1. Try Telegram (User Preferred)
+    if (telegramService.isConfigured()) {
+        try {
+            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
+            const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
+            if (match) {
+                const botIndex = match[1];
+                const fileId = match[2];
+                const imageUrl = `/api/tg-file/${botIndex}/${fileId}`;
+                return { imageUrl, hostUsed: 'Telegram' };
+            }
+        } catch (e: any) {
+            console.warn('[Upload] Telegram failed, trying Catbox...', e.message);
+        }
+    }
+
+    // 2. Try Catbox
+    try {
+        const result = await uploadToCatbox(buffer, originalname, mimetype);
+        return { imageUrl: result.direct_url, catboxUrl: result.direct_url, hostUsed: 'Catbox' };
+    } catch (e: any) {
+        console.warn('[Upload] Catbox failed, trying Supabase...', e.message);
+    }
+
+    // 2. Try Supabase
+    try {
+        const url = await uploadToSupabase(buffer, originalname, mimetype);
+        return { imageUrl: url, hostUsed: 'Supabase' };
+    } catch (e: any) {
+        console.warn('[Upload] Supabase failed, trying i111666...', e.message);
+    }
+
+    // 3. Try i111666
     try {
         const result = await uploadToI111666(buffer, originalname, mimetype);
         return { imageUrl: result.direct_url, hostUsed: 'i111666' };
@@ -346,7 +411,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         console.warn('[Upload] i111666 failed, trying ImgBB...', e.message);
     }
 
-    // 2. Try ImgBB
+    // 3. Try ImgBB
     try {
         const result = await uploadToImgBB(buffer, originalname, mimetype);
         return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
@@ -354,7 +419,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
     }
 
-    // 3. Try Gifyu
+    // 4. Try Gifyu
     try {
         const result = await uploadToGifyu(buffer, originalname, mimetype);
         return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
@@ -362,19 +427,10 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         console.warn('[Upload] Gifyu failed, trying ImgHippo...', e.message);
     }
 
-    // 4. Try ImgHippo
+    // 5. Try ImgHippo
     try {
         const result = await uploadToImgHippo(buffer, originalname);
         return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgHippo failed, trying Catbox...', e.message);
-    }
-
-    // 5. Try Catbox
-    try {
-        const userhash = process.env.CATBOX_USERHASH || '';
-        const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-        return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
     } catch (e: any) {
         console.error('[Upload] All external hosts failed:', e.message);
         throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
@@ -401,7 +457,7 @@ app.post('/api/upload', (req, res, next) => {
     }
     console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}, Mime: ${file.mimetype}`);
 
-    const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
+    const { imageUrl, catboxUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
     console.log('[Upload] Host used:', hostUsed);
@@ -412,6 +468,8 @@ app.post('/api/upload', (req, res, next) => {
             title,
             description,
             image_url: imageUrl,
+            catbox_url: catboxUrl,
+            snapchatStatus: 'pending',
             created_at: new Date().toISOString()
         });
 
@@ -432,230 +490,44 @@ app.post('/api/upload', (req, res, next) => {
 
 // Upload from URL Proxy
 app.post('/api/upload/url', async (req, res) => {
-    console.log(`[URL Upload Request] Received POST /api/upload/url`);
     try {
-        const { url } = req.body;
+        const { url, description } = req.body;
         if (!url) return res.status(400).json({ error: 'URL is required' });
 
-        console.log(`[URL Upload Request] Fetching from URL: ${url}`);
+        console.log(`[Upload] Enqueuing URL upload: ${url}`);
+        
         const response = await axios.get(url, { responseType: 'arraybuffer' });
         const buffer = Buffer.from(response.data, 'binary');
-        const mimetype = response.headers['content-type'] || 'image/jpeg';
+
+        await uploadQueue.add('process-upload', { 
+            templateId: crypto.randomUUID(), 
+            fileBuffer: buffer, 
+            metadata: { template_name: url.split('/').pop() || 'url-upload', description: description || 'URL upload' } 
+        });
         
-        // Extract filename from URL or use a default
-        const urlObj = new URL(url);
-        let originalname = urlObj.pathname.split('/').pop() || 'image.jpg';
-        if (!originalname.includes('.')) {
-            const ext = mimetype.split('/')[1] || 'jpg';
-            originalname = `${originalname}.${ext}`;
-        }
-
-        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
-
-        console.log('[URL Upload] Final URL extracted:', imageUrl);
-        console.log('[URL Upload] Host used:', hostUsed);
-
-        res.json({ success: true, url: imageUrl, host: hostUsed });
+        return res.status(200).json({ success: true, message: 'Upload queued' });
     } catch (error: any) {
         console.error('URL Upload Error:', error);
         res.status(500).json({ error: error.message || 'Internal Server Error during URL upload' });
     }
 });
 
-// Upload File Proxy (Catbox)
-app.post('/api/upload/catbox', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
-  });
-}, async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file provided' });
-
-    console.log(`[Catbox Upload] Received POST /api/upload/catbox`);
-    const userhash = process.env.CATBOX_USERHASH || '';
-    const result = await uploadToCatbox(file.buffer, file.originalname, file.mimetype, userhash);
-    
-    res.json({
-      url: result.direct_url,
-      direct_url: result.direct_url,
-      thumbnail_url: result.thumbnail_url,
-      viewer_url: result.viewer_url,
-      provider: 'catbox'
-    });
-  } catch (error: any) {
-    console.error('Catbox proxy error:', error);
-    res.status(500).json({ error: error.message || 'Catbox proxy failed' });
-  }
-});
-
-// Catbox URL Upload Proxy
-app.post('/api/catbox/urlupload', async (req, res) => {
-  try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
-    
-    const userhash = process.env.CATBOX_USERHASH || '';
-    const { urlUploadToCatbox } = await import('../server/services/catboxService');
-    const result = await urlUploadToCatbox(url, userhash);
-    res.json(result);
-  } catch (error: any) {
-    console.error('Catbox urlupload error:', error);
-    res.status(500).json({ error: error.message || 'Catbox urlupload failed' });
-  }
-});
-
-// Catbox Delete Files Proxy
-app.post('/api/catbox/deletefiles', async (req, res) => {
-  try {
-    const { files } = req.body;
-    if (!files || !Array.isArray(files)) return res.status(400).json({ error: 'files array is required' });
-    
-    const userhash = process.env.CATBOX_USERHASH;
-    if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is not configured on the server' });
-    
-    const { deleteFromCatbox } = await import('../server/services/catboxService');
-    const result = await deleteFromCatbox(files, userhash);
-    res.json({ success: true, result });
-  } catch (error: any) {
-    console.error('Catbox deletefiles error:', error);
-    res.status(500).json({ error: error.message || 'Catbox deletefiles failed' });
-  }
-});
-
-// Catbox Album Operations
-app.post('/api/catbox/album/:action', async (req, res) => {
-  try {
-    const { action } = req.params;
-    const { title, desc, files, short } = req.body;
-    const userhash = process.env.CATBOX_USERHASH || '';
-    
-    const { 
-      createCatboxAlbum, 
-      editCatboxAlbum, 
-      addToCatboxAlbum, 
-      removeFromCatboxAlbum, 
-      deleteCatboxAlbum 
-    } = await import('../server/services/catboxService');
-
-    let result;
-    switch (action) {
-      case 'create':
-        result = await createCatboxAlbum(title || '', desc || '', files || [], userhash);
-        break;
-      case 'edit':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await editCatboxAlbum(short, title || '', desc || '', files || [], userhash);
-        break;
-      case 'add':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await addToCatboxAlbum(short, files || [], userhash);
-        break;
-      case 'remove':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await removeFromCatboxAlbum(short, files || [], userhash);
-        break;
-      case 'delete':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await deleteCatboxAlbum(short, userhash);
-        break;
-      default:
-        return res.status(400).json({ error: 'Invalid album action' });
-    }
-    
-    res.json({ success: true, result });
-  } catch (error: any) {
-    console.error(`Catbox album action error:`, error);
-    res.status(500).json({ error: error.message || 'Catbox album action failed' });
-  }
+// Catbox Upload Proxy
+app.post('/api/upload/catbox', upload.single('file'), async (req, res) => {
+    await enqueueUpload(req, res, 'catbox');
 });
 
 // Upload File Proxy (GitHub Fallback)
-app.post('/api/upload/gifyu', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
-  });
-}, async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file uploaded' });
-
-    console.log(`[Gifyu Upload] Received POST /api/upload/gifyu`);
-    const result = await uploadToGifyu(file.buffer, file.originalname, file.mimetype);
-    
-    res.json({
-      url: result.direct_url,
-      direct_url: result.direct_url,
-      thumbnail_url: result.thumbnail_url,
-      viewer_url: result.viewer_url,
-      host: 'Gifyu'
-    });
-  } catch (error: any) {
-    console.error('[Gifyu Upload Error]:', error);
-    res.status(500).json({ error: error.message || 'Internal Server Error during Gifyu upload' });
-  }
+app.post('/api/upload/gifyu', upload.single('file'), async (req, res) => {
+    await enqueueUpload(req, res, 'gifyu');
 });
 
-app.post('/api/upload/imgbb', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
-  });
-}, async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file uploaded' });
-
-    console.log(`[ImgBB Upload] Received POST /api/upload/imgbb`);
-    const result = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);
-    
-    res.json({
-      url: result.direct_url,
-      direct_url: result.direct_url,
-      thumbnail_url: result.thumbnail_url,
-      viewer_url: result.viewer_url,
-      host: 'ImgBB'
-    });
-  } catch (error: any) {
-    console.error('[ImgBB Upload Error]:', error);
-    res.status(500).json({ error: error.message || 'Internal Server Error during ImgBB upload' });
-  }
+app.post('/api/upload/imgbb', upload.single('file'), async (req, res) => {
+    await enqueueUpload(req, res, 'imgbb');
 });
 
-app.post('/api/upload/github', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('[GitHub Upload] Multer error:', err);
-      return res.status(400).json({ error: err.message });
-    }
-    next();
-  });
-}, async (req, res) => {
-  console.log(`[GitHub Upload] Received POST /api/upload/github`);
-  try {
-    const file = req.file;
-    if (!file) {
-      console.warn(`[GitHub Upload] No file provided`);
-      return res.status(400).json({ error: "file is required" });
-    }
-    
-    // Generate a unique filename
-    const filename = `${Date.now()}-${file.originalname}`;
-    const path = `assets/${filename}`;
-    
-    console.log(`[GitHub Upload] Uploading ${file.originalname} to ${path}...`);
-    
-    const imageUrl = await repoManager.uploadAsset(file.buffer, path, file.mimetype);
-    
-    console.log('[GitHub Upload] Final URL extracted:', imageUrl);
-    
-    res.json({ success: true, url: imageUrl });
-  } catch (error: any) {
-    console.error('GitHub Upload Error:', error);
-    res.status(500).json({ error: error.message || 'Internal Server Error during GitHub upload' });
-  }
+app.post('/api/upload/github', upload.single('file'), async (req, res) => {
+    await enqueueUpload(req, res, 'github');
 });
 
 // i.111666.best Upload Proxy

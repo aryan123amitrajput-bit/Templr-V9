@@ -25,6 +25,9 @@ interface TemplateCardProps {
   index: number; 
   author_uid?: string;
   currentUserId?: string;
+  snapchatStatus?: 'pending' | 'uploaded' | 'failed';
+  catbox_url?: string;
+  telegram_file_id?: string;
 
   onMessageCreator: (authorName: string) => void;
   onView: (id: string) => void;
@@ -130,6 +133,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
   index,
   author_uid,
   currentUserId,
+  snapchatStatus,
+  catbox_url,
+  telegram_file_id,
   onView, 
   onLike,
   onFavorite,
@@ -349,9 +355,24 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
         <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-30 pointer-events-none">
              <div className="flex gap-2 pointer-events-auto">
+                 {telegram_file_id && (
+                     <div className="px-3 py-1.5 rounded-lg bg-blue-500/20 backdrop-blur-xl border border-blue-500/30 text-[10px] font-mono font-bold uppercase tracking-wider text-blue-200">
+                        Telegram Hosted ✈️
+                     </div>
+                 )}
                  <div className="px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-xl border border-white/10 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-200">
                     {category}
                  </div>
+                 {snapchatStatus === 'uploaded' && (
+                     <div className="px-3 py-1.5 rounded-lg bg-yellow-500/20 backdrop-blur-xl border border-yellow-500/30 text-[10px] font-mono font-bold uppercase tracking-wider text-yellow-200">
+                        Shared on Snapchat 👻
+                     </div>
+                 )}
+                 {catbox_url && (
+                     <div className="px-3 py-1.5 rounded-lg bg-emerald-500/20 backdrop-blur-xl border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-200">
+                        Catbox Hosted 📦
+                     </div>
+                 )}
              </div>
         </div>
 
