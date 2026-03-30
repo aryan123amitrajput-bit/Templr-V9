@@ -289,57 +289,191 @@ export const getPublicTemplates = async (
     sortBy: 'newest' | 'popular' | 'likes' = 'newest',
     currentUserId?: string
 ): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
-    try {
-        const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[API Debug] Server returned ${response.status} for ${url}. Body: ${text.substring(0, 100)}`);
-            throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
-        }
+    
+    const attempt = async (retryCount = 0): Promise<any> => {
+        try {
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: limitNum.toString(),
+                category: category,
+                searchQuery: searchQuery,
+                sortBy: sortBy
+            });
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error(`[API Debug] Expected JSON but received ${contentType} for ${url}. Body start: ${text.substring(0, 100)}`);
-            throw new Error(`Invalid response format: Expected JSON but received ${contentType}`);
-        }
+            const response = await fetch(`/api/templates?${params.toString()}`);
+            if (!response.ok) {
+                throw new Error(`Backend returned ${response.status}`);
+            }
 
-        const result = await response.json();
-        
-        // Map data to Template interface
-        const data = (result.data || []).map((t: any) => mapTemplate(t));
-        
-        return { data, hasMore: result.hasMore || false };
-    } catch (e: any) {
-        console.error("Error fetching public templates:", e.message || e);
-        return { data: [], hasMore: false, error: e.message || "Connection failed" };
-    }
+            const { data, hasMore } = await response.json();
+            
+            // Map the backend data to the Template interface
+            const mappedData = (data || []).map(mapTemplate);
+
+            return { data: mappedData, hasMore };
+        } catch (e: any) {
+            console.error("Error fetching public templates:", e);
+            
+            // Fallback to Supabase directly if backend fails and it's configured
+            if (supabase) {
+                try {
+                    console.log("Attempting direct Supabase fallback...");
+                    let query = supabase
+                        .from('templates')
+                        .select('*')
+                        .eq('status', 'approved');
+                    
+                    if (category !== 'All') query = query.eq('category', category);
+                    if (searchQuery) query = query.ilike('title', `%${searchQuery}%`);
+                    
+                    if (sortBy === 'popular' || sortBy === 'likes') {
+                        query = query.order('likes', { ascending: false });
+                    } else {
+                        query = query.order('created_at', { ascending: false });
+                    }
+
+                    const { data: sbData, error: sbError } = await query
+                        .range(page * limitNum, (page + 1) * limitNum - 1);
+
+                    if (!sbError && sbData) {
+                        return { 
+                            data: sbData.map(mapTemplate), 
+                            hasMore: sbData.length === limitNum 
+                        };
+                    }
+                } catch (fallbackErr) {
+                    console.error("Supabase fallback failed:", fallbackErr);
+                }
+            }
+
+            return { data: [], hasMore: false, error: e.message || "Connection failed" };
+        }
+    };
+
+    return attempt();
 };
 
 export const getTemplateById = async (id: string): Promise<Template | null> => {
-    try {
-        const response = await fetch(`/api/templates/${id}`);
-        if (!response.ok) return null;
-        const result = await response.json();
-        return mapTemplate(result.template);
-    } catch (e: any) {
-        console.error("Error fetching template:", e);
-        return null;
-    }
+    const attempt = async (retryCount = 0): Promise<Template | null> => {
+        try {
+            // Fetch from backend
+            const response = await fetch(`/api/templates/${id}`);
+            if (response.ok) {
+                const { data } = await response.json();
+                if (data) return mapTemplate(data);
+            }
+
+            // Fallback to Supabase directly
+            if (supabase) {
+                const { data, error } = await supabase
+                    .from('templates')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+                
+                if (!error && data) return mapTemplate(data);
+            }
+            
+            return null;
+        } catch (e: any) {
+            console.error("Error fetching template:", e);
+            return null;
+        }
+    };
+    return attempt();
 };
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
-    try {
-        const response = await fetch('/api/creators');
-        if (!response.ok) throw new Error("Failed to fetch featured creators");
-        const result = await response.json();
-        return result.data;
-    } catch (e: any) {
-        console.error("Error fetching featured creators:", e);
-        return [];
-    }
+    const attempt = async (retryCount = 0): Promise<CreatorStats[]> => {
+        try {
+            const statsMap = new Map<string, CreatorStats>();
+
+            // 1. Fetch from GitHub (via backend /api/creators)
+            try {
+                const response = await fetch('/api/creators');
+                if (response.ok) {
+                    const { data } = await response.json();
+                    (data || []).forEach((t: any) => {
+                        const email = t.author_email || t.authorEmail || t.email || 'anon';
+                        const name = t.author_name || t.authorName || t.author || 'Anonymous';
+                        const rawAvatar = t.author_avatar || t.authorAvatar || t.avatar_url || t.avatarUrl || t.avatar;
+
+                        statsMap.set(email, {
+                            name: name,
+                            email: email,
+                            totalViews: t.views || 0,
+                            totalLikes: t.likes || 0,
+                            templateCount: t.templates || 1,
+                            avatarUrl: rawAvatar ? fixUrl(rawAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                            role: 'Creator'
+                        });
+                    });
+                }
+            } catch (githubErr) {
+                console.warn("GitHub creators fetch failed:", githubErr);
+            }
+
+            // 2. Fetch from Supabase
+            if (supabase) {
+                try {
+                    const { data: supabaseData, error } = await supabase
+                        .from('templates')
+                        .select('author_name, author_email, author_avatar, views, likes')
+                        .eq('status', 'approved');
+                    
+                    if (!error && supabaseData) {
+                        supabaseData.forEach((t: any) => {
+                            const email = t.author_email || 'anon';
+                            const name = t.author_name || 'Anonymous';
+                            const rawAvatar = t.author_avatar;
+
+                            const current = statsMap.get(email) || {
+                                name: name,
+                                email: email,
+                                totalViews: 0,
+                                totalLikes: 0,
+                                templateCount: 0,
+                                avatarUrl: rawAvatar ? fixUrl(rawAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                                role: 'Creator'
+                            };
+
+                            current.totalViews += (t.views || 0);
+                            current.totalLikes += (t.likes || 0);
+                            current.templateCount += 1;
+                            statsMap.set(email, current);
+                        });
+                    }
+                } catch (supabaseErr) {
+                    console.warn("Supabase creators fetch failed:", supabaseErr);
+                }
+            }
+
+            const allCreators = Array.from(statsMap.values())
+                .sort((a, b) => b.totalViews - a.totalViews)
+                .slice(0, 20);
+
+            for (let i = allCreators.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
+            }
+
+            return allCreators.slice(0, 4).map(c => ({
+                ...c,
+                role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
+            }));
+        } catch (e: any) {
+            const msg = e.message?.toLowerCase() || '';
+            if (retryCount < 3 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out') || msg.includes('offline'))) {
+                const delay = 2000 * Math.pow(1.5, retryCount);
+                console.warn(`Featured creators fetch failed, retrying... (${retryCount + 1}) in ${delay}ms`);
+                await new Promise(r => setTimeout(r, delay));
+                return attempt(retryCount + 1);
+            }
+            return [];
+        }
+    };
+
+    return attempt();
 };
 
 export const listenForUserTemplates = (userId: string, userEmail: string | undefined, callback: (templates: Template[]) => void) => {
