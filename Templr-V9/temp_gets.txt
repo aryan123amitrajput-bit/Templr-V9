@@ -1,0 +1,11 @@
+app.get('/api/registry', (req, res) => {
+app.get('/api/proxy', async (req, res) => {
+app.get('/api/admin/hosts', (req, res) => {
+app.get('/api/admin/audit-reports', (req, res) => {
+app.get('/robots.txt', (req, res) => {
+app.get('/sitemap.xml', async (req, res) => {
+app.get('/api/templates', async (req, res) => {
+app.get('/api/creators', async (req, res) => {
+app.get('/api/user/templates', async (req, res) => {
+app.get('/api/templates/:id', async (req, res) => {
+    app.get('*', (req, res) => {
