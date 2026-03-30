@@ -226,6 +226,7 @@ class FreeHostService {
     
     let currentCount = 0;
     const templates: TemplateMetadata[] = [];
+    const errors: string[] = [];
     
     for (const batch of this.registry.batches) {
       const batchStart = currentCount;
@@ -233,19 +234,25 @@ class FreeHostService {
       
       // Check if this batch overlaps with our requested range
       if (batchEnd > startIdx && batchStart < endIdx) {
-        const content = await this.fetchBatchContent(batch.url);
-        if (content && content.templates) {
-          // Apply filters if any
-          let filtered = content.templates;
-          if (category && category !== 'All') {
-            filtered = filtered.filter((t: any) => t.category === category);
+        try {
+          const content = await this.fetchBatchContent(batch.url);
+          if (content && content.templates) {
+            // Apply filters if any
+            let filtered = content.templates;
+            if (category && category !== 'All') {
+              filtered = filtered.filter((t: any) => t.category === category);
+            }
+            if (searchQuery) {
+              const q = searchQuery.toLowerCase();
+              filtered = filtered.filter((t: any) => t.name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+            }
+            
+            templates.push(...filtered);
+          } else {
+            errors.push(`Batch ${batch.id} returned no templates or invalid format.`);
           }
-          if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            filtered = filtered.filter((t: any) => t.name?.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
-          }
-          
-          templates.push(...filtered);
+        } catch (e: any) {
+          errors.push(`Failed to fetch batch ${batch.id} from ${batch.url}: ${e.message}`);
         }
       }
       
@@ -253,6 +260,12 @@ class FreeHostService {
       if (currentCount >= endIdx && !category && !searchQuery) break;
     }
     
+    if (templates.length === 0 && errors.length > 0) {
+        console.error(`[FreeHostService] No templates found and encountered errors: ${errors.join('; ')}`);
+        // We don't throw here to avoid breaking the whole merge if other services work,
+        // but we've logged the details.
+    }
+
     return templates.slice(0, limit);
   }
 
@@ -349,11 +362,13 @@ class FreeHostService {
       });
       if (response.ok) {
         return await response.json();
+      } else {
+        throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
       }
-    } catch (e) {
-      console.error(`Failed to fetch batch from ${url}:`, e);
+    } catch (e: any) {
+      console.error(`[FreeHostService] Failed to fetch batch from ${url}:`, e.message);
+      throw e;
     }
-    return null;
   }
 }
 

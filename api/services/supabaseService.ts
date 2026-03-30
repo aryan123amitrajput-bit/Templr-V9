@@ -72,13 +72,13 @@ export async function getTemplates(): Promise<any[]> {
     
     if (error) {
       console.error('[Supabase Fetch Error]', error);
-      return [];
+      throw new Error(`Supabase fetch failed: ${error.message}`);
     }
     
     return data || [];
   } catch (e: any) {
-    console.warn('[Supabase] Skipping templates fetch:', e.message);
-    return [];
+    console.error('[Supabase Fetch Exception]', e.message);
+    throw e;
   }
 }
 

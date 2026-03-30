@@ -159,8 +159,9 @@ export class RepoManager {
 
   async getRegistry(repo: RepoConfig, useCache = true): Promise<TemplateMetadata[]> {
     if (repo.type === 'github' && (!repo.owner || !repo.repo)) {
-      console.error('GitHub repo config missing owner or repo:', repo);
-      return [];
+      const errorMsg = `GitHub repo config missing owner or repo: ${JSON.stringify(repo)}`;
+      console.error(`[RepoManager] ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     const cacheKey = repo.type === 'github' ? `${repo.owner}/${repo.repo}` : repo.projectId!;
     
@@ -190,6 +191,7 @@ export class RepoManager {
             console.warn(`[RepoManager] Octokit 404 for registry.json`);
             data = [];
           } else {
+            console.error(`[RepoManager] Octokit fetch error for ${cacheKey}:`, octoErr);
             throw octoErr;
           }
         }
@@ -221,15 +223,18 @@ export class RepoManager {
                 console.warn(`[RepoManager] Octokit 404 for registry.json`);
                 data = [];
               } else {
+                console.error(`[RepoManager] Octokit fallback error for ${cacheKey}:`, octoErr);
                 throw octoErr;
               }
             }
           } else {
-            throw new Error(`CDN error: ${response.statusText}`);
+            const errorMsg = `CDN error for ${url}: ${response.status} ${response.statusText}`;
+            console.error(`[RepoManager] ${errorMsg}`);
+            throw new Error(errorMsg);
           }
         } catch (e: any) {
-          console.error(`GitHub registry fetch error for ${cacheKey}:`, e);
-          return [];
+          console.error(`[RepoManager] GitHub registry fetch error for ${cacheKey}:`, e);
+          throw e;
         }
       }
     } else {
@@ -247,11 +252,13 @@ export class RepoManager {
           console.warn(`[RepoManager] GitLab 404 for ${url}`);
           data = [];
         } else {
-          throw new Error(`GitLab error: ${response.statusText}`);
+          const errorMsg = `GitLab error for ${url}: ${response.status} ${response.statusText}`;
+          console.error(`[RepoManager] ${errorMsg}`);
+          throw new Error(errorMsg);
         }
-      } catch (e) {
-        console.error(`GitLab registry fetch error for ${cacheKey}:`, e);
-        return [];
+      } catch (e: any) {
+        console.error(`[RepoManager] GitLab registry fetch error for ${cacheKey}:`, e);
+        throw e;
       }
     }
 
@@ -454,9 +461,12 @@ export class RepoManager {
     console.log(`[RepoManager] Found ${repos.length} repos:`, JSON.stringify(repos));
     
     // Fetch all registries in parallel
+    const errors: string[] = [];
     const registryPromises = repos.map(repo => 
       this.getRegistry(repo).catch(e => {
-        console.error(`Failed to fetch registry for ${repo.type}:`, e);
+        const msg = `Failed to fetch registry for ${repo.type} (${repo.owner || repo.projectId}): ${e.message}`;
+        console.error(`[RepoManager] ${msg}`, e);
+        errors.push(msg);
         return [] as TemplateMetadata[];
       })
     );
@@ -482,6 +492,13 @@ export class RepoManager {
     }
     
     console.log(`[RepoManager] Returning ${uniqueTemplates.length} unique templates.`);
+    
+    // If we have errors but also some templates, we just log the errors.
+    // If we have NO templates and there were errors, we might want to know why.
+    if (uniqueTemplates.length === 0 && errors.length > 0) {
+        console.error(`[RepoManager] No templates found and encountered errors: ${errors.join('; ')}`);
+    }
+
     return uniqueTemplates;
   }
 

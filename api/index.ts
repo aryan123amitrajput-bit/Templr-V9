@@ -850,14 +850,17 @@ app.get('/api/templates', async (req, res) => {
 
     // 1. Get templates from Threads (Primary Database)
     let data: any[] = [];
+    const errors: string[] = [];
     console.log('[API] Starting template fetch...');
     if (threadsService.isConfigured()) {
         try {
             const threadsTemplates = await threadsService.fetchTemplates();
             console.log(`[API] Threads returned ${threadsTemplates.length} templates.`);
             data = threadsTemplates.map(mapThreadsToTemplate);
-        } catch (e) {
-            console.error('[API] Threads fetch error:', e);
+        } catch (e: any) {
+            const msg = `Threads fetch error: ${e.message}`;
+            console.error(`[API] ${msg}`, e);
+            errors.push(msg);
         }
     } else {
         console.log('[API] Threads service not configured.');
@@ -868,8 +871,10 @@ app.get('/api/templates', async (req, res) => {
       const supabaseTemplates = await getSupabaseTemplates();
       console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
       data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
-    } catch (e) {
-      console.error('[API] Supabase fetch error:', e);
+    } catch (e: any) {
+      const msg = `Supabase fetch error: ${e.message}`;
+      console.error(`[API] ${msg}`, e);
+      errors.push(msg);
     }
 
     // 3. Get templates from repositories (GitHub/GitLab)
@@ -877,8 +882,10 @@ app.get('/api/templates', async (req, res) => {
       const repoTemplates = await repoManager.getMergedRegistry();
       console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
       data.push(...repoTemplates);
-    } catch (e) {
-      console.error('[API] Repo fetch error:', e);
+    } catch (e: any) {
+      const msg = `Repo fetch error: ${e.message}`;
+      console.error(`[API] ${msg}`, e);
+      errors.push(msg);
     }
 
     // 4. Get templates from freeHostService
@@ -901,11 +908,19 @@ app.get('/api/templates', async (req, res) => {
         status: 'approved'
       }));
       data.push(...mappedFreeTemplates);
-    } catch (e) {
-      console.error('[API] FreeHost fetch error:', e);
+    } catch (e: any) {
+      const msg = `FreeHost fetch error: ${e.message}`;
+      console.error(`[API] ${msg}`, e);
+      errors.push(msg);
     }
 
     console.log(`[API] Total templates after merging: ${data.length}`);
+    
+    if (data.length === 0 && errors.length > 0) {
+        const combinedError = `No templates found. Errors encountered: ${errors.join('; ')}`;
+        console.error(`[API] ${combinedError}`);
+        throw new Error(combinedError);
+    }
     
     // Remove duplicates by ID
     const uniqueTemplates: any[] = [];
@@ -917,9 +932,12 @@ app.get('/api/templates', async (req, res) => {
       }
     }
     data = uniqueTemplates;
+    console.log(`[API] Unique templates: ${data.length}`);
 
     // Filter by status 'approved' (or allow if status is missing)
+    const beforeFilter = data.length;
     data = data.filter((t: any) => !t.status || t.status === 'approved');
+    console.log(`[API] Templates after 'approved' filter: ${data.length} (Filtered out ${beforeFilter - data.length})`);
 
     // Filter by userId or email if provided
     if (userId || email) {
@@ -928,10 +946,12 @@ app.get('/api/templates', async (req, res) => {
         const matchEmail = email && (t.author_email === email || (t.author && t.author.email === email));
         return matchId || matchEmail;
       });
+      console.log(`[API] Templates after user/email filter: ${data.length}`);
     }
 
     if (category && category !== 'All') {
       data = data.filter((t: any) => t.category === category);
+      console.log(`[API] Templates after category filter (${category}): ${data.length}`);
     }
 
     if (searchQuery) {
@@ -940,6 +960,7 @@ app.get('/api/templates', async (req, res) => {
         t.title?.toLowerCase().includes(lowerQuery) || 
         t.description?.toLowerCase().includes(lowerQuery)
       );
+      console.log(`[API] Templates after search filter (${searchQuery}): ${data.length}`);
     }
 
     if (sortBy === 'popular' || sortBy === 'likes') {
