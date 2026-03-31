@@ -11,19 +11,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { getSupabase, addTemplate as addSupabaseTemplate, getTemplates as getSupabaseTemplates } from './services/supabaseService';
-import { uploadToCatbox } from './services/catboxService';
-import { uploadToSupabase } from './services/supabaseService';
-import { uploadToI111666 } from './services/i111666Service';
-import { uploadToImgBB } from './services/imgbbService';
-import { uploadToGifyu } from './services/gifyuService';
-import { uploadToImgHippo } from './services/imghippoService';
 import { repoManager } from './services/repoService';
 import { freeHostService } from './services/freeHostService';
-import { threadsService } from './services/threadsService';
 import { traffService } from './services/traffService';
 import { templrAuditor } from './services/templrAuditor';
-import { uploadToPasteRs } from './services/pasteService';
-import { telegramService } from './services/telegramService';
+import { processFileUpload, uploadText } from '../lib/upload';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -218,33 +210,7 @@ function mapSupabaseToTemplate(t: any) {
   };
 }
 
-function mapThreadsToTemplate(t: any) {
-  return {
-    id: t.id,
-    title: t.title,
-    description: t.description || '',
-    author: t.author || 'Anonymous',
-    author_id: '',
-    author_uid: '',
-    authorAvatar: '',
-    imageUrl: t.demoLink || '', // Threads CDN URL
-    bannerUrl: t.demoLink || '',
-    thumbnail: t.demoLink || '',
-    likes: 0,
-    views: 0,
-    category: t.category || 'Uncategorized',
-    tags: t.tags || [],
-    price: t.price || 'Free',
-    fileUrl: '',
-    fileType: 'html',
-    status: 'approved',
-    sales: 0,
-    earnings: 0,
-    created_at: t.timestamp,
-    galleryImages: [],
-    videoUrl: ''
-  };
-}
+
 
 const app = express();
 
@@ -460,78 +426,6 @@ app.post('/api/upload/pastesrs', async (req, res) => {
 });
 
 // Upload File Proxy (New Workflow: External only)
-async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
-    const isVideo = mimetype.startsWith('video/');
-    
-    console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
-
-    // 1. Try Telegram (User Preferred)
-    if (telegramService.isConfigured()) {
-        try {
-            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
-            const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
-            if (match) {
-                const botIndex = match[1];
-                const fileId = match[2];
-                const imageUrl = `/api/tg-file/${botIndex}/${fileId}`;
-                return { imageUrl, hostUsed: 'Telegram' };
-            }
-        } catch (e: any) {
-            console.warn('[Upload] Telegram failed, trying Catbox...', e.message);
-        }
-    }
-
-    // 2. Try Catbox
-    try {
-        const result = await uploadToCatbox(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, catboxUrl: result.direct_url, hostUsed: 'Catbox' };
-    } catch (e: any) {
-        console.warn('[Upload] Catbox failed, trying Supabase...', e.message);
-    }
-
-    // 2. Try Supabase
-    try {
-        const url = await uploadToSupabase(buffer, originalname, mimetype);
-        return { imageUrl: url, hostUsed: 'Supabase' };
-    } catch (e: any) {
-        console.warn('[Upload] Supabase failed, trying i111666...', e.message);
-    }
-
-    // 3. Try i111666
-    try {
-        const result = await uploadToI111666(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'i111666' };
-    } catch (e: any) {
-        console.warn('[Upload] i111666 failed, trying ImgBB...', e.message);
-    }
-
-    // 3. Try ImgBB
-    try {
-        const result = await uploadToImgBB(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
-    }
-
-    // 4. Try Gifyu
-    try {
-        const result = await uploadToGifyu(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
-    } catch (e: any) {
-        console.warn('[Upload] Gifyu failed, trying ImgHippo...', e.message);
-    }
-
-    // 5. Try ImgHippo
-    try {
-        const result = await uploadToImgHippo(buffer, originalname);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-    } catch (e: any) {
-        console.error('[Upload] All external hosts failed:', e.message);
-        throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
-    }
-}
-
-// Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
 app.post('/api/upload', (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -551,7 +445,7 @@ app.post('/api/upload', (req, res, next) => {
     }
     console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}, Mime: ${file.mimetype}`);
 
-    const { imageUrl, catboxUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
+    const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
     console.log('[Upload] Host used:', hostUsed);
@@ -562,7 +456,6 @@ app.post('/api/upload', (req, res, next) => {
             title,
             description,
             image_url: imageUrl,
-            catbox_url: catboxUrl,
             created_at: new Date().toISOString()
         });
 
@@ -848,23 +741,7 @@ app.get('/api/templates', async (req, res) => {
     const userId = req.query.userId as string;
     const email = req.query.email as string;
 
-    // 1. Get templates from Threads (Primary Database)
-    let data: any[] = [];
-    const errors: string[] = [];
-    console.log('[API] Starting template fetch...');
-    if (threadsService.isConfigured()) {
-        try {
-            const threadsTemplates = await threadsService.fetchTemplates();
-            console.log(`[API] Threads returned ${threadsTemplates.length} templates.`);
-            data = threadsTemplates.map(mapThreadsToTemplate);
-        } catch (e: any) {
-            const msg = `Threads fetch error: ${e.message}`;
-            console.error(`[API] ${msg}`, e);
-            errors.push(msg);
-        }
-    } else {
-        console.log('[API] Threads service not configured.');
-    }
+
 
     // 2. Get templates from Supabase (Secondary/Backup source)
     try {
