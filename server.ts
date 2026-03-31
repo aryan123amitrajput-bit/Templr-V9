@@ -1,24 +1,24 @@
-import { uploadQueue } from './api/services/queueService';
-import './api/workers/uploadWorker';
+import { uploadQueue } from './src/services/queueService';
+import './server/workers/uploadWorker';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { uploadToImgBB } from './api/services/imgbbService';
-import { uploadToImgHippo } from './api/services/imghippoService';
-import { uploadToI111666 } from './api/services/i111666Service';
-import { uploadToGifyu } from './api/services/gifyuService';
-import { uploadToBeeIMG } from './api/services/beeimgService';
-import { uploadToPasteRs } from './api/services/pasteService';
-import { uploadToCatbox } from './api/services/catboxService';
-import { telegramService } from './api/services/telegramService';
+import { uploadToImgBB } from './src/services/imgbbService';
+import { uploadToImgHippo } from './src/services/imghippoService';
+import { uploadToI111666 } from './src/services/i111666Service';
+import { uploadToGifyu } from './src/services/gifyuService';
+import { uploadToBeeIMG } from './src/services/beeimgService';
+import { uploadToPasteRs } from './src/services/pasteService';
+import { uploadToCatbox } from './src/services/catboxService';
+import { telegramService } from './src/services/telegramService';
 import { processFileUpload } from './lib/upload';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager, TemplateMetadata } from './api/services/repoService';
-import { freeHostService } from './api/services/freeHostService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from './api/services/supabaseService';
+import { repoManager, TemplateMetadata } from './src/services/repoService';
+import { freeHostService } from './src/services/freeHostService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from './src/services/supabaseService';
 import fs from 'fs';
 import crypto from 'crypto';
 
@@ -412,14 +412,6 @@ function mapSupabaseToTemplate(t: any) {
       // Process upload synchronously to return URL and host to client
       const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
       
-      let finalImageUrl = imageUrl;
-      if (imageUrl.startsWith('tg://')) {
-          const match = imageUrl.match(/^tg:\/\/(\d+)\/(.+)$/);
-          if (match) {
-              finalImageUrl = `/api/tg-file/${match[1]}/${match[2]}`;
-          }
-      }
-
       // Create record in Supabase
       const templateId = crypto.randomUUID();
       await addSupabaseTemplate({
@@ -427,13 +419,13 @@ function mapSupabaseToTemplate(t: any) {
           title: originalname,
           description: description || 'Direct upload',
           status: 'active',
-          image_url: finalImageUrl,
+          image_url: imageUrl,
           created_at: new Date().toISOString()
       });
       
       return res.status(200).json({ 
           success: true, 
-          url: finalImageUrl, 
+          url: imageUrl, 
           host: hostUsed, 
           templateId 
       });
@@ -636,42 +628,30 @@ function mapSupabaseToTemplate(t: any) {
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
-      const [gitRegistry, supabaseTemplates, freeTemplates] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        getSupabaseTemplates(),
-        freeHostService.getTemplates(0, 1000)
-      ]);
-
-      const allTemplates = [
-        ...gitRegistry, 
-        ...supabaseTemplates.map(mapSupabaseToTemplate),
-        ...freeTemplates.map(mapSupabaseToTemplate)
-      ];
-      const approvedTemplates = allTemplates.filter((t: any) => !t.status || t.status === 'approved');
+      const templates = await repoManager.getMergedRegistry();
+      const approvedTemplates = templates.filter((t: any) => t.status === 'approved');
       
       const creatorsMap = new Map();
       approvedTemplates.forEach((t: any) => {
-        const email = t.author_email || t.creator_email || t.email;
-        if (!email) return;
-        if (!creatorsMap.has(email)) {
-          creatorsMap.set(email, {
-            name: t.author || t.author_name || 'Anonymous',
-            email: email,
-            avatarUrl: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author || 'Anonymous')}&background=random`,
+        if (!t.author_email) return;
+        if (!creatorsMap.has(t.author_email)) {
+          creatorsMap.set(t.author_email, {
+            author_name: t.author_name || 'Anonymous',
+            author_email: t.author_email,
+            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'Anonymous')}&background=random`,
             views: 0,
-            totalLikes: 0,
-            templateCount: 0,
-            role: 'Creator'
+            likes: 0,
+            templates: 0
           });
         }
-        const creator = creatorsMap.get(email);
+        const creator = creatorsMap.get(t.author_email);
         creator.views += (t.views || 0);
-        creator.totalLikes += (t.likes || 0);
-        creator.templateCount += 1;
+        creator.likes += (t.likes || 0);
+        creator.templates += 1;
       });
 
       const creators = Array.from(creatorsMap.values())
-        .sort((a: any, b: any) => (b.totalLikes + b.views) - (a.totalLikes + a.views))
+        .sort((a: any, b: any) => (b.likes + b.views) - (a.likes + a.views))
         .slice(0, 10); // Top 10
 
       res.json({ data: creators });
