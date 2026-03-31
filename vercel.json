@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "server.ts": {
+    "api/server.ts": {
       "memory": 1024,
       "maxDuration": 60
     }
@@ -9,7 +9,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/server.ts"
+      "destination": "/api/server.ts"
     },
     {
       "source": "/(.*)",

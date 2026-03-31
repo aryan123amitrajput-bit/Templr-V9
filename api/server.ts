@@ -1,24 +1,24 @@
-import { uploadQueue } from './src/services/queueService';
-import './server/workers/uploadWorker';
+import { uploadQueue } from '../src/services/queueService';
+import '../server/workers/uploadWorker';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { uploadToImgBB } from './src/services/imgbbService';
-import { uploadToImgHippo } from './src/services/imghippoService';
-import { uploadToI111666 } from './src/services/i111666Service';
-import { uploadToGifyu } from './src/services/gifyuService';
-import { uploadToBeeIMG } from './src/services/beeimgService';
-import { uploadToPasteRs } from './src/services/pasteService';
-import { uploadToCatbox } from './src/services/catboxService';
-import { telegramService } from './src/services/telegramService';
-import { processFileUpload } from './lib/upload';
+import { uploadToImgBB } from '../src/services/imgbbService';
+import { uploadToImgHippo } from '../src/services/imghippoService';
+import { uploadToI111666 } from '../src/services/i111666Service';
+import { uploadToGifyu } from '../src/services/gifyuService';
+import { uploadToBeeIMG } from '../src/services/beeimgService';
+import { uploadToPasteRs } from '../src/services/pasteService';
+import { uploadToCatbox } from '../src/services/catboxService';
+import { telegramService } from '../src/services/telegramService';
+import { processFileUpload } from '../lib/upload';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager, TemplateMetadata } from './src/services/repoService';
-import { freeHostService } from './src/services/freeHostService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from './src/services/supabaseService';
+import { repoManager, TemplateMetadata } from '../src/services/repoService';
+import { freeHostService } from '../src/services/freeHostService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from '../src/services/supabaseService';
 import fs from 'fs';
 import crypto from 'crypto';
 
@@ -1092,4 +1092,6 @@ function mapSupabaseToTemplate(t: any) {
   });
 }
 
-startServer();
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
