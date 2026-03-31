@@ -1,12 +1,7 @@
 
 import axios from 'axios';
-import { createClient } from '@supabase/supabase-js';
 
 const API_BASE = '/api';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface Template {
   id: string;
@@ -83,7 +78,7 @@ export const getPublicTemplates = async (
     const params = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
-      searchQuery: search,
+      search,
       category,
       sort,
     });
@@ -109,16 +104,15 @@ export const getTemplateById = async (id: string) => {
   return response.data;
 };
 
-export const getUserTemplates = async (email: string) => {
-  const response = await axios.get(`${API_BASE}/user/templates?email=${encodeURIComponent(email)}`);
+export const getUserTemplates = async (userId: string) => {
+  const response = await axios.get(`${API_BASE}/user/templates?userId=${userId}`);
   return response.data;
 };
 
 export const listenForUserTemplates = (userId: string, email: string | undefined, callback: (data: Template[]) => void) => {
   const fetch = async () => {
-    if (!email) return;
     try {
-      const data = await getUserTemplates(email);
+      const data = await getUserTemplates(userId);
       callback(data.data || []);
     } catch (e) {
       console.error('Error in listenForUserTemplates:', e);
@@ -152,12 +146,12 @@ export const uploadImage = async (file: File) => {
 export const uploadFile = async (file: File) => {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await axios.post(`${API_BASE}/upload`, formData);
-  return response.data; // Returns { url, host, ... }
+  const response = await axios.post(`${API_BASE}/upload/catbox`, formData);
+  return response.data.url;
 };
 
 export const uploadText = async (text: string) => {
-  const response = await axios.post(`${API_BASE}/upload/text`, { content: text });
+  const response = await axios.post(`${API_BASE}/upload/text`, { text });
   return response.data;
 };
 
@@ -172,27 +166,8 @@ export const updateTemplate = async (id: string, updates: any) => {
 };
 
 export const updateTemplateData = async (id: string, data: any, email: string) => {
-  const mappedUpdates = {
-    title: data.title,
-    description: data.description,
-    image_url: data.imageUrl,
-    file_url: data.fileUrl,
-    video_url: data.videoUrl,
-    tags: data.tags,
-    category: data.category,
-    status: data.initialStatus || data.status,
-    author_email: email
-  };
-  
-  // Remove undefined fields
-  Object.keys(mappedUpdates).forEach(key => {
-    if (mappedUpdates[key as keyof typeof mappedUpdates] === undefined) {
-      delete mappedUpdates[key as keyof typeof mappedUpdates];
-    }
-  });
-
   const response = await axios.put(`${API_BASE}/templates/${id}`, { 
-    updates: mappedUpdates 
+    updates: { ...data, author_email: email } 
   });
   return response.data;
 };
@@ -201,10 +176,10 @@ export const addTemplate = async (data: NewTemplateData, user: any) => {
   const payload = {
     template: {
       ...data,
-      author_id: user?.id || user?.uid,
-      author_name: user?.user_metadata?.name || user?.displayName || user?.email?.split('@')[0] || 'Anonymous',
+      author_id: user?.uid,
+      author_name: user?.displayName || user?.email?.split('@')[0] || 'Anonymous',
       author_email: user?.email,
-      author_avatar: user?.user_metadata?.avatar_url || user?.photoURL || ''
+      author_avatar: user?.photoURL || ''
     }
   };
   const response = await axios.post(`${API_BASE}/templates`, payload);
@@ -231,54 +206,32 @@ export const logError = async (error: any) => {
   return { success: true };
 };
 
-export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
-  return subscription;
-};
-
 export const signInWithEmail = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data;
+  const response = await axios.post(`${API_BASE}/auth/signin`, { email, password });
+  return response.data;
 };
 
 export const signUpWithEmail = async (email: string, password: string, name: string) => {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { full_name: name, usage_count: 0, is_pro: false } }
-  });
-  if (error) throw error;
-  return data;
+  const response = await axios.post(`${API_BASE}/auth/signup`, { email, password, name });
+  return response.data;
 };
 
 export const signInWithGoogle = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-    },
-  });
-  if (error) throw error;
-  return data;
+  const response = await axios.post(`${API_BASE}/auth/signin`, { provider: 'google' });
+  return response.data;
 };
 
 export const signOutUser = async () => {
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
   return { success: true };
 };
 
 export const updateUserProfile = async (uid: string, updates: any) => {
-  const { data, error } = await supabase.auth.updateUser({
-    data: updates
-  });
-  if (error) throw error;
-  return data;
+  const response = await axios.post(`${API_BASE}/user/update`, { uid, updates });
+  return response.data;
 };
 
 export const fixUrl = (url: string) => {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http') || url.startsWith('/')) return url;
   return `https://${url}`;
 };

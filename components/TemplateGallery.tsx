@@ -6,6 +6,7 @@ import { playClickSound } from '../audio';
 import { SearchIcon, NoResultsIcon, XIcon, FilterIcon, SortIcon, ArrowRightIcon } from './Icons';
 import { ScrollReveal } from './ScrollReveal';
 import { BorderBeam } from './ui/BorderBeam';
+import { LiquidGlassView, LiquidGlassContainerView } from './ui/LiquidGlass';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const filters = ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 'Blog'];
@@ -215,220 +216,227 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         {/* Floating Filter Dock */}
         <ScrollReveal>
             <div className="sticky top-24 z-40 flex justify-center mb-24 px-4 w-full">
-                <div className={`
-                    relative group transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]
-                    flex flex-col w-full max-w-4xl
-                `}>
-                    
-                    {/* Primary Bar */}
+                <LiquidGlassView 
+                    effect="liquid" 
+                    interactive 
+                    intensity={0.8}
+                    className="w-full max-w-4xl"
+                >
                     <div className={`
-                        relative p-2 bg-[#050505]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl 
-                        flex flex-col md:flex-row gap-2 w-full
-                        shadow-[0_20px_40px_-10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.05)]
-                        ${isFocused ? 'scale-[1.01] border-white/10 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]' : 'hover:border-white/10'}
-                        z-20
+                        relative group transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]
+                        flex flex-col w-full
                     `}>
-                        <BorderBeam size={200} duration={8} delay={0} borderWidth={1} colorFrom="#3b82f6" colorTo="#a855f7" className="opacity-70" />
                         
-                        {/* Search Input */}
-                        <div className="relative flex-1 group/search">
-                            <div className={`
-                                relative h-12 flex items-center rounded-xl border transition-all duration-300 overflow-hidden px-4
-                                ${isFocused ? 'bg-black border-blue-500/30' : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.05]'}
-                            `}>
-                                <SearchIcon className={`w-5 h-5 mr-3 transition-colors duration-300 ${isFocused ? 'text-blue-400' : 'text-slate-500'}`} />
-                                <input 
-                                    id="template-search-input"
-                                    type="text" 
-                                    placeholder="Search templates, tags, creators..." 
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onFocus={() => setIsFocused(true)}
-                                    onBlur={() => setIsFocused(false)}
-                                    className="w-full h-full bg-transparent text-sm font-medium text-white placeholder-slate-500 focus:outline-none"
-                                />
-                                <div className="flex items-center gap-2">
-                                    {isFetching && (
-                                        <motion.div 
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                            className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full"
-                                        />
-                                    )}
-                                    {!searchQuery && !isFocused && (
-                                        <div className="hidden md:flex items-center px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-[10px] text-slate-500 font-mono">
-                                            /
-                                        </div>
-                                    )}
-                                    {searchQuery && (
-                                        <button 
-                                            onClick={() => { setSearchQuery(''); playClickSound(); }}
-                                            className="p-1 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-colors animate-fade-in"
-                                        >
-                                            <XIcon className="w-4 h-4" />
-                                        </button>
-                                    )}
+                        {/* Primary Bar */}
+                        <div className={`
+                            relative p-2 bg-[#050505]/60 backdrop-blur-3xl border border-white/[0.08] rounded-2xl 
+                            flex flex-col md:flex-row gap-2 w-full
+                            shadow-[0_20px_40px_-10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.05)]
+                            ${isFocused ? 'scale-[1.01] border-white/10 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]' : 'hover:border-white/10'}
+                            z-20
+                        `}>
+                            <BorderBeam size={200} duration={8} delay={0} borderWidth={1} colorFrom="#3b82f6" colorTo="#a855f7" className="opacity-70" />
+                            
+                            {/* Search Input */}
+                            <div className="relative flex-1 group/search">
+                                <div className={`
+                                    relative h-12 flex items-center rounded-xl border transition-all duration-300 overflow-hidden px-4
+                                    ${isFocused ? 'bg-black/40 border-blue-500/30' : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.05]'}
+                                `}>
+                                    <SearchIcon className={`w-5 h-5 mr-3 transition-colors duration-300 ${isFocused ? 'text-blue-400' : 'text-slate-500'}`} />
+                                    <input 
+                                        id="template-search-input"
+                                        type="text" 
+                                        placeholder="Search templates, tags, creators..." 
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onFocus={() => setIsFocused(true)}
+                                        onBlur={() => setIsFocused(false)}
+                                        className="w-full h-full bg-transparent text-sm font-medium text-white placeholder-slate-500 focus:outline-none"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                        {isFetching && (
+                                            <motion.div 
+                                                animate={{ rotate: 360 }}
+                                                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                                className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full"
+                                            />
+                                        )}
+                                        {!searchQuery && !isFocused && (
+                                            <div className="hidden md:flex items-center px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-[10px] text-slate-500 font-mono">
+                                                /
+                                            </div>
+                                        )}
+                                        {searchQuery && (
+                                            <button 
+                                                onClick={() => { setSearchQuery(''); playClickSound(); }}
+                                                className="p-1 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-colors animate-fade-in"
+                                            >
+                                                <XIcon className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {/* Results Count Badge */}
+                                <AnimatePresence>
+                                    {debouncedSearch && !isFetching && data.length > 0 && (
+                                        <motion.div
+                                            initial={{ opacity: 0, x: -10 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: -5 }}
+                                            className="absolute -top-6 right-4 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-bold text-blue-400 uppercase tracking-tighter"
+                                        >
+                                            {data.length}{hasMore ? '+' : ''} Results
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                {/* Trending Tags Dropdown */}
+                                <AnimatePresence>
+                                    {isFocused && !searchQuery && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                                            className="absolute top-full left-0 right-0 mt-2 p-4 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden"
+                                        >
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></div>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Trending Searches</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['Modern Dashboard', 'SaaS Landing', 'Dark Mode', 'Portfolio', 'E-commerce'].map((tag) => (
+                                                    <button
+                                                        key={tag}
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault(); // Prevent blur
+                                                            setSearchQuery(tag);
+                                                            playClickSound();
+                                                        }}
+                                                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:border-blue-500/30 hover:bg-blue-500/10 text-[11px] text-slate-400 hover:text-blue-400 transition-all duration-200"
+                                                    >
+                                                        {tag}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
-                            {/* Results Count Badge */}
-                            <AnimatePresence>
-                                {debouncedSearch && !isFetching && data.length > 0 && (
-                                    <motion.div
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -5 }}
-                                        className="absolute -top-6 right-4 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-bold text-blue-400 uppercase tracking-tighter"
+                            <div className="block w-[1px] my-3 bg-white/10 mx-1"></div>
+
+                            {/* Quick Filter Toggles */}
+                            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-1">
+                                {filters.slice(0, 4).map((filter) => (
+                                    <button
+                                    key={filter}
+                                    onClick={() => handleFilterClick(filter)}
+                                    className={`
+                                        relative px-5 py-2.5 rounded-xl text-[12px] font-bold tracking-wide transition-all duration-300 whitespace-nowrap overflow-hidden
+                                        ${activeFilter === filter
+                                        ? 'text-white bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]'
+                                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
+                                    `}
                                     >
-                                        {data.length}{hasMore ? '+' : ''} Results
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                                        <span className="relative z-10">{filter}</span>
+                                        {activeFilter === filter && (
+                                            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-100"></div>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
 
-                            {/* Trending Tags Dropdown */}
-                            <AnimatePresence>
-                                {isFocused && !searchQuery && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 5, scale: 0.98 }}
-                                        className="absolute top-full left-0 right-0 mt-2 p-4 bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden"
-                                    >
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></div>
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Trending Searches</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {['Modern Dashboard', 'SaaS Landing', 'Dark Mode', 'Portfolio', 'E-commerce'].map((tag) => (
-                                                <button
-                                                    key={tag}
-                                                    onMouseDown={(e) => {
-                                                        e.preventDefault(); // Prevent blur
-                                                        setSearchQuery(tag);
-                                                        playClickSound();
-                                                    }}
-                                                    className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 hover:border-blue-500/30 hover:bg-blue-500/10 text-[11px] text-slate-400 hover:text-blue-400 transition-all duration-200"
-                                                >
-                                                    {tag}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-
-                        <div className="block w-[1px] my-3 bg-white/10 mx-1"></div>
-
-                        {/* Quick Filter Toggles */}
-                        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-1">
-                            {filters.slice(0, 4).map((filter) => (
-                                <button
-                                key={filter}
-                                onClick={() => handleFilterClick(filter)}
+                            {/* Filter Toggle */}
+                            <button 
+                                onClick={() => { playClickSound(); setShowFilters(!showFilters); }}
                                 className={`
-                                    relative px-5 py-2.5 rounded-xl text-[12px] font-bold tracking-wide transition-all duration-300 whitespace-nowrap overflow-hidden
-                                    ${activeFilter === filter
-                                    ? 'text-white bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]'
-                                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
+                                    relative p-3 rounded-xl transition-all duration-300 flex items-center justify-center
+                                    ${showFilters ? 'bg-white text-black' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}
                                 `}
-                                >
-                                    <span className="relative z-10">{filter}</span>
-                                    {activeFilter === filter && (
-                                        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 opacity-100"></div>
-                                    )}
-                                </button>
-                            ))}
+                            >
+                                 <FilterIcon className="w-5 h-5" />
+                            </button>
                         </div>
 
-                        {/* Filter Toggle */}
-                        <button 
-                            onClick={() => { playClickSound(); setShowFilters(!showFilters); }}
-                            className={`
-                                relative p-3 rounded-xl transition-all duration-300 flex items-center justify-center
-                                ${showFilters ? 'bg-white text-black' : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'}
-                            `}
-                        >
-                             <FilterIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-
-                    {/* Expanded Filter Panel */}
-                    <AnimatePresence>
-                        {showFilters && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -20, height: 0 }}
-                                animate={{ opacity: 1, y: 0, height: 'auto' }}
-                                exit={{ opacity: 0, y: -10, height: 0 }}
-                                transition={{ duration: 0.3, ease: 'circOut' }}
-                                className="overflow-hidden"
-                            >
-                                <div className="mt-2 p-6 bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/[0.08] rounded-[24px] shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-                                    
-                                    <div>
-                                        <div className="flex items-center justify-between mb-3">
-                                            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block flex items-center gap-2">
-                                                <SortIcon className="w-3 h-3" /> Sort By
+                        {/* Expanded Filter Panel */}
+                        <AnimatePresence>
+                            {showFilters && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -20, height: 0 }}
+                                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                                    exit={{ opacity: 0, y: -10, height: 0 }}
+                                    transition={{ duration: 0.3, ease: 'circOut' }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="mt-2 p-6 bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/[0.08] rounded-[24px] shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                                        
+                                        <div>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block flex items-center gap-2">
+                                                    <SortIcon className="w-3 h-3" /> Sort By
+                                                </label>
+                                                {(sortBy !== 'newest' || activeFilter !== 'All' || searchQuery) && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            setSortBy('newest');
+                                                            setActiveFilter('All');
+                                                            setSearchQuery('');
+                                                            playClickSound();
+                                                        }}
+                                                        className="text-[9px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
+                                                    >
+                                                        Reset All
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                {(['newest', 'popular', 'likes'] as SortOption[]).map((option) => (
+                                                    <button
+                                                        key={option}
+                                                        onClick={() => { playClickSound(); setSortBy(option); }}
+                                                        className={`
+                                                            px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition-all
+                                                            ${sortBy === option 
+                                                                ? 'bg-white text-black border-white' 
+                                                                : 'bg-transparent text-slate-400 border-white/10 hover:border-white/20 hover:text-white'}
+                                                        `}
+                                                    >
+                                                        {option}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="md:col-span-2 pt-6 border-t border-white/5">
+                                             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 block">
+                                                Categories
                                             </label>
-                                            {(sortBy !== 'newest' || activeFilter !== 'All' || searchQuery) && (
-                                                <button 
-                                                    onClick={() => {
-                                                        setSortBy('newest');
-                                                        setActiveFilter('All');
-                                                        setSearchQuery('');
-                                                        playClickSound();
-                                                    }}
-                                                    className="text-[9px] font-bold uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
-                                                >
-                                                    Reset All
-                                                </button>
-                                            )}
+                                            <div className="flex flex-wrap gap-2">
+                                                {filters.map((filter) => (
+                                                    <button
+                                                        key={filter}
+                                                        onClick={() => handleFilterClick(filter)}
+                                                        className={`
+                                                            px-3 py-1.5 rounded-full text-[11px] font-medium transition-all
+                                                            ${activeFilter === filter
+                                                                ? 'bg-white/10 text-white shadow-inner'
+                                                                : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
+                                                        `}
+                                                    >
+                                                        {filter}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <div className="flex gap-2">
-                                            {(['newest', 'popular', 'likes'] as SortOption[]).map((option) => (
-                                                <button
-                                                    key={option}
-                                                    onClick={() => { playClickSound(); setSortBy(option); }}
-                                                    className={`
-                                                        px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition-all
-                                                        ${sortBy === option 
-                                                            ? 'bg-white text-black border-white' 
-                                                            : 'bg-transparent text-slate-400 border-white/10 hover:border-white/20 hover:text-white'}
-                                                    `}
-                                                >
-                                                    {option}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="md:col-span-2 pt-6 border-t border-white/5">
-                                         <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 block">
-                                            Categories
-                                        </label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {filters.map((filter) => (
-                                                <button
-                                                    key={filter}
-                                                    onClick={() => handleFilterClick(filter)}
-                                                    className={`
-                                                        px-3 py-1.5 rounded-full text-[11px] font-medium transition-all
-                                                        ${activeFilter === filter
-                                                            ? 'bg-white/10 text-white shadow-inner'
-                                                            : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
-                                                    `}
-                                                >
-                                                    {filter}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
 
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </LiquidGlassView>
             </div>
         </ScrollReveal>
 

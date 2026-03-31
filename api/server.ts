@@ -247,8 +247,6 @@ const app = express();
       
       if (response.body) {
         // Node 18+ fetch response.body is a ReadableStream
-        // We can use stream.pipeline or just pipe if it's a node-fetch stream
-        // Since we are in express, we can pipe the web stream to the node stream
         const readableWebStream = response.body as any;
         const reader = readableWebStream.getReader();
         
@@ -264,6 +262,45 @@ const app = express();
     } catch (error: any) {
       console.error('[Telegram Proxy] Error:', error.message);
       res.status(500).json({ error: 'Failed to fetch file from Telegram' });
+    }
+  });
+
+  // Catbox File Proxy
+  app.get('/api/catbox-file/:fileId', async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      const catboxUrl = `https://files.catbox.moe/${fileId}`;
+      
+      console.log(`[Catbox Proxy] Fetching: ${catboxUrl}`);
+      const response = await fetch(catboxUrl);
+      if (!response.ok) {
+        throw new Error(`Catbox responded with ${response.status}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      const contentLength = response.headers.get('content-length');
+      
+      if (contentType) res.setHeader('Content-Type', contentType);
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      
+      if (response.body) {
+        const readableWebStream = response.body as any;
+        const reader = readableWebStream.getReader();
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+      } else {
+        res.status(500).json({ error: 'No response body from Catbox' });
+      }
+    } catch (error: any) {
+      console.error('[Catbox Proxy] Error:', error.message);
+      res.status(500).json({ error: 'Failed to fetch file from Catbox' });
     }
   });
 
@@ -315,6 +352,23 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   /**
  * Maps Supabase template data to the frontend Template interface.
  */
+function formatMediaUrl(url: string) {
+  if (!url) return '';
+  if (url.startsWith('tg://')) {
+    const parts = url.replace('tg://', '').split('/');
+    if (parts.length === 2) {
+      return `/api/tg-file/${parts[0]}/${parts[1]}`;
+    }
+  }
+  if (url.includes('catbox.moe')) {
+    const fileId = url.split('/').pop();
+    if (fileId && fileId.includes('.')) {
+      return `/api/catbox-file/${fileId}`;
+    }
+  }
+  return url;
+}
+
 function mapSupabaseToTemplate(t: any) {
   return {
     id: t.id,
@@ -323,24 +377,24 @@ function mapSupabaseToTemplate(t: any) {
     author: t.author_name || t.author || t.creator || 'Anonymous',
     author_id: t.author_id || t.creator_id || t.author_uid || '',
     author_uid: t.author_id || t.creator_id || t.author_uid || '', // For compatibility
-    authorAvatar: t.author_avatar || t.creator_avatar || '',
-    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || t.image_preview || t.preview_url || '',
-    bannerUrl: t.banner_url || t.image_url || t.thumbnail || t.image_preview || t.preview_url || '',
-    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || t.image_preview || t.preview_url || '',
+    authorAvatar: formatMediaUrl(t.author_avatar || t.creator_avatar || ''),
+    imageUrl: formatMediaUrl(t.image_url || t.thumbnail || t.thumbnail_url || t.image_preview || t.preview_url || ''),
+    bannerUrl: formatMediaUrl(t.banner_url || t.image_url || t.thumbnail || t.image_preview || t.preview_url || ''),
+    thumbnail: formatMediaUrl(t.thumbnail_url || t.thumbnail || t.image_url || t.image_preview || t.preview_url || ''),
     likes: t.likes || t.stats?.likes || 0,
     views: t.views || t.stats?.views || 0,
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    fileUrl: t.file_url || t.url || '',
+    fileUrl: formatMediaUrl(t.file_url || t.url || ''),
     fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
     status: t.status || 'approved',
     sales: t.sales || 0,
     earnings: t.earnings || 0,
     created_at: t.created_at || t.timestamp || new Date().toISOString(),
     source: t.source || 'unknown',
-    galleryImages: t.gallery_images || [],
-    videoUrl: t.video_url || ''
+    galleryImages: (t.gallery_images || []).map(formatMediaUrl),
+    videoUrl: formatMediaUrl(t.video_url || '')
   };
 }
 
@@ -456,11 +510,20 @@ function mapSupabaseToTemplate(t: any) {
             return res.json({ success: true, url, host: 'Telegram' });
           }
         } catch (e: any) {
-          console.warn('[Text Upload] Telegram failed, trying Paste.rs...', e.message);
+          console.warn('[Text Upload] Telegram failed, trying Catbox...', e.message);
         }
       }
 
-      // 2. Fallback to Paste.rs
+      // 2. Try Catbox
+      try {
+        const buffer = Buffer.from(content, 'utf-8');
+        const { direct_url } = await uploadToCatbox(buffer, filename, 'application/json');
+        return res.json({ success: true, url: direct_url, host: 'Catbox' });
+      } catch (e: any) {
+        console.warn('[Text Upload] Catbox failed, trying Paste.rs...', e.message);
+      }
+
+      // 3. Fallback to Paste.rs
       const url = await uploadToPasteRs(content);
       res.json({ success: true, url, host: 'Paste.rs' });
     } catch (error: any) {
@@ -700,17 +763,8 @@ function mapSupabaseToTemplate(t: any) {
         const userFree = freeTemplates.filter((t: any) => t.creator_email === email || t.author_email === email);
         console.log(`[API Debug] FreeHostService returned ${userFree.length} templates for ${email}`);
         const mappedFree = userFree.map((t: any) => ({
-          id: t.id,
-          title: t.name,
-          thumbnail: t.image_preview,
-          author: t.creator,
-          author_id: t.creator_id || t.author_id,
-          tags: t.tags || [],
-          category: t.category,
-          created_at: t.created_at,
-          likes: t.stats?.likes || 0,
-          views: t.stats?.views || 0,
-          status: 'approved'
+          ...mapSupabaseToTemplate(t),
+          source: 'freehost'
         }));
         allData.push(...mappedFree);
       } catch (e) {

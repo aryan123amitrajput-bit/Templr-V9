@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
+import { LiquidGlassView } from './ui/LiquidGlass';
 
 interface TemplateCardProps {
   id: string;
@@ -357,85 +358,89 @@ const CardContent: React.FC<TemplateCardProps> = ({
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 p-5 z-30 translate-y-2 group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none">
-            <div className="flex justify-between items-end">
-                <div className="flex-1 min-w-0 pr-4">
-                    <h3 className="text-white font-bold text-xl leading-none truncate mb-2 group-hover:text-cyan-200 transition-colors drop-shadow-lg">
-                        {title}
-                    </h3>
-                    <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
-                         <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
-                             <img 
-                                src={displayAvatar} 
-                                className="w-full h-full object-cover" 
-                                alt={author} 
-                                onError={(e) => { 
-                                    const target = e.target as HTMLImageElement;
-                                    if (!target.src.includes('ui-avatars.com')) {
-                                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`; 
-                                    }
-                                }}
-                             />
-                         </div>
-                         <p className="text-xs text-slate-300 font-medium tracking-wide group-hover/author:text-white">{author}</p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3 transition-opacity duration-200 pointer-events-auto opacity-0 group-hover:opacity-100">
-                     {currentUserId && author_uid === currentUserId && (
-                        <button 
-                            onClick={handleDelete} 
-                            className="group/btn w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500 backdrop-blur-md border border-red-500/30 flex items-center justify-center transition-all text-red-200 hover:text-white"
-                            title="Delete Template"
-                        >
-                            <XIcon className="w-5 h-5" />
-                        </button>
-                     )}
-                     <button 
-                        onClick={handleLike} 
-                        className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
-                     >
-                        <div 
-                            className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
-                                isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'
-                            }`}
-                        >
-                            {/* @ts-ignore */}
-                            <dotlottie-player
-                                ref={playerRef}
-                                src="https://lottie.host/c3e224ed-42e1-4283-96aa-2994ab046363/gMYruNTRma.lottie"
-                                background="transparent"
-                                speed="1"
-                                loop={false} 
-                                playMode="normal"
-                                style={{ width: '100%', height: '100%' }}
-                            />
+            <LiquidGlassView effect="liquid" intensity={0.4} className="rounded-2xl overflow-visible">
+                <div className="p-4 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl">
+                    <div className="flex justify-between items-end">
+                        <div className="flex-1 min-w-0 pr-4">
+                            <h3 className="text-white font-bold text-xl leading-none truncate mb-2 group-hover:text-cyan-200 transition-colors drop-shadow-lg">
+                                {title}
+                            </h3>
+                            <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
+                                <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
+                                    <img 
+                                        src={displayAvatar} 
+                                        className="w-full h-full object-cover" 
+                                        alt={author} 
+                                        onError={(e) => { 
+                                            const target = e.target as HTMLImageElement;
+                                            if (!target.src.includes('ui-avatars.com')) {
+                                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`; 
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <p className="text-xs text-slate-300 font-medium tracking-wide group-hover/author:text-white">{author}</p>
+                            </div>
                         </div>
-                     </button>
-                     <button onClick={handleViewButton} className="group/btn w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:bg-slate-200 transition-all">
-                         <ArrowRightIcon className="w-5 h-5" />
-                     </button>
-                </div>
-            </div>
-            
-            <div className="mt-4 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
-            
-            <div className="flex justify-between mt-3 transition-opacity duration-300">
-                <div className="flex gap-4">
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                        <EyeIcon className="w-3 h-3" />
-                        <span className="text-[10px] font-mono">{views >= 1000 ? (views/1000).toFixed(1) + 'k' : views}</span>
+
+                        <div className="flex items-center gap-3 transition-opacity duration-200 pointer-events-auto opacity-0 group-hover:opacity-100">
+                            {currentUserId && author_uid === currentUserId && (
+                                <button 
+                                    onClick={handleDelete} 
+                                    className="group/btn w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500 backdrop-blur-md border border-red-500/30 flex items-center justify-center transition-all text-red-200 hover:text-white"
+                                    title="Delete Template"
+                                >
+                                    <XIcon className="w-5 h-5" />
+                                </button>
+                            )}
+                            <button 
+                                onClick={handleLike} 
+                                className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
+                            >
+                                <div 
+                                    className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
+                                        isLiked ? '' : 'grayscale brightness-150 opacity-70 group-hover/btn:opacity-100'
+                                    }`}
+                                >
+                                    {/* @ts-ignore */}
+                                    <dotlottie-player
+                                        ref={playerRef}
+                                        src="https://lottie.host/c3e224ed-42e1-4283-96aa-2994ab046363/gMYruNTRma.lottie"
+                                        background="transparent"
+                                        speed="1"
+                                        loop={false} 
+                                        playMode="normal"
+                                        style={{ width: '100%', height: '100%' }}
+                                    />
+                                </div>
+                            </button>
+                            <button onClick={handleViewButton} className="group/btn w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:bg-slate-200 transition-all">
+                                <ArrowRightIcon className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                        <HeartIcon className="w-3 h-3" />
-                        <span className="text-[10px] font-mono">{likes}</span>
+                    
+                    <div className="mt-4 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+                    
+                    <div className="flex justify-between mt-3 transition-opacity duration-300">
+                        <div className="flex gap-4">
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                                <EyeIcon className="w-3 h-3" />
+                                <span className="text-[10px] font-mono">{views >= 1000 ? (views/1000).toFixed(1) + 'k' : views}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                                <HeartIcon className="w-3 h-3" />
+                                <span className="text-[10px] font-mono">{likes}</span>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            {isZip && <span className="text-[10px] font-mono text-cyan-400/80 uppercase tracking-widest flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Zip</span></span>}
+                            {hasLink && <span className="text-[10px] font-mono text-blue-400/80 uppercase tracking-widest flex items-center gap-1"><GlobeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Live</span></span>}
+                        </div>
                     </div>
                 </div>
-                
-                <div className="flex items-center gap-2">
-                    {isZip && <span className="text-[10px] font-mono text-cyan-400/80 uppercase tracking-widest flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Zip</span></span>}
-                    {hasLink && <span className="text-[10px] font-mono text-blue-400/80 uppercase tracking-widest flex items-center gap-1"><GlobeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Live</span></span>}
-                </div>
-            </div>
+            </LiquidGlassView>
         </div>
     </motion.div>
   );
