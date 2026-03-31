@@ -939,7 +939,7 @@ function mapSupabaseToTemplate(t: any) {
       
       // Update Supabase
       try {
-          const { updateTemplate } = await import('./server/services/supabaseService.js');
+          const { updateTemplate } = await import('../src/services/supabaseService');
           await updateTemplate(id, updates);
       } catch (e) {
           console.error('[Supabase Update Error]:', e);
@@ -956,7 +956,7 @@ function mapSupabaseToTemplate(t: any) {
   app.delete('/api/admin/templates/supabase', async (req, res) => {
     try {
       // In a real app, verify admin auth here
-      const { deleteAllTemplates } = await import('./server/services/supabaseService.js');
+      const { deleteAllTemplates } = await import('../src/services/supabaseService');
       await deleteAllTemplates();
       res.json({ success: true, message: 'All Supabase templates deleted' });
     } catch (error: any) {

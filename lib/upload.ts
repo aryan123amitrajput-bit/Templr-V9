@@ -1,11 +1,11 @@
-import { telegramService } from '../src/services/telegramService';
-import { uploadToCatbox } from '../src/services/catboxService';
-import { uploadToSupabase } from '../src/services/supabaseService';
-import { uploadToI111666 } from '../src/services/i111666Service';
-import { uploadToImgBB } from '../src/services/imgbbService';
-import { uploadToGifyu } from '../src/services/gifyuService';
-import { uploadToImgHippo } from '../src/services/imgbbService';
-import { uploadToPasteRs } from '../src/services/pasteService';
+import { telegramService } from '@/src/services/telegramService';
+import { uploadToCatbox } from '@/src/services/catboxService';
+import { uploadToSupabase } from '@/src/services/supabaseService';
+import { uploadToI111666 } from '@/src/services/i111666Service';
+import { uploadToImgBB } from '@/src/services/imgbbService';
+import { uploadToGifyu } from '@/src/services/gifyuService';
+import { uploadToImgHippo } from '@/src/services/imghippoService';
+import { uploadToPasteRs } from '@/src/services/pasteService';
 
 export async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
     const isVideo = mimetype.startsWith('video/');
