@@ -5,8 +5,7 @@ import { uploadImage } from './src/services/imageUploadService';
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
 // ==========================================
-
-export const signInWithGoogle = async () => {
+export const isApiConfigured = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_URL !== 'https://placeholder.supabase.co';
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
     });
@@ -283,39 +282,74 @@ const mapTemplate = (data: any): Template => {
 
 export const getPublicTemplates = async (
     page: number = 0, 
-    limitNum: number = 6, 
+    limit: number = 6, 
     searchQuery: string = '', 
     category: string = 'All',
     sortBy: 'newest' | 'popular' | 'likes' = 'newest',
     currentUserId?: string
 ): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
-    try {
-        const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`[API Debug] Server returned ${response.status} for ${url}. Body: ${text.substring(0, 100)}`);
-            throw new Error(`Server error (${response.status}): ${text.substring(0, 100)}`);
-        }
+    
+    const attempt = async (retryCount = 0): Promise<any> => {
+        try {
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: limit.toString(),
+                category: category,
+                searchQuery: searchQuery,
+                sortBy: sortBy
+            });
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error(`[API Debug] Expected JSON but received ${contentType} for ${url}. Body start: ${text.substring(0, 100)}`);
-            throw new Error(`Invalid response format: Expected JSON but received ${contentType}`);
-        }
+            const response = await fetch(`/api/templates?${params.toString()}`);
+            if (!response.ok) {
+                throw new Error(`Backend returned ${response.status}`);
+            }
 
-        const result = await response.json();
-        
-        // Map data to Template interface
-        const data = (result.data || []).map((t: any) => mapTemplate(t));
-        
-        return { data, hasMore: result.hasMore || false };
-    } catch (e: any) {
-        console.error("Error fetching public templates:", e.message || e);
-        return { data: [], hasMore: false, error: e.message || "Connection failed" };
-    }
+            const { data, hasMore } = await response.json();
+            
+            // Map the backend data to the Template interface
+            const mappedData = (data || []).map((t: any) => mapTemplate(t));
+
+            return { data: mappedData, hasMore };
+        } catch (e: any) {
+            console.error("Error fetching public templates:", e);
+            
+            // Fallback to Supabase directly if backend fails and it's configured
+            if (isApiConfigured) {
+                try {
+                    console.log("Attempting direct Supabase fallback...");
+                    let query = supabase
+                        .from('templates')
+                        .select('*')
+                        .eq('status', 'approved');
+                    
+                    if (category !== 'All') query = query.eq('category', category);
+                    if (searchQuery) query = query.ilike('title', `%${searchQuery}%`);
+                    
+                    if (sortBy === 'popular' || sortBy === 'likes') {
+                        query = query.order('likes', { ascending: false });
+                    } else {
+                        query = query.order('created_at', { ascending: false });
+                    }
+
+                    const { data: sbData, error: sbError } = await query
+                        .range(page * limit, (page + 1) * limit - 1);
+
+                    if (!sbError && sbData) {
+                        return { 
+                            data: sbData.map((t: any) => mapTemplate(t)), 
+                            hasMore: sbData.length === limit 
+                        };
+                    }
+                } catch (fallbackErr) {
+                    console.error("Supabase fallback failed:", fallbackErr);
+                }
+            }
+
+            return { data: [], hasMore: false, error: e.message || "Connection failed" };
+        }
+    };
+
+    return attempt();
 };
 
 export const getTemplateById = async (id: string): Promise<Template | null> => {

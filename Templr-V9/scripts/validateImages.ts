@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { getSupabase } from '../api/services/supabaseService';
+import { getSupabase } from '../src/services/api/supabaseService';
 import { uploadFromUrl } from '../src/services/imageUploadService';
 
 const supabase = getSupabase();

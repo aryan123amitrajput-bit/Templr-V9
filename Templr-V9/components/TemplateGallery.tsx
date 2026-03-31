@@ -108,8 +108,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
               6, // Limit to 6 items per load
               debouncedSearch, 
               activeFilter, 
-              sortBy,
-              currentUserId
+              sortBy
           );
 
           const msg = error?.toLowerCase() || '';
