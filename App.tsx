@@ -230,6 +230,9 @@ const App: React.FC = () => {
                 if (mounted) {
                     setSession(session);
                     setIsAuthLoading(false);
+                    if (window.location.pathname === '/auth/callback') {
+                        window.history.replaceState({}, document.title, '/');
+                    }
                 }
             });
             return subscription;
@@ -435,7 +438,7 @@ const App: React.FC = () => {
   }, [showNotification]);
 
   const handleAddOrUpdateTemplate = useCallback(async (data: NewTemplateData) => {
-    if (editingTemplate && session?.user.email) {
+    if (editingTemplate && session?.user?.email) {
         await api.updateTemplateData(editingTemplate.id, data, session.user.email);
         setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...data, status: data.initialStatus || t.status } : t));
     } else {
@@ -619,7 +622,7 @@ const App: React.FC = () => {
               likedIds={likedTemplateIds}
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}
-              currentUserId={session?.user?.uid}
+              currentUserId={session?.user?.id}
             />
           </motion.div>
         </LazySection>
@@ -669,7 +672,7 @@ const App: React.FC = () => {
         isLoggedIn={!!session}
         isAuthLoading={isAuthLoading}
         onLoginRequest={handleOpenLogin}
-        userEmail={session?.user.email}
+        userEmail={session?.user?.email}
         onShowNotification={showNotification}
         initialData={editingTemplate}
         isEditing={!!editingTemplate}
@@ -697,8 +700,8 @@ const App: React.FC = () => {
       <DashboardModal 
         isOpen={isDashboardOpen} 
         onClose={handleCloseDashboard} 
-        userId={session?.user.uid}
-        userEmail={session?.user.email}
+        userId={session?.user?.id}
+        userEmail={session?.user?.email}
         onEdit={handleEditTemplate}
       />
       <LoginModal 

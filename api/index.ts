@@ -321,6 +321,52 @@ app.get('/api/proxy', async (req, res) => {
     }
 });
 
+// Telegram File Proxy
+app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
+  try {
+    const { botIndex, fileId } = req.params;
+    const tgUri = `tg://${botIndex}/${fileId}`;
+    
+    const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+    
+    // Stream the file from Telegram to the client
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
+      throw new Error(`Telegram responded with ${response.status}`);
+    }
+    
+    // Pass headers from Telegram
+    const contentType = response.headers.get('content-type');
+    const contentLength = response.headers.get('content-length');
+    
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    
+    // Cache the file for 24 hours
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    
+    if (response.body) {
+      // Node 18+ fetch response.body is a ReadableStream
+      // We can use stream.pipeline or just pipe if it's a node-fetch stream
+      // Since we are in express, we can pipe the web stream to the node stream
+      const readableWebStream = response.body as any;
+      const reader = readableWebStream.getReader();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+      }
+      res.end();
+    } else {
+      res.status(500).json({ error: 'No response body from Telegram' });
+    }
+  } catch (error: any) {
+    console.error('[Telegram Proxy] Error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch file from Telegram' });
+  }
+});
+
 // --- Admin Engine Routes ---
 app.get('/api/admin/hosts', (req, res) => {
   res.json(traffService.getHosts());
@@ -453,7 +499,15 @@ app.post('/api/upload', (req, res, next) => {
 
     const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
-    console.log('[Upload] Final URL extracted:', imageUrl);
+    let finalImageUrl = imageUrl;
+    if (imageUrl.startsWith('tg://')) {
+        const match = imageUrl.match(/^tg:\/\/(\d+)\/(.+)$/);
+        if (match) {
+            finalImageUrl = `/api/tg-file/${match[1]}/${match[2]}`;
+        }
+    }
+
+    console.log('[Upload] Final URL extracted:', finalImageUrl);
     console.log('[Upload] Host used:', hostUsed);
 
     if (title) {
@@ -461,7 +515,7 @@ app.post('/api/upload', (req, res, next) => {
         const { data: dbData, error: dbError } = await supabase.from('templates').insert({
             title,
             description,
-            image_url: imageUrl,
+            image_url: finalImageUrl,
             created_at: new Date().toISOString()
         });
 
@@ -473,7 +527,7 @@ app.post('/api/upload', (req, res, next) => {
     }
 
     console.log('[Upload] Sending JSON response...');
-    res.json({ success: true, url: imageUrl, host: hostUsed });
+    res.json({ success: true, url: finalImageUrl, host: hostUsed });
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
@@ -870,12 +924,17 @@ app.get('/api/templates', async (req, res) => {
 // Get Featured Creators
 app.get('/api/creators', async (req, res) => {
   try {
-    const [gitRegistry, supabaseTemplates] = await Promise.all([
+    const [gitRegistry, supabaseTemplates, freeTemplates] = await Promise.all([
       repoManager.getMergedRegistry(),
-      getSupabaseTemplates()
+      getSupabaseTemplates(),
+      freeHostService.getTemplates(0, 1000)
     ]);
 
-    const allTemplates = [...gitRegistry, ...supabaseTemplates.map(mapSupabaseToTemplate)];
+    const allTemplates = [
+      ...gitRegistry, 
+      ...supabaseTemplates.map(mapSupabaseToTemplate),
+      ...freeTemplates.map(mapSupabaseToTemplate)
+    ];
     const approvedTemplates = allTemplates.filter((t: any) => !t.status || t.status === 'approved');
 
     const creatorsMap = new Map();
@@ -884,22 +943,23 @@ app.get('/api/creators', async (req, res) => {
       if (!email) return;
       if (!creatorsMap.has(email)) {
         creatorsMap.set(email, {
-          author_name: t.author || t.author_name || 'Anonymous',
-          author_email: email,
-          author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author || 'Anonymous')}&background=random`,
+          name: t.author || t.author_name || 'Anonymous',
+          email: email,
+          avatarUrl: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author || 'Anonymous')}&background=random`,
           views: 0,
-          likes: 0,
-          templates: 0
+          totalLikes: 0,
+          templateCount: 0,
+          role: 'Creator'
         });
       }
       const creator = creatorsMap.get(email);
       creator.views += (t.views || 0);
-      creator.likes += (t.likes || 0);
-      creator.templates += 1;
+      creator.totalLikes += (t.likes || 0);
+      creator.templateCount += 1;
     });
 
     const creators = Array.from(creatorsMap.values())
-      .sort((a: any, b: any) => (b.likes + b.views) - (a.likes + a.views))
+      .sort((a: any, b: any) => (b.totalLikes + b.views) - (a.totalLikes + a.views))
       .slice(0, 10);
 
     res.json({ data: creators });
@@ -912,7 +972,18 @@ app.get('/api/creators', async (req, res) => {
 // Auth Proxy
 app.post('/api/auth/signin', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, provider } = req.body;
+    if (provider === 'google') {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${req.headers.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+      return res.json(data);
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     res.json(data);
@@ -1123,8 +1194,27 @@ app.put('/api/templates/:id', async (req, res) => {
       updates.thumbnail = updates.image_url;
     }
 
-    try { await updateTemplateOnGitHub(id, updates); } catch (e) {}
-    try { await freeHostService.updateTemplate(id, updates); } catch (e) {}
+    const freeHostUpdates = {
+      name: updates.title,
+      description: updates.description,
+      image_preview: updates.image_url,
+      thumbnail: updates.image_url,
+      file_url: updates.file_url,
+      preview_url: updates.video_url,
+      tags: updates.tags,
+      category: updates.category,
+      status: updates.status
+    };
+    
+    // Remove undefined fields
+    Object.keys(freeHostUpdates).forEach(key => {
+      if (freeHostUpdates[key as keyof typeof freeHostUpdates] === undefined) {
+        delete freeHostUpdates[key as keyof typeof freeHostUpdates];
+      }
+    });
+
+    try { await updateTemplateOnGitHub(id, freeHostUpdates); } catch (e) {}
+    try { await freeHostService.updateTemplate(id, freeHostUpdates); } catch (e) {}
     await supabase.from('templates').update(updates).eq('id', id);
     res.json({ success: true });
   } catch (error: any) {

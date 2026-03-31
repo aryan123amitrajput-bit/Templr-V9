@@ -1,5 +1,5 @@
 import { uploadQueue } from './api/services/queueService';
-import './server/workers/uploadWorker';
+import './api/workers/uploadWorker';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
@@ -156,6 +156,71 @@ const app = express();
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // --- Authentication Routes ---
+  app.post('/api/auth/signin', async (req, res) => {
+    const { email, password, provider } = req.body;
+    console.log(`[Auth] Signin attempt: ${provider || 'email'} - ${email || 'OAuth'}`);
+
+    try {
+      const supabase = getSupabase();
+      if (provider === 'google') {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${req.headers.origin}/auth/callback`,
+          },
+        });
+        if (error) throw error;
+        return res.json(data);
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('[Auth] Signin error:', error.message);
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json(data);
+    } catch (error: any) {
+      console.error('[Auth] Signin exception:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/auth/signup', async (req, res) => {
+    const { email, password, name } = req.body;
+    console.log(`[Auth] Signup attempt: ${email}`);
+
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            usage_count: 0,
+            is_pro: false,
+          },
+        },
+      });
+
+      if (error) {
+        console.error('[Auth] Signup error:', error.message);
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json(data);
+    } catch (error: any) {
+      console.error('[Auth] Signup exception:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Telegram File Proxy
   app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
     try {
@@ -253,26 +318,27 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
 function mapSupabaseToTemplate(t: any) {
   return {
     id: t.id,
-    title: t.title,
+    title: t.title || t.name || 'Untitled Template',
     description: t.description || '',
-    author: t.author_name || t.author || 'Anonymous',
-    author_id: t.author_id,
-    author_uid: t.author_id, // For compatibility
-    authorAvatar: t.author_avatar || '',
-    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || '',
-    bannerUrl: t.banner_url || t.image_url || t.thumbnail || '',
-    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || '',
-    likes: t.likes || 0,
-    views: t.views || 0,
+    author: t.author_name || t.author || t.creator || 'Anonymous',
+    author_id: t.author_id || t.creator_id || t.author_uid || '',
+    author_uid: t.author_id || t.creator_id || t.author_uid || '', // For compatibility
+    authorAvatar: t.author_avatar || t.creator_avatar || '',
+    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || t.image_preview || t.preview_url || '',
+    bannerUrl: t.banner_url || t.image_url || t.thumbnail || t.image_preview || t.preview_url || '',
+    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || t.image_preview || t.preview_url || '',
+    likes: t.likes || t.stats?.likes || 0,
+    views: t.views || t.stats?.views || 0,
     category: t.category || 'Uncategorized',
     tags: t.tags || [],
     price: t.price || 'Free',
-    fileUrl: t.file_url || '',
+    fileUrl: t.file_url || t.url || '',
     fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
     status: t.status || 'approved',
     sales: t.sales || 0,
     earnings: t.earnings || 0,
-    created_at: t.created_at,
+    created_at: t.created_at || t.timestamp || new Date().toISOString(),
+    source: t.source || 'unknown',
     galleryImages: t.gallery_images || [],
     videoUrl: t.video_url || ''
   };
@@ -346,6 +412,14 @@ function mapSupabaseToTemplate(t: any) {
       // Process upload synchronously to return URL and host to client
       const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
       
+      let finalImageUrl = imageUrl;
+      if (imageUrl.startsWith('tg://')) {
+          const match = imageUrl.match(/^tg:\/\/(\d+)\/(.+)$/);
+          if (match) {
+              finalImageUrl = `/api/tg-file/${match[1]}/${match[2]}`;
+          }
+      }
+
       // Create record in Supabase
       const templateId = crypto.randomUUID();
       await addSupabaseTemplate({
@@ -353,13 +427,13 @@ function mapSupabaseToTemplate(t: any) {
           title: originalname,
           description: description || 'Direct upload',
           status: 'active',
-          image_url: imageUrl,
+          image_url: finalImageUrl,
           created_at: new Date().toISOString()
       });
       
       return res.status(200).json({ 
           success: true, 
-          url: imageUrl, 
+          url: finalImageUrl, 
           host: hostUsed, 
           templateId 
       });
@@ -432,43 +506,54 @@ function mapSupabaseToTemplate(t: any) {
       // 1. Get templates from Supabase
       let data: any[] = [];
       try {
+        console.log(`[API] Fetching from Supabase...`);
         const supabaseTemplates = await getSupabaseTemplates();
-        console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
-        data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
-      } catch (e) {
-        console.error('[API] Supabase fetch error:', e);
-      }
+        if (supabaseTemplates && Array.isArray(supabaseTemplates)) {
+          console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
+          data.push(...supabaseTemplates.map(mapSupabaseToTemplate).map(t => ({ ...t, source: 'supabase' })));
+        }
       } catch (e) {
         console.error('[API] Supabase fetch error:', e);
       }
 
-      // 3. Get templates from repositories (GitHub/GitLab)
+      // 2. Get templates from repositories (GitHub/GitLab)
       try {
-        const repoTemplates = await repoManager.getMergedRegistry();
-        console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
-        data.push(...repoTemplates);
+        console.log(`[API] Fetching from RepoManager...`);
+        let repoTemplates = await repoManager.getMergedRegistry();
+        if (repoTemplates && Array.isArray(repoTemplates)) {
+          console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
+          
+          // Filter repo templates by category and search query
+          if (category && category !== 'All') {
+            repoTemplates = repoTemplates.filter((t: any) => t.category === category);
+          }
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            repoTemplates = repoTemplates.filter((t: any) => 
+              (t.title && t.title.toLowerCase().includes(q)) || 
+              (t.description && t.description.toLowerCase().includes(q)) ||
+              (t.tags && t.tags.some((tag: string) => tag.toLowerCase().includes(q)))
+            );
+          }
+
+          data.push(...repoTemplates.map(mapSupabaseToTemplate).map(t => ({ ...t, source: 'repo' })));
+        }
       } catch (e) {
         console.error('[API] Repo fetch error:', e);
       }
 
-      // 4. Get templates from freeHostService
+      // 3. Get templates from freeHostService
       try {
-        const freeTemplates = await freeHostService.getTemplates(0, 1000, category, searchQuery);
-        console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
-        const mappedFreeTemplates = freeTemplates.map((t: any) => ({
-          id: t.id,
-          title: t.name,
-          thumbnail: t.image_preview,
-          author: t.creator,
-          author_id: t.creator_id || t.author_id,
-          tags: t.tags || [],
-          category: t.category,
-          created_at: t.created_at,
-          likes: t.stats?.likes || 0,
-          views: t.stats?.views || 0,
-          status: 'approved'
-        }));
-        data.push(...mappedFreeTemplates);
+        console.log(`[API] Fetching from FreeHostService...`);
+        const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
+        if (freeTemplates && Array.isArray(freeTemplates)) {
+          console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
+          const mappedFreeTemplates = freeTemplates.map((t: any) => ({
+            ...mapSupabaseToTemplate(t),
+            source: 'freehost'
+          }));
+          data.push(...mappedFreeTemplates);
+        }
       } catch (e) {
         console.error('[API] FreeHost fetch error:', e);
       }
@@ -551,30 +636,42 @@ function mapSupabaseToTemplate(t: any) {
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
-      const templates = await repoManager.getMergedRegistry();
-      const approvedTemplates = templates.filter((t: any) => t.status === 'approved');
+      const [gitRegistry, supabaseTemplates, freeTemplates] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        getSupabaseTemplates(),
+        freeHostService.getTemplates(0, 1000)
+      ]);
+
+      const allTemplates = [
+        ...gitRegistry, 
+        ...supabaseTemplates.map(mapSupabaseToTemplate),
+        ...freeTemplates.map(mapSupabaseToTemplate)
+      ];
+      const approvedTemplates = allTemplates.filter((t: any) => !t.status || t.status === 'approved');
       
       const creatorsMap = new Map();
       approvedTemplates.forEach((t: any) => {
-        if (!t.author_email) return;
-        if (!creatorsMap.has(t.author_email)) {
-          creatorsMap.set(t.author_email, {
-            author_name: t.author_name || 'Anonymous',
-            author_email: t.author_email,
-            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'Anonymous')}&background=random`,
+        const email = t.author_email || t.creator_email || t.email;
+        if (!email) return;
+        if (!creatorsMap.has(email)) {
+          creatorsMap.set(email, {
+            name: t.author || t.author_name || 'Anonymous',
+            email: email,
+            avatarUrl: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author || 'Anonymous')}&background=random`,
             views: 0,
-            likes: 0,
-            templates: 0
+            totalLikes: 0,
+            templateCount: 0,
+            role: 'Creator'
           });
         }
-        const creator = creatorsMap.get(t.author_email);
+        const creator = creatorsMap.get(email);
         creator.views += (t.views || 0);
-        creator.likes += (t.likes || 0);
-        creator.templates += 1;
+        creator.totalLikes += (t.likes || 0);
+        creator.templateCount += 1;
       });
 
       const creators = Array.from(creatorsMap.values())
-        .sort((a: any, b: any) => (b.likes + b.views) - (a.likes + a.views))
+        .sort((a: any, b: any) => (b.totalLikes + b.views) - (a.totalLikes + a.views))
         .slice(0, 10); // Top 10
 
       res.json({ data: creators });

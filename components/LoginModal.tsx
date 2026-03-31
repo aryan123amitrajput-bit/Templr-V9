@@ -235,7 +235,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onSig
     setIsLoading(true);
     setErrors({});
     try {
-        await signInWithGoogle();
+        const res = await signInWithGoogle();
+        if (res.url) {
+            window.location.href = res.url;
+            return;
+        }
         if (mounted.current) {
             setSuccess(true);
             playSuccessSound();

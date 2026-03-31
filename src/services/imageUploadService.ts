@@ -97,18 +97,14 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     try {
         console.log(`[Orchestrator] Optimizing image: ${file.name}`);
         const optimizedBlob = await optimizeImage(file);
-        const base64File = await fileToBase64(optimizedBlob);
         
         console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
+        const formData = new FormData();
+        formData.append('file', optimizedBlob, file.name);
+        
         const response = await fetch('/api/upload', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                file: base64File, 
-                path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
-            })
+            body: formData
         });
 
         if (!response.ok) {
