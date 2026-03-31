@@ -5,6 +5,7 @@ import { playClickSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
 import Galaxy from './Galaxy';
 import { ShinyButton } from './ui/shiny-button';
+import { LiquidGlassView } from './ui/LiquidGlass';
 
 interface HeroProps {
   onUploadClick: () => void;
@@ -185,9 +186,13 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             transition={{ duration: 0.8, ease: "easeOut" }}
             className="mb-8 relative group"
         >
-            <div className="relative inline-flex overflow-hidden rounded-full p-[1.5px]">
+            <LiquidGlassView
+                interactive
+                effect="clear"
+                className="relative inline-flex overflow-hidden rounded-full p-[1.5px]"
+            >
                 <span className="absolute inset-[-1000%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#0000_0%,#0000_75%,#3b82f6_100%)]" />
-                <div className="relative inline-flex items-center gap-3 rounded-full bg-slate-950/80 px-6 py-2 text-sm font-medium text-white backdrop-blur-3xl transition-colors hover:bg-slate-900/80">
+                <div className="relative inline-flex items-center gap-3 rounded-full bg-slate-950/40 px-6 py-2 text-sm font-medium text-white backdrop-blur-3xl transition-colors hover:bg-slate-900/40">
                     <div className="flex items-center gap-1.5">
                          <span className="relative flex h-2 w-2">
                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-50"></span>
@@ -200,7 +205,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                          The Future of Design
                     </span>
                 </div>
-            </div>
+            </LiquidGlassView>
         </motion.div>
 
         {/* --- CAROUSEL CONTAINER --- */}

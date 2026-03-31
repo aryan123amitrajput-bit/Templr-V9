@@ -553,10 +553,12 @@ function mapSupabaseToTemplate(t: any) {
       const page = parseInt(req.query.page as string) || 0;
       const limitNum = parseInt(req.query.limit as string) || 6;
       const category = req.query.category as string;
-      const searchQuery = req.query.searchQuery as string;
-      const sortBy = req.query.sortBy as string || 'newest';
+      const searchQuery = (req.query.searchQuery || req.query.search) as string;
+      const sortBy = (req.query.sortBy || req.query.sort) as string || 'newest';
       const userId = req.query.userId as string;
       const email = req.query.email as string;
+
+      console.log(`[API] Fetching templates: page=${page}, limit=${limitNum}, search=${searchQuery}, category=${category}, sort=${sortBy}`);
 
       // 1. Get templates from Supabase
       let data: any[] = [];
@@ -626,10 +628,11 @@ function mapSupabaseToTemplate(t: any) {
       }
       data = uniqueTemplates;
       
-      console.log(`[API] All template IDs: ${JSON.stringify(data.map(t => t.id))}`);
+      console.log(`[API] Unique templates count: ${data.length}`);
 
       // Filter by status 'approved' (or allow if status is missing)
       data = data.filter((t: any) => !t.status || t.status === 'approved');
+      console.log(`[API] Templates after status filter: ${data.length}`);
 
       // Filter by userId or email if provided
       if (userId || email) {
@@ -648,7 +651,9 @@ function mapSupabaseToTemplate(t: any) {
         const lowerQuery = searchQuery.toLowerCase();
         data = data.filter((t: any) => 
           t.title?.toLowerCase().includes(lowerQuery) || 
-          t.description?.toLowerCase().includes(lowerQuery)
+          t.description?.toLowerCase().includes(lowerQuery) ||
+          t.author?.toLowerCase().includes(lowerQuery) ||
+          t.tags?.some((tag: string) => tag.toLowerCase().includes(lowerQuery))
         );
       }
 
@@ -658,12 +663,16 @@ function mapSupabaseToTemplate(t: any) {
         data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       }
 
-      const hasMore = data.length > (page + 1) * limitNum;
+      const total = data.length;
+      const hasMore = total > (page + 1) * limitNum;
       const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
+
+      console.log(`[API] Returning ${paginatedData.length} templates out of ${total}`);
 
       res.json({ 
         data: paginatedData, 
-        hasMore 
+        hasMore,
+        total
       });
     } catch (error: any) {
       console.error('API Error:', error);
