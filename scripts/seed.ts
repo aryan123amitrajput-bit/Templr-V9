@@ -18,8 +18,8 @@ async function seed() {
             templateId,
             fileBuffer: buffer,
             metadata: {
-                template_name: 'Test Template - Snapchat Spotlight',
-                description: 'A test template to verify Snapchat and Telegram uploads.'
+                template_name: 'Test Template - Spotlight',
+                description: 'A test template to verify Telegram uploads.'
             }
         });
         

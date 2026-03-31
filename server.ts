@@ -12,7 +12,7 @@ import { uploadToBeeIMG } from './api/services/beeimgService';
 import { uploadToPasteRs } from './api/services/pasteService';
 import { uploadToCatbox } from './api/services/catboxService';
 import { telegramService } from './api/services/telegramService';
-import { threadsService } from './api/services/threadsService';
+import { processFileUpload } from './lib/upload';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -127,109 +127,8 @@ async function processUrlUpload(url: string): Promise<{ imageUrl: string; telegr
 }
 
 /**
- * Upload logic using external hosting only (Requested by user).
+ * Saves template metadata to GitHub as a JSON file.
  */
-async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
-    const isVideo = mimetype.startsWith('video/');
-    
-    console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
-    
-    // 1. Try Telegram (User Preferred)
-    if (telegramService.isConfigured()) {
-        try {
-            const tgUri = await telegramService.uploadImage(buffer, originalname, mimetype);
-            const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
-            if (match) {
-                const botIndex = match[1];
-                const fileId = match[2];
-                const imageUrl = `/api/tg-file/${botIndex}/${fileId}`;
-                return { imageUrl, hostUsed: 'Telegram' };
-            }
-        } catch (e: any) {
-            console.warn('[Upload] Telegram failed, trying Catbox...', e.message);
-        }
-    }
-
-    // 2. Try Catbox
-    try {
-        const result = await uploadToCatbox(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, catboxUrl: result.direct_url, hostUsed: 'Catbox' };
-    } catch (e: any) {
-        console.warn('[Upload] Catbox failed, trying Threads...', e.message);
-    }
-
-    // 2. Try Threads
-    if (threadsService.isConfigured() && !isVideo) {
-        try {
-            // For general image uploads, we'll use a generic metadata
-            const metadata = {
-                id: crypto.randomUUID(),
-                title: `Upload: ${originalname}`,
-                description: 'General upload',
-                tags: ['upload'],
-                timestamp: new Date().toISOString(),
-                author: 'System',
-                category: 'Upload',
-                price: 'Free'
-            };
-            const result = await threadsService.publishTemplate([buffer], metadata);
-            return { imageUrl: result.mediaUrls[0], hostUsed: 'Threads', postId: result.postId };
-        } catch (e: any) {
-            console.warn('[Upload] Threads failed. Error:', e.message);
-            console.warn('[Upload] Falling back to Supabase...');
-        }
-    }
-
-    // 2. Try Supabase
-    try {
-        const url = await uploadToSupabase(buffer, originalname, mimetype);
-        return { imageUrl: url, hostUsed: 'Supabase' };
-    } catch (e: any) {
-        console.warn('[Upload] Supabase failed, trying i111666...', e.message);
-    }
-
-    // 3. Try i111666
-    try {
-        const result = await uploadToI111666(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'i111666' };
-    } catch (e: any) {
-        console.warn('[Upload] i111666 failed, trying ImgHippo...', e.message);
-    }
-
-    // 4. Try ImgHippo
-    try {
-        const result = await uploadToImgHippo(buffer, originalname);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgHippo failed, trying ImgBB...', e.message);
-    }
-
-    // 5. Try ImgBB
-    try {
-        const result = await uploadToImgBB(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
-    }
-
-    // 6. Try Gifyu
-    try {
-        const result = await uploadToGifyu(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
-    } catch (e: any) {
-        console.warn('[Upload] Gifyu failed, trying BeeIMG...', e.message);
-    }
-
-    // 7. Try BeeIMG (Moved to end due to IPv6 redirect issues)
-    try {
-        const apiKey = process.env.BEEIMG_API_KEY || '';
-        const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-        return { imageUrl: url, hostUsed: 'BeeIMG' };
-    } catch (e: any) {
-        console.error('[Upload] All external hosts failed:', e.message);
-        throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
-    }
-}
 
 async function startServer() {
 const app = express();
@@ -376,34 +275,6 @@ function mapSupabaseToTemplate(t: any) {
     created_at: t.created_at,
     galleryImages: t.gallery_images || [],
     videoUrl: t.video_url || ''
-  };
-}
-
-function mapThreadsToTemplate(t: any) {
-  return {
-    id: t.id,
-    title: t.title,
-    description: t.description || '',
-    author: t.author || 'Anonymous',
-    author_id: '',
-    author_uid: '',
-    authorAvatar: '',
-    imageUrl: t.demoLink || '', // Threads CDN URL
-    bannerUrl: t.demoLink || '',
-    thumbnail: t.demoLink || '',
-    likes: 0,
-    views: 0,
-    category: t.category || 'Uncategorized',
-    tags: t.tags || [],
-    price: t.price || 'Free',
-    fileUrl: '',
-    fileType: 'html',
-    status: 'approved',
-    sales: 0,
-    earnings: 0,
-    created_at: t.timestamp,
-    galleryImages: [],
-    videoUrl: ''
   };
 }
 
@@ -558,25 +429,15 @@ function mapThreadsToTemplate(t: any) {
       const userId = req.query.userId as string;
       const email = req.query.email as string;
 
-      // 1. Get templates from Threads (Primary Database)
+      // 1. Get templates from Supabase
       let data: any[] = [];
-      if (threadsService.isConfigured()) {
-          try {
-              const threadsTemplates = await threadsService.fetchTemplates();
-              console.log(`[API] Threads returned ${threadsTemplates.length} templates.`);
-              data = threadsTemplates.map(mapThreadsToTemplate);
-          } catch (e) {
-              console.error('[API] Threads fetch error:', e);
-          }
-      } else {
-          console.log('[API] Threads service not configured.');
-      }
-
-      // 2. Get templates from Supabase (Secondary/Backup source)
       try {
         const supabaseTemplates = await getSupabaseTemplates();
         console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
         data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
+      } catch (e) {
+        console.error('[API] Supabase fetch error:', e);
+      }
       } catch (e) {
         console.error('[API] Supabase fetch error:', e);
       }
@@ -746,18 +607,6 @@ function mapThreadsToTemplate(t: any) {
         console.error('[API] Supabase fetch error:', e);
       }
 
-      // 2. Threads
-      if (threadsService.isConfigured()) {
-          try {
-              const threadsTemplates = await threadsService.fetchTemplates();
-              const userThreads = threadsTemplates.filter((t: any) => t.author_email === email || t.authorEmail === email);
-              console.log(`[API Debug] Threads returned ${userThreads.length} templates for ${email}`);
-              allData.push(...userThreads.map(mapThreadsToTemplate));
-          } catch (e) {
-              console.error('[API] Threads fetch error:', e);
-          }
-      }
-
       // 3. RepoManager
       try {
         const repoTemplates = await repoManager.getMergedRegistry();
@@ -838,18 +687,6 @@ function mapThreadsToTemplate(t: any) {
         }
       }
 
-      // 4. Try Threads (Primary Database)
-      if (!template && threadsService.isConfigured()) {
-          try {
-              const threadsTemplate = await threadsService.getTemplateById(id);
-              if (threadsTemplate) {
-                  template = mapThreadsToTemplate(threadsTemplate);
-              }
-          } catch (e) {
-              console.warn(`[API] Threads lookup failed for ${id}:`, e);
-          }
-      }
-      
       // 4. Try Firebase (Skipped as Firebase is only for Auth)
       
       if (template) {
@@ -881,67 +718,7 @@ function mapThreadsToTemplate(t: any) {
       let finalImageUrl = template.preview_image || template.image_url || template.imageUrl || '';
       let finalGalleryImages = template.gallery_images || [];
       
-      // 3. Threads First (Mandatory Step)
-      let threadsPostId = '';
-      
-      if (threadsService.isConfigured()) {
-          try {
-              console.log(`[Threads] Posting template: ${template.title || template.name}`);
-              
-              let imageBuffers: Buffer[] = [];
-              
-              // Helper to fetch image buffer
-              const fetchBuffer = async (url: string) => {
-                  if (url.startsWith('http')) {
-                      const res = await axios.get(url, { responseType: 'arraybuffer' });
-                      return Buffer.from(res.data);
-                  } else if (url.startsWith('data:image')) {
-                      const matches = url.match(/^data:([A-Za-z-+\/]*);base64,(.+)$/);
-                      if (matches && matches.length === 3) {
-                          return Buffer.from(matches[2], 'base64');
-                      }
-                  }
-                  return null;
-              };
-
-              // Main image
-              const mainBuffer = await fetchBuffer(finalImageUrl);
-              if (mainBuffer) imageBuffers.push(mainBuffer);
-
-              // Gallery images
-              if (template.gallery_images && Array.isArray(template.gallery_images)) {
-                  for (const imgUrl of template.gallery_images) {
-                      const buf = await fetchBuffer(imgUrl);
-                      if (buf) imageBuffers.push(buf);
-                  }
-              }
-
-              if (imageBuffers.length > 0) {
-                  const threadsResult = await threadsService.publishTemplate(imageBuffers, {
-                      id: templateId,
-                      title: template.title || template.name,
-                      description: template.description || '',
-                      tags: template.tags || [],
-                      author: template.author_name || 'Anonymous',
-                      category: template.category || 'Uncategorized',
-                      price: template.price || 'Free',
-                      timestamp: new Date().toISOString()
-                  });
-                  threadsPostId = threadsResult.postId;
-                  const mediaUrls = threadsResult.mediaUrls;
-                  if (mediaUrls.length > 0) {
-                      finalImageUrl = mediaUrls[0];
-                      if (mediaUrls.length > 1) {
-                          finalGalleryImages = mediaUrls.slice(1);
-                      }
-                  }
-                  console.log(`[Threads] Success: ${threadsPostId}`);
-              }
-          } catch (e: any) {
-              console.warn(`[Threads] Failed to post template: ${e.message}`);
-          }
-      }
-
+      // 3. Process Images (Upload to Multi-service)
       let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
       let telegramFileId = '';
 
@@ -999,8 +776,6 @@ function mapThreadsToTemplate(t: any) {
         earnings: 0,
         status: template.status || 'approved',
         telegram_file_id: telegramFileId,
-        threads_post_id: threadsPostId,
-        threads_post_url: threadsPostId ? `https://www.threads.net/t/${threadsPostId}` : ''
       };
 
       // 6. Save to GitHub
@@ -1128,18 +903,6 @@ function mapThreadsToTemplate(t: any) {
           const supabaseTemplates = await getSupabaseTemplates();
           const found = supabaseTemplates.find((t: any) => t.id === id);
           if (found) template = mapSupabaseToTemplate(found);
-      }
-
-      // Delete from Threads
-      if (template && template.threads_post_id && threadsService.isConfigured()) {
-          try {
-              console.log(`[API] Deleting from Threads: ${template.threads_post_id}`);
-              await threadsService.deleteTemplate(template.threads_post_id);
-              deletedCount++;
-          } catch (error: any) {
-              console.error(`[API] Failed to delete from Threads: ${template.threads_post_id}`, error);
-              errors.push(`Threads: ${error.message}`);
-          }
       }
 
       // Delete from GitHub

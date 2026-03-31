@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import TemplateCard from './TemplateCard';
-import { Template, getPublicTemplates } from '../api';
+import { Template, getPublicTemplates } from '../src/api-client';
 import { playClickSound } from '../audio';
 import { SearchIcon, NoResultsIcon, XIcon, FilterIcon, SortIcon, ArrowRightIcon } from './Icons';
 import { ScrollReveal } from './ScrollReveal';

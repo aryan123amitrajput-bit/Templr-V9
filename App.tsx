@@ -17,9 +17,9 @@ import SubscriptionModal from './components/SubscriptionModal';
 import DocumentationModal from './components/DocumentationModal';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
-import * as api from './api';
+import * as api from './src/api-client';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
-import type { Session, Template, NewTemplateData } from './api';
+import type { Session, Template, NewTemplateData } from './src/api-client';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSEO } from './hooks/useSEO';
 

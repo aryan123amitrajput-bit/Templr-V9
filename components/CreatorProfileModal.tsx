@@ -3,7 +3,7 @@ import React, { useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
-import { Template, fixUrl } from '../api';
+import { Template, fixUrl } from '../src/api-client';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;

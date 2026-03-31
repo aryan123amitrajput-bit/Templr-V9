@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
 import { CheckCircleIcon, RocketIcon } from './Icons';
-import { getFeaturedCreators, CreatorStats } from '../api';
+import { getFeaturedCreators, CreatorStats } from '../src/api-client';
 
 interface FeaturedCreatorsProps {
   onCreatorClick?: (creatorName: string) => void;

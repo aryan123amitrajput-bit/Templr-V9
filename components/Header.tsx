@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon, RocketIcon } from './Icons';
 import { playClickSound } from '../audio';
-import type { Session } from '../api';
+import type { Session } from '../src/api-client';
 import { BorderBeam } from './ui/BorderBeam';
 import { motion, AnimatePresence } from 'framer-motion';
 

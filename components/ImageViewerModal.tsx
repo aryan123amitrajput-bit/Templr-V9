@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, HeartIcon, EyeIcon, LockIcon, CheckCircleIcon, GlobeIcon, ArrowRightIcon, UploadIcon, ArrowLeftIcon, FileCodeIcon, LinkIcon, LayersIcon, RocketIcon } from './Icons';
-import { Template } from '../api';
+import { Template } from '../src/api-client';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 
 interface ImageViewerModalProps {

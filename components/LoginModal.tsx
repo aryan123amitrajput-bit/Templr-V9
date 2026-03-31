@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { XIcon, LockIcon, RocketIcon, ShieldCheckIcon, LightbulbIcon, CheckCircleIcon, CpuIcon } from './Icons';
 import { playClickSound, playSuccessSound, playTypingSound, playNotificationSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
-import { signInWithGoogle } from '../api';
+import { signInWithGoogle } from '../src/api-client';
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg viewBox="0 0 24 24" fill="currentColor" {...props}>

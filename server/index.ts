@@ -29,7 +29,7 @@ const upload = multer({
  * Main Upload Endpoint for Templr Templates.
  * 
  * 1. Receives 'preview' image file, 'template_name', and 'template_link'
- * 2. Enqueues the upload to Snapchat/Telegram (Non-blocking)
+ * 2. Enqueues the upload to Telegram (Non-blocking)
  * 3. Returns success to the user immediately
  */
 app.post('/api/templates/upload', upload.single('preview'), async (req, res) => {

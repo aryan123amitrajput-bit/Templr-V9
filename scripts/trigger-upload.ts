@@ -8,7 +8,7 @@ async function trigger() {
     try {
         const response = await axios.post(apiUrl, {
             url: testImageUrl,
-            description: 'Test Template - Snapchat Spotlight'
+            description: 'Test Template - Spotlight'
         });
         
         console.log('API Response:', response.data);

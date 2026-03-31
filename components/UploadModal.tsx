@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
-import { uploadFile, NewTemplateData, Template } from '../api';
+import { uploadFile, NewTemplateData, Template } from '../src/api-client';
 import { assetManager } from '../lib/assetManager';
 import { NotificationType } from './Notification';
 

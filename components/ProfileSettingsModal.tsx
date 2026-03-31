@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CameraIcon, CheckCircleIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
-import { updateUserProfile, uploadFile, Session } from '../api';
+import { updateUserProfile, uploadFile, Session } from '../src/api-client';
 import { NotificationType } from './Notification';
 
 interface ProfileSettingsModalProps {
