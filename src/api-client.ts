@@ -104,15 +104,17 @@ export const getTemplateById = async (id: string) => {
   return response.data;
 };
 
-export const getUserTemplates = async (userId: string) => {
-  const response = await axios.get(`${API_BASE}/user/templates?userId=${userId}`);
+export const getUserTemplates = async (userId: string, email?: string) => {
+  const params = new URLSearchParams({ userId });
+  if (email) params.append('email', email);
+  const response = await axios.get(`${API_BASE}/user/templates?${params.toString()}`);
   return response.data;
 };
 
 export const listenForUserTemplates = (userId: string, email: string | undefined, callback: (data: Template[]) => void) => {
   const fetch = async () => {
     try {
-      const data = await getUserTemplates(userId);
+      const data = await getUserTemplates(userId, email);
       callback(data.data || []);
     } catch (e) {
       console.error('Error in listenForUserTemplates:', e);

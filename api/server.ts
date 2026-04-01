@@ -740,17 +740,19 @@ function mapSupabaseToTemplate(t: any) {
     console.log(`[API Debug] GET /api/user/templates request received. Query:`, req.query);
     try {
       const email = req.query.email as string;
-      if (!email) {
-        console.warn(`[API Debug] Missing email in /api/user/templates request`);
-        return res.status(400).json({ error: "Email required" });
+      const userId = req.query.userId as string;
+      
+      if (!email && !userId) {
+        console.warn(`[API Debug] Missing email and userId in /api/user/templates request`);
+        return res.status(400).json({ error: "Email or userId required" });
       }
 
       let allData: any[] = [];
 
       // 1. Supabase
       try {
-        const supabaseData = await getSupabaseUserTemplates(email);
-        console.log(`[API Debug] Supabase returned ${supabaseData?.length || 0} templates for ${email}`);
+        const supabaseData = await getSupabaseUserTemplates(userId, email);
+        console.log(`[API Debug] Supabase returned ${supabaseData?.length || 0} templates for ${email || userId}`);
         allData.push(...supabaseData.map(mapSupabaseToTemplate));
       } catch (e) {
         console.error('[API] Supabase fetch error:', e);
