@@ -1105,7 +1105,7 @@ function mapSupabaseToTemplate(t: any) {
           const { updates, uid } = req.body;
           if (!uid) throw new Error("User ID required");
           
-          await updateSupabaseUser(uid, updates);
+          await updateSupabaseUser({ uid, ...updates });
           
           res.json({ success: true });
       } catch (error: any) {
@@ -1133,9 +1133,9 @@ function mapSupabaseToTemplate(t: any) {
       console.log("Vite middleware initialized.");
     } else {
       // Production: Serve static files
-      app.use(express.static(path.resolve(__dirname, 'dist')));
+      app.use(express.static(path.resolve(__dirname, '../dist')));
       app.get('*all', (req, res) => {
-        res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+        res.sendFile(path.resolve(__dirname, '../dist', 'index.html'));
       });
     }
   } catch (viteError) {

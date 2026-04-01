@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { Template } from '../types';
+import { Template } from '../api-client';
 
 export const getSupabase = () => supabase;
 
@@ -95,11 +95,14 @@ export async function deleteTemplate(id: string) {
   if (error) throw error;
 }
 
-export async function deleteAllTemplates(userId: string) {
-  const { error } = await supabase
-    .from('templates')
-    .delete()
-    .eq('author_id', userId);
+export async function deleteAllTemplates(userId?: string) {
+  let query = supabase.from('templates').delete();
+  if (userId) {
+    query = query.eq('author_id', userId);
+  } else {
+    query = query.neq('id', '0'); // Delete all
+  }
+  const { error } = await query;
 
   if (error) throw error;
 }
