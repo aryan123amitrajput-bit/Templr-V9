@@ -260,8 +260,8 @@ const app = express();
         res.status(500).json({ error: 'No response body from Telegram' });
       }
     } catch (error: any) {
-      console.error('[Telegram Proxy] Error:', error.message);
-      res.status(500).json({ error: 'Failed to fetch file from Telegram' });
+      console.error('[Telegram Proxy] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch file from Telegram', details: error.message });
     }
   });
 
