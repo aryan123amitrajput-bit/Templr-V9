@@ -13,7 +13,6 @@ export interface UploadResult {
     viewer_url: string;
     fallback_used: boolean;
     auth_token?: string; // Added to support deletion
-    telegram_file_id?: string;
 }
 
 // 1. Image Optimization
@@ -59,6 +58,25 @@ const fileToBase64 = (blob: Blob): Promise<string> => {
     });
 };
 
+// Telegram Upload Logic
+export const uploadToTelegram = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    
+    // This is a placeholder for the actual Telegram Bot API call.
+    // The user needs to provide TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
+    const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendPhoto?chat_id=${process.env.TELEGRAM_CHAT_ID}`, {
+        method: 'POST',
+        body: formData
+    });
+    
+    if (!response.ok) throw new Error('Telegram upload failed');
+    const data = await response.json();
+    // Telegram returns a file_id, not a direct URL. This needs to be handled.
+    // For now, return a placeholder or handle the file_id.
+    return data.result.photo[data.result.photo.length - 1].file_id;
+};
+
 // 3. Main Upload Orchestrator
 export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
     try {
@@ -83,8 +101,7 @@ export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: false,
-            telegram_file_id: data.telegram_file_id
+            fallback_used: false
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);
@@ -97,14 +114,18 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     try {
         console.log(`[Orchestrator] Optimizing image: ${file.name}`);
         const optimizedBlob = await optimizeImage(file);
+        const base64File = await fileToBase64(optimizedBlob);
         
         console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
-        const formData = new FormData();
-        formData.append('file', optimizedBlob, file.name);
-        
         const response = await fetch('/api/upload', {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                file: base64File, 
+                path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
+            })
         });
 
         if (!response.ok) {
@@ -119,8 +140,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: data.host !== '0008888 (Primary)',
-            telegram_file_id: data.telegram_file_id
+            fallback_used: data.host !== '0008888 (Primary)'
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);
