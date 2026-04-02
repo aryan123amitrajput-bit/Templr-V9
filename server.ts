@@ -478,6 +478,30 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
+  // Telegram File Proxy
+  app.get('/api/tg-file/:id/:fileId', async (req, res) => {
+    try {
+      const { fileId } = req.params;
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) throw new Error('Telegram token not configured');
+
+      console.log(`[TG File Proxy] Fetching file info for: ${fileId}`);
+      const response = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+      const data = await response.json();
+      
+      if (!data.ok) throw new Error(data.description || 'Failed to get file info');
+      
+      const filePath = data.result.file_path;
+      const fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+      
+      console.log(`[TG File Proxy] Redirecting to: ${fileUrl}`);
+      res.redirect(fileUrl);
+    } catch (error: any) {
+      console.error('TG File Proxy Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get Featured Creators
   app.get('/api/creators', async (req, res) => {
     try {
