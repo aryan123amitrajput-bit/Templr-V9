@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
@@ -19,8 +18,10 @@ import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './src/api-client';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
-import type { Session, Template, NewTemplateData } from './src/api-client';
+import type { Session, Template, NewTemplateData } from './src/types';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Analytics } from '@vercel/analytics/react';
+
 import { useSEO } from './hooks/useSEO';
 
 // NUCLEAR KEY ROTATION - V12 STRICT
@@ -93,7 +94,6 @@ const App: React.FC = () => {
   // --- DATA STATE ---
   const [templates, setTemplates] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   
   // --- SUBSCRIPTION STATE ---
@@ -227,17 +227,10 @@ const App: React.FC = () => {
     const initAuth = async () => {
         try {
             const subscription = api.onAuthStateChange((_event, session) => {
-                if (mounted) {
-                    setSession(session);
-                    setIsAuthLoading(false);
-                    if (window.location.pathname === '/auth/callback') {
-                        window.history.replaceState({}, document.title, '/');
-                    }
-                }
+                if (mounted) setSession(session);
             });
             return subscription;
         } catch (e) {
-            if (mounted) setIsAuthLoading(false);
             return null;
         }
     };
@@ -263,7 +256,7 @@ const App: React.FC = () => {
     return () => {
         mounted = false;
         clearTimeout(splashTimer);
-        authSubPromise.then(sub => sub?.unsubscribe?.());
+        authSubPromise.then(sub => sub?.unsubscribe());
     };
   }, []);
 
@@ -430,7 +423,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleSignOut = useCallback(async () => { 
-      await api.signOutUser(); 
+      await api.signOut(); 
       setSession(null);
       setIsSubscribed(false);
       localStorage.removeItem(PRO_KEY); 
@@ -438,26 +431,14 @@ const App: React.FC = () => {
   }, [showNotification]);
 
   const handleAddOrUpdateTemplate = useCallback(async (data: NewTemplateData) => {
-    if (editingTemplate && session?.user?.email) {
+    if (editingTemplate && session?.user.email) {
         await api.updateTemplateData(editingTemplate.id, data, session.user.email);
-        setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...data, status: data.initialStatus || t.status } : t));
+        await loadTemplates();
     } else {
         const newTemplate = await api.addTemplate(data, session?.user);
         setTemplates(prev => [newTemplate, ...prev]);
     }
   }, [editingTemplate, session, loadTemplates]);
-
-  const handleDeleteTemplate = useCallback(async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this template?")) {
-        try {
-            await api.deleteTemplate(id);
-            setTemplates(prev => prev.filter(t => t.id !== id));
-            showNotification("Template deleted successfully", 'success');
-        } catch (e: any) {
-            showNotification(e.message || "Error deleting template", 'error');
-        }
-    }
-  }, [showNotification]);
 
   const handleEditTemplate = useCallback((template: Template) => {
       setEditingTemplate(template);
@@ -617,12 +598,10 @@ const App: React.FC = () => {
               onLike={handleLikeClick}
               onFavorite={handleFavoriteClick}
               onView={handleViewClick}
-              onDelete={handleDeleteTemplate}
               onCreatorClick={handleOpenCreator}
               likedIds={likedTemplateIds}
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}
-              currentUserId={session?.user?.id}
             />
           </motion.div>
         </LazySection>
@@ -670,9 +649,8 @@ const App: React.FC = () => {
         onAddTemplate={handleAddOrUpdateTemplate}
         onDashboardClick={() => { handleCloseUpload(); handleOpenDashboard(); }}
         isLoggedIn={!!session}
-        isAuthLoading={isAuthLoading}
         onLoginRequest={handleOpenLogin}
-        userEmail={session?.user?.email}
+        userEmail={session?.user.email}
         onShowNotification={showNotification}
         initialData={editingTemplate}
         isEditing={!!editingTemplate}
@@ -700,8 +678,7 @@ const App: React.FC = () => {
       <DashboardModal 
         isOpen={isDashboardOpen} 
         onClose={handleCloseDashboard} 
-        userId={session?.user?.id}
-        userEmail={session?.user?.email}
+        userEmail={session?.user.email}
         onEdit={handleEditTemplate}
       />
       <LoginModal 
@@ -730,15 +707,14 @@ const App: React.FC = () => {
         onUpgradeConfirm={handleUpgradeConfirm}
       />
       
-      <AnimatePresence>
-        {notification && (
-          <Notification 
-            message={notification.message}
-            type={notification.type}
-            onClose={handleCloseNotification}
-          />
-        )}
-      </AnimatePresence>
+      {notification && (
+        <Notification 
+          message={notification.message}
+          type={notification.type}
+          onClose={handleCloseNotification}
+        />
+      )}
+      <Analytics />
     </div>
   );
 };

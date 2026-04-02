@@ -227,41 +227,27 @@ const app = express();
       const { botIndex, fileId } = req.params;
       const tgUri = `tg://${botIndex}/${fileId}`;
       
-      const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
-      
-      // Stream the file from Telegram to the client
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Telegram responded with ${response.status}`);
+      console.log('[Telegram Proxy] Is configured:', telegramService.isConfigured());
+      if (!telegramService.isConfigured()) {
+        console.log('[Telegram Proxy] Not configured, redirecting');
+        res.redirect("https://picsum.photos/seed/templr/800/600");
+        return;
       }
       
-      // Pass headers from Telegram
-      const contentType = response.headers.get('content-type');
-      const contentLength = response.headers.get('content-length');
-      
-      if (contentType) res.setHeader('Content-Type', contentType);
-      if (contentLength) res.setHeader('Content-Length', contentLength);
-      
-      // Cache the file for 24 hours
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      
-      if (response.body) {
-        // Node 18+ fetch response.body is a ReadableStream
-        const readableWebStream = response.body as any;
-        const reader = readableWebStream.getReader();
+      try {
+        const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
         
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        res.end();
-      } else {
-        res.status(500).json({ error: 'No response body from Telegram' });
+        // Stream the file from Telegram to the client
+        const response = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+        res.set('Content-Type', response.headers['content-type'] || 'image/jpeg');
+        res.send(Buffer.from(response.data));
+      } catch (error: any) {
+        console.log('[Telegram Proxy] Error fetching file, redirecting to placeholder:', error);
+        res.redirect("https://picsum.photos/seed/templr/800/600");
       }
     } catch (error: any) {
       console.error('[Telegram Proxy] Error:', error);
-      res.status(500).json({ error: 'Failed to fetch file from Telegram', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch file from Telegram', errorString: error.toString() });
     }
   });
 

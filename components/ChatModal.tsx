@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { XIcon, SendIcon } from './Icons';
 import { playClickSound, playTypingSound } from '../audio';

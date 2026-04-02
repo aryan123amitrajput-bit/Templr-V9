@@ -1,83 +1,44 @@
-
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, CheckCircleIcon, ShieldCheckIcon, LightbulbIcon } from './Icons';
-import { playNotificationSound, playClickSound } from '../audio';
+import { XIcon } from './Icons';
+import { playNotificationSound } from '../audio';
 
-export type NotificationType = 'success' | 'error' | 'info';
+export type NotificationType = 'info' | 'success' | 'error';
 
 interface NotificationProps {
   message: string;
-  type?: NotificationType;
+  type: NotificationType;
   onClose: () => void;
 }
 
-const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onClose }) => {
+const Notification: React.FC<NotificationProps> = ({ message, type, onClose }) => {
   useEffect(() => {
     playNotificationSound();
-
-    // AUTO DISMISS RULES:
-    // Success: Dismiss after 5s
-    // Error: NEVER dismiss (User must acknowledge)
-    // Info: Dismiss after 8s
-    
-    let timer: ReturnType<typeof setTimeout>;
-    
-    if (type === 'success') {
-        timer = setTimeout(() => onClose(), 5000);
-    } else if (type === 'info') {
-        timer = setTimeout(() => onClose(), 8000);
-    }
-
+    const timer = setTimeout(onClose, 4000);
     return () => clearTimeout(timer);
-  }, [message, type, onClose]);
+  }, [onClose]);
 
-  const styles = {
-      success: "from-emerald-900/90 to-emerald-950/90 border-emerald-500/30 text-emerald-200",
-      error: "from-red-900/90 to-red-950/90 border-red-500/30 text-red-200",
-      info: "from-blue-900/90 to-blue-950/90 border-blue-500/30 text-blue-200"
-  };
-
-  const icons = {
-      success: <CheckCircleIcon className="w-5 h-5 text-emerald-400" />,
-      error: <ShieldCheckIcon className="w-5 h-5 text-red-400" />,
-      info: <LightbulbIcon className="w-5 h-5 text-blue-400" />
+  const colors = {
+    info: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+    success: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    error: 'bg-red-500/10 border-red-500/20 text-red-400'
   };
 
   return (
-    <motion.div 
-        initial={{ y: -20, opacity: 0, x: '-50%' }}
-        animate={{ y: 0, opacity: 1, x: '-50%' }}
-        exit={{ y: -20, opacity: 0, x: '-50%' }}
-        transition={{ type: "spring", damping: 25, stiffness: 350 }}
-        className="fixed top-6 left-1/2 z-[2147483647] w-full max-w-md px-4"
-    >
-      <div 
-        className={`relative rounded-2xl p-[1px] bg-gradient-to-br ${type === 'error' ? 'from-red-500/40 to-transparent' : type === 'success' ? 'from-emerald-500/40 to-transparent' : 'from-blue-500/40 to-transparent'} shadow-2xl backdrop-blur-xl`}
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: 50, scale: 0.9 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.9 }}
+        className={`fixed bottom-8 left-8 z-[100] px-6 py-4 rounded-2xl border flex items-center gap-4 shadow-2xl backdrop-blur-md ${colors[type]}`}
       >
-        <div className={`
-            flex items-center gap-4 bg-gradient-to-b ${styles[type]} 
-            rounded-2xl px-5 py-3 border border-t-[1px] shadow-inner
-        `}>
-          <div className="flex-shrink-0">
-             {icons[type]}
-          </div>
-          
-          <p className="flex-1 text-sm font-medium leading-snug drop-shadow-md">
-            {message}
-          </p>
-          
-          <button
-            onClick={() => { playClickSound(); onClose(); }}
-            className="p-2 -mr-2 rounded-full hover:bg-black/20 text-white/40 hover:text-white transition-colors flex-shrink-0"
-            aria-label="Close"
-          >
-            <XIcon className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </motion.div>
+        <span className="text-sm font-bold">{message}</span>
+        <button onClick={onClose} className="hover:opacity-70 transition-opacity">
+          <XIcon className="w-4 h-4" />
+        </button>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
-export default React.memo(Notification);
+export default Notification;

@@ -1,4 +1,3 @@
-
 import React, { memo } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';

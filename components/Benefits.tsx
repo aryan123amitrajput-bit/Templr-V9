@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { LayersIcon, SmartphoneIcon, EyeIcon, CursorClickIcon, ShieldCheckIcon, ArrowRightIcon } from './Icons';

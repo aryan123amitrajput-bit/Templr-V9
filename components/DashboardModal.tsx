@@ -1,15 +1,14 @@
-
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, LayersIcon, ShieldCheckIcon, CpuIcon, UploadIcon, LightbulbIcon } from './Icons';
-import { Template, listenForUserTemplates, deleteTemplate } from '../src/api-client';
+import { Template } from '../src/types';
+import { listenForUserTemplates, deleteTemplate } from '../src/api-client';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 
 interface DashboardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string | undefined;
-  userEmail?: string;
+  userEmail: string | undefined;
   onEdit?: (template: Template) => void;
 }
 
@@ -92,16 +91,6 @@ const CapacityProjection = ({ usedBytes, templateCount }: { usedBytes: number, t
 
 const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void, onEdit?: () => void }> = ({ template, onDelete, onEdit }) => {
     const [imageError, setImageError] = useState(false);
-    const [signedBanner, setSignedBanner] = useState<string | null>(null);
-    
-    useEffect(() => {
-        setImageError(false);
-        setSignedBanner(null);
-    }, [template.bannerUrl]);
-
-    const handleImageError = () => {
-        setImageError(true);
-    };
     
     const getStatusStyle = (status: string) => {
         switch (status) {
@@ -133,8 +122,8 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                 <div className="w-24 h-24 rounded-lg bg-black border border-white/10 overflow-hidden flex-shrink-0 relative flex items-center justify-center">
                     {!imageError ? (
                         <img 
-                            src={signedBanner || template.bannerUrl} 
-                            onError={handleImageError}
+                            src={template.bannerUrl} 
+                            onError={() => setImageError(true)}
                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                         />
                     ) : (
@@ -152,10 +141,10 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                              <h4 className="text-white font-bold text-sm truncate pr-4">{template.title}</h4>
                              <button 
                                 onClick={(e) => { e.stopPropagation(); onDelete(); }} 
-                                className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded border border-red-500/20 transition-all z-30"
+                                className="text-slate-600 hover:text-red-400 transition-colors z-30"
                                 title="Delete Asset"
                              >
-                                 Delete
+                                 <XIcon className="w-4 h-4" />
                              </button>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">{template.category}</p>
@@ -201,7 +190,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
     );
 };
 
-const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userId, userEmail, onEdit }) => {
+const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userEmail, onEdit }) => {
   const [myTemplates, setMyTemplates] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
@@ -210,9 +199,9 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userId
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
-    if (isOpen && userId) {
+    if (isOpen && userEmail) {
         setIsLoading(true);
-        unsubscribe = listenForUserTemplates(userId, userEmail, (data) => {
+        unsubscribe = listenForUserTemplates(userEmail, (data) => {
             setMyTemplates(data);
             setIsLoading(false);
         }).unsubscribe;
@@ -220,7 +209,7 @@ const DashboardModal: React.FC<DashboardModalProps> = ({ isOpen, onClose, userId
     return () => {
         if (unsubscribe) unsubscribe();
     };
-  }, [isOpen, userId, userEmail]);
+  }, [isOpen, userEmail]);
 
   const confirmDelete = (id: string) => {
       const template = myTemplates.find(t => t.id === id);
