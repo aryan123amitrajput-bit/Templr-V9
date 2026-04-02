@@ -1,33 +1,16 @@
-import { uploadImage as uploadImageService } from '../src/services/imageUploadService';
 
 export const assetManager = {
   /**
-   * Uploads an image to a CDN and returns the public URL.
+   * Uploads template JSON to text hosting and returns the URL.
    */
-  uploadImage: async (file: File): Promise<{ url: string; provider: string; telegram_file_id?: string }> => {
+  uploadTemplateJSON: async (data: object): Promise<string> => {
     try {
-      const result = await uploadImageService(file);
-      return { url: result.direct_url, provider: result.provider, telegram_file_id: result.telegram_file_id };
-    } catch (error: any) {
-      console.error('[AssetManager] Failed to upload image:', error);
-      throw new Error(`Failed to upload image: ${error.message}`);
-    }
-  },
-
-  /**
-   * Uploads template JSON to text hosting and returns the URL and provider.
-   */
-  uploadTemplateJSON: async (data: object): Promise<{ url: string; provider: string }> => {
-    try {
-      const response = await fetch('/api/upload/text', {
+      const response = await fetch('/api/upload/pastesrs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
-          content: JSON.stringify(data, null, 2),
-          filename: `template-${Date.now()}.json`
-        })
+        body: JSON.stringify({ content: JSON.stringify(data, null, 2) })
       });
 
       if (!response.ok) {
@@ -39,7 +22,7 @@ export const assetManager = {
         throw new Error('Invalid response from text hosting');
       }
 
-      return { url: result.url, provider: result.host || 'Text Host' };
+      return result.url;
     } catch (error: any) {
       console.error('[AssetManager] Failed to upload template JSON:', error);
       throw new Error(`Failed to upload template JSON: ${error.message}`);

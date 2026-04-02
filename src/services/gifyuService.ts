@@ -1,3 +1,0 @@
-export async function uploadToGifyu(buffer: Buffer, originalname: string, mimetype?: string): Promise<{ direct_url: string }> {
-    throw new Error("Not implemented");
-}
