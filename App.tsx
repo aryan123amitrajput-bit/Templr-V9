@@ -18,7 +18,7 @@ import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './src/api-client';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
-import type { Session, Template, NewTemplateData } from './src/types';
+import type { Session, Template, NewTemplateData } from './src/api-client';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Analytics } from '@vercel/analytics/react';
 

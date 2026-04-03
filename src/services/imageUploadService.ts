@@ -58,30 +58,6 @@ const fileToBase64 = (blob: Blob): Promise<string> => {
     });
 };
 
-// Telegram Upload Logic
-export const uploadToTelegram = async (file: File | Blob): Promise<string> => {
-    const token = '8692277039:AAHQGo1sIRfBj6rYUrLO2yxUliuzEjijJPo';
-    const chatId = '8187582649';
-    
-    const formData = new FormData();
-    formData.append('photo', file);
-    
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto?chat_id=${chatId}`, {
-        method: 'POST',
-        body: formData
-    });
-    
-    if (!response.ok) throw new Error('Telegram upload failed');
-    const data = await response.json();
-    const fileId = data.result.photo[data.result.photo.length - 1].file_id;
-    
-    const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-    const fileData = await fileResponse.json();
-    const filePath = fileData.result.file_path;
-    
-    return `https://api.telegram.org/file/bot${token}/${filePath}`;
-};
-
 // 3. Main Upload Orchestrator
 export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
     try {
@@ -119,22 +95,6 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     try {
         console.log(`[Orchestrator] Optimizing image: ${file.name}`);
         const optimizedBlob = await optimizeImage(file);
-        
-        try {
-            console.log(`[Orchestrator] Uploading to Telegram...`);
-            const telegramUrl = await uploadToTelegram(optimizedBlob);
-            return {
-                success: true,
-                provider: 'Telegram',
-                direct_url: telegramUrl,
-                thumbnail_url: telegramUrl,
-                viewer_url: telegramUrl,
-                fallback_used: false
-            };
-        } catch (telegramErr) {
-            console.warn(`[Orchestrator] Telegram upload failed, falling back to proxy:`, telegramErr);
-        }
-
         const base64File = await fileToBase64(optimizedBlob);
         
         console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
@@ -161,7 +121,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: true
+            fallback_used: false
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);

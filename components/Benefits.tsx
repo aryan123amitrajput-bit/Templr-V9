@@ -150,12 +150,12 @@ const Benefits: React.FC = () => {
                 </div>
                 
                 <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-6 leading-[1.1]">
-                    Constructed for <br />
+                    The <span className="text-blue-400">Templr</span> Advantage. <br />
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-slate-400">maximum velocity.</span>
                 </h2>
                 <p className="text-slate-400 text-lg leading-relaxed border-l-2 border-slate-800 pl-6">
-                    We've stripped away the complexity of traditional marketplaces. 
-                    What remains is a pure, high-performance engine for design delivery.
+                    We've built the ultimate ecosystem for high-performance landing page templates. 
+                    From security to performance, we've got you covered.
                 </p>
             </div>
         </ScrollReveal>

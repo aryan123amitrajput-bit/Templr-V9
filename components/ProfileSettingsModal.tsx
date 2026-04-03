@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, SettingsIcon, UserIcon } from './Icons';
 import { playClickSound, playSuccessSound } from '../audio';
-import { Session } from '../src/types';
+import { Session } from '../src/api-client';
 import { updateUserProfile } from '../src/api-client';
 
 interface ProfileSettingsModalProps {

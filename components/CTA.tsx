@@ -41,19 +41,12 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
             
             <div className="flex flex-col items-center gap-8">
                 <div className="flex justify-center">
-                    {/* 
-                       ULTRA-PREMIUM GLASS CTA BUTTON 
-                       Spec: Dark Mode Glassmorphism, Liquid Smoke, Ethereal Halo
-                    */}
                     <button 
                       onClick={handleGetStarted}
-                      className="group relative px-14 py-5 rounded-full overflow-hidden transition-all duration-400 hover:scale-105 active:scale-95 bg-white/10 hover:bg-white/20 backdrop-blur-3xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(255,255,255,0.1)]"
+                      className="group relative px-14 py-5 rounded-full overflow-hidden transition-all duration-400 hover:scale-105 active:scale-95 bg-white text-black shadow-lg shadow-white/10"
                     >
-                      {/* Liquid Gloss Top Reflection */}
-                      <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent opacity-50 pointer-events-none"></div>
-
                       {/* Text Content */}
-                      <span className="relative z-20 font-sans font-medium text-white text-xl tracking-wide flex items-center justify-center drop-shadow-sm">
+                      <span className="relative z-20 font-sans font-bold text-xl tracking-wide flex items-center justify-center drop-shadow-sm">
                           Get Started
                       </span>
                     </button>

@@ -13,21 +13,10 @@ import {
   doc, 
   setDoc, 
   updateDoc,
-  Timestamp,
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  getDocs,
-  getDoc,
-  addDoc,
-  deleteDoc,
-  onSnapshot,
-  startAfter
+  Timestamp
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { uploadImage } from './src/services/imageUploadService';
+import { uploadImage } from './services/imageUploadService';
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
@@ -310,47 +299,20 @@ export const getPublicTemplates = async (
     currentUserId?: string
 ): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
     try {
-        let q = query(collection(db, 'templates'), where('status', '==', 'approved'));
+        const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch templates");
+        const result = await response.json();
         
-        if (category !== 'All') {
-            q = query(q, where('category', '==', category));
-        }
-
-        // Note: Firestore doesn't support full-text search natively well without external services.
-        // We will fetch more and filter client-side if there's a search query.
-        const fetchLimit = searchQuery ? 50 : limitNum + 1;
-        
-        if (sortBy === 'popular' || sortBy === 'likes') {
-            q = query(q, orderBy('likes', 'desc'), limit(fetchLimit));
-        } else {
-            q = query(q, orderBy('created_at', 'desc'), limit(fetchLimit));
-        }
-
-        const querySnapshot = await getDocs(q);
-        let results: any[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        if (searchQuery) {
-            const lowerQuery = searchQuery.toLowerCase();
-            results = results.filter(t => 
-                (t.title && t.title.toLowerCase().includes(lowerQuery)) ||
-                (t.description && t.description.toLowerCase().includes(lowerQuery)) ||
-                (t.author_name && t.author_name.toLowerCase().includes(lowerQuery))
-            );
-        }
-
-        const hasMore = results.length > limitNum;
-        if (hasMore) {
-            results = results.slice(0, limitNum);
-        }
-
-        const data = results.map((t: any) => mapTemplate(t)).filter((t: Template) => {
+        // Map data to Template interface
+        const data = result.data.map((t: any) => mapTemplate(t)).filter((t: Template) => {
             const titleLower = t.title.toLowerCase();
             const isAnonymous = titleLower.includes('anonymous');
             const hasNumbers = /\d/.test(t.title);
             return !isAnonymous && !hasNumbers;
         });
         
-        return { data, hasMore };
+        return { data, hasMore: result.hasMore };
     } catch (e: any) {
         console.error("Error fetching public templates:", e);
         return { data: [], hasMore: false, error: e.message || "Connection failed" };
@@ -359,12 +321,10 @@ export const getPublicTemplates = async (
 
 export const getTemplateById = async (id: string): Promise<Template | null> => {
     try {
-        const docRef = doc(db, 'templates', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return mapTemplate({ id: docSnap.id, ...docSnap.data() });
-        }
-        return null;
+        const response = await fetch(`/api/templates/${id}`);
+        if (!response.ok) return null;
+        const result = await response.json();
+        return mapTemplate(result.template);
     } catch (e: any) {
         console.error("Error fetching template:", e);
         return null;
@@ -373,47 +333,10 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
 
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     try {
-        const q = query(collection(db, 'templates'), where('status', '==', 'approved'));
-        const querySnapshot = await getDocs(q);
-        
-        const statsMap = new Map<string, CreatorStats>();
-        
-        querySnapshot.docs.forEach(doc => {
-            const t = doc.data();
-            const email = t.author_email || 'anon';
-            const name = t.author_name || 'Anonymous';
-            const rawAvatar = t.author_avatar;
-
-            const current = statsMap.get(email) || {
-                name: name,
-                email: email,
-                totalViews: 0,
-                totalLikes: 0,
-                templateCount: 0,
-                avatarUrl: rawAvatar ? fixUrl(rawAvatar) : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                role: 'Creator'
-            };
-
-            current.totalViews += (t.views || 0);
-            current.totalLikes += (t.likes || 0);
-            current.templateCount += 1;
-            statsMap.set(email, current);
-        });
-
-        const allCreators = Array.from(statsMap.values())
-            .sort((a, b) => b.totalViews - a.totalViews)
-            .slice(0, 20);
-
-        // Shuffle
-        for (let i = allCreators.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allCreators[i], allCreators[j]] = [allCreators[j], allCreators[i]];
-        }
-
-        return allCreators.slice(0, 4).map(c => ({
-            ...c,
-            role: c.totalViews > 1000 ? 'Top Seller' : 'Rising Star'
-        }));
+        const response = await fetch('/api/creators');
+        if (!response.ok) throw new Error("Failed to fetch featured creators");
+        const result = await response.json();
+        return result.data;
     } catch (e: any) {
         console.error("Error fetching featured creators:", e);
         return [];
@@ -423,16 +346,22 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
 export const listenForUserTemplates = (userId: string, callback: (templates: Template[]) => void) => {
     if (!userId) { callback([]); return { unsubscribe: () => {} }; }
     
-    const q = query(collection(db, 'templates'), where('author_uid', '==', userId), orderBy('created_at', 'desc'));
+    let interval: any;
+    const fetchTemplates = async () => {
+        try {
+            const response = await fetch(`/api/templates?userId=${userId}`);
+            if (!response.ok) return;
+            const result = await response.json();
+            callback(result.data.map((t: any) => mapTemplate(t)));
+        } catch (e) {
+            console.error("Error fetching user templates:", e);
+        }
+    };
     
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const templates = querySnapshot.docs.map(doc => mapTemplate({ id: doc.id, ...doc.data() }));
-        callback(templates);
-    }, (error) => {
-        console.error("Error listening for user templates:", error);
-    });
+    fetchTemplates();
+    interval = setInterval(fetchTemplates, 5000);
     
-    return { unsubscribe };
+    return { unsubscribe: () => clearInterval(interval) };
 };
 
 export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<Template> => {
@@ -468,17 +397,18 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         template_url: templateData.template_url || '',
         file_url: unfixUrl(templateData.fileUrl || templateData.externalLink),
         upload_host: templateData.uploadHost,
-        author_uid: currentUser.uid,
-        created_at: Timestamp.now(),
-        views: 0,
-        likes: 0,
-        sales: 0,
-        earnings: 0
+        author_uid: currentUser.uid
     };
 
     try {
-        const docRef = await addDoc(collection(db, 'templates'), templatePayload);
-        return mapTemplate({ id: docRef.id, ...templatePayload });
+        const response = await fetch('/api/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template: templatePayload })
+        });
+        if (!response.ok) throw new Error("Failed to add template");
+        const result = await response.json();
+        return mapTemplate(result.template);
     } catch (error: any) {
         console.error("Error adding template:", error);
         throw new Error(error.message || "Error saving template.");
@@ -500,8 +430,12 @@ export const updateTemplateData = async (id: string, data: Partial<NewTemplateDa
     if (data.initialStatus) updates.status = data.initialStatus === 'draft' ? 'draft' : 'approved';
 
     try {
-        const docRef = doc(db, 'templates', id);
-        await updateDoc(docRef, updates);
+        const response = await fetch(`/api/templates/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+        if (!response.ok) throw new Error("Failed to update template");
         
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'update', id } }));
@@ -565,8 +499,12 @@ export const setProStatus = async (status: boolean) => {
 
 export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
     try {
-        const docRef = doc(db, 'templates', templateId);
-        await updateDoc(docRef, updates);
+        const response = await fetch(`/api/templates/${templateId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+        if (!response.ok) throw new Error("Failed to update template");
     } catch(e: any) {
         console.error("Error updating template:", e);
     }
@@ -574,8 +512,10 @@ export const updateTemplate = async (templateId: string, updates: Partial<Templa
 
 export const deleteTemplate = async (templateId: string): Promise<void> => {
     try {
-        const docRef = doc(db, 'templates', templateId);
-        await deleteDoc(docRef);
+        const response = await fetch(`/api/templates/${templateId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error("Failed to delete template");
 
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('templr-data-update', { detail: { type: 'delete', id: templateId } }));
@@ -647,32 +587,6 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
         } catch (err: any) {
             console.warn("[Upload] Client-side uploadImage failed, falling back to backend:", err.message);
         }
-    }
-
-    // Use Telegram for all files
-    try {
-        const token = '8692277039:AAHQGo1sIRfBj6rYUrLO2yxUliuzEjijJPo';
-        const chatId = '8187582649';
-        
-        const formData = new FormData();
-        formData.append('document', file);
-        
-        const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument?chat_id=${chatId}`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) throw new Error('Telegram document upload failed');
-        const data = await response.json();
-        const fileId = data.result.document.file_id;
-        
-        const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-        const fileData = await fileResponse.json();
-        const filePath = fileData.result.file_path;
-        
-        return { url: `https://api.telegram.org/file/bot${token}/${filePath}`, host: 'Telegram' };
-    } catch (err: any) {
-        console.warn("[Upload] Telegram document upload failed, falling back to backend:", err.message);
     }
 
     // Sanitize path just in case

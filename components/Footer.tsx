@@ -19,9 +19,9 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
           
           {/* Logo & About */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
-                <span className="text-black font-bold text-xl">T</span>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-white/10">
+                <span className="text-black font-black text-2xl tracking-tighter">T</span>
               </div>
               <span className="text-2xl font-bold text-white tracking-tighter">Templr</span>
             </div>
@@ -33,11 +33,11 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
                 <input 
                     type="email" 
                     placeholder="Enter your email"
-                    className="flex-1 bg-white/5 border border-white/10 rounded-full px-6 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 transition-colors"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-full px-6 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-white/20 transition-colors"
                 />
                 <button 
                     type="submit"
-                    className="px-6 py-3 bg-white text-black text-sm font-bold rounded-full hover:bg-slate-200 transition-colors"
+                    className="px-6 py-3 bg-white text-black text-sm font-bold rounded-full hover:bg-slate-200 transition-colors shadow-lg shadow-white/10"
                 >
                     Join
                 </button>
@@ -67,9 +67,9 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
         <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-slate-600 text-xs">
           <p>© 2026 Templr Studio. All rights reserved.</p>
           <div className="flex gap-8">
+            <button onClick={playClickSound} className="hover:text-white transition-colors">Telegram</button>
             <button onClick={playClickSound} className="hover:text-white transition-colors">Twitter</button>
             <button onClick={playClickSound} className="hover:text-white transition-colors">GitHub</button>
-            <button onClick={playClickSound} className="hover:text-white transition-colors">Discord</button>
           </div>
         </div>
       </div>

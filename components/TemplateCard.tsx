@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
-import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
+import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from 'lucide-react';
 import { playClickSound, playLikeSound } from '../audio';
 
 interface TemplateCardProps {
@@ -276,10 +276,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
       initial="hidden"
       animate="visible"
       whileHover="hover"
-      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden"
+      className="group relative w-full h-full bg-[#1c1c1c] rounded-2xl border border-white/5 hover:border-[#0088cc]/40 transition-all cursor-default isolate overflow-hidden backface-hidden shadow-lg"
     >
-        <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
-
         <div className="absolute inset-0 z-0 bg-[#111]">
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">

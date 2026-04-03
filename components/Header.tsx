@@ -2,7 +2,7 @@ import React, { memo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserIcon, UploadIcon, LogOutIcon, LayoutDashboardIcon, SettingsIcon, HelpCircleIcon, Volume2Icon, VolumeXIcon } from './Icons';
 import { playClickSound } from '../audio';
-import { Session } from '../src/types';
+import { Session } from '../src/api-client';
 
 interface HeaderProps {
   session: Session | null;
@@ -45,11 +45,14 @@ const Header: React.FC<HeaderProps> = ({
       <div className="container mx-auto px-6 max-w-7xl flex items-center justify-between">
         
         {/* Logo */}
-        <div className="flex items-center gap-2 cursor-pointer group" onClick={() => { playClickSound(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center transform group-hover:rotate-12 transition-transform">
-            <span className="text-black font-bold text-xl">T</span>
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => { playClickSound(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-lg shadow-white/10">
+            <span className="text-black font-black text-2xl tracking-tighter">T</span>
           </div>
-          <span className="text-xl font-bold text-white tracking-tighter">Templr</span>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold text-white leading-none">Templr</span>
+            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">Ecosystem</span>
+          </div>
         </div>
 
         {/* Desktop Nav */}

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TemplateCard from './TemplateCard';
-import { Template } from '../src/types';
+import { Template } from '../src/api-client';
 import { ScrollReveal } from './ScrollReveal';
 
 interface TemplateGalleryProps {
@@ -45,7 +45,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         <button 
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black' : 'bg-white/5 text-slate-500 hover:bg-white/10 hover:text-white'}`}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-[#0088cc] text-white shadow-lg shadow-blue-500/20' : 'bg-white/5 text-slate-500 hover:bg-white/10 hover:text-white'}`}
                         >
                             {cat}
                         </button>

@@ -55,7 +55,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
 
                 <button 
                     onClick={() => { playClickSound(); onUpgradeConfirm(); onClose(); }}
-                    className="w-full py-4 bg-white text-black font-bold rounded-xl hover:bg-slate-200 transition-all"
+                    className="w-full py-4 bg-white text-black font-bold rounded-full hover:bg-slate-200 transition-all shadow-lg shadow-white/10"
                 >
                     Upgrade Now - $29/mo
                 </button>

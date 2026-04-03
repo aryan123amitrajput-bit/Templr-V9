@@ -83,7 +83,7 @@ const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, onClose
 
                     <div className="mt-12 pt-8 border-t border-white/5 text-center">
                         <p className="text-slate-500 text-xs font-mono uppercase tracking-widest">Still need help?</p>
-                        <a href="mailto:templrsaas@gmail.com" className="text-blue-400 hover:text-blue-300 text-sm font-bold mt-2 block">Contact Support</a>
+                        <a href="mailto:support@templr.com" className="text-blue-400 hover:text-blue-300 text-sm font-bold mt-2 block">support@templr.com</a>
                     </div>
                 </div>
             </motion.div>

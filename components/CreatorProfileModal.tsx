@@ -2,7 +2,7 @@ import React, { useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
-import { Template } from '../src/types';
+import { Template } from '../src/api-client';
 import { fixUrl } from '../src/api-client';
 
 interface CreatorProfileModalProps {
