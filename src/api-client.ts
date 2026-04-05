@@ -305,12 +305,7 @@ export const getPublicTemplates = async (
         const result = await response.json();
         
         // Map data to Template interface
-        const data = result.data.map((t: any) => mapTemplate(t)).filter((t: Template) => {
-            const titleLower = t.title.toLowerCase();
-            const isAnonymous = titleLower.includes('anonymous');
-            const hasNumbers = /\d/.test(t.title);
-            return !isAnonymous && !hasNumbers;
-        });
+        const data = result.data.map((t: any) => mapTemplate(t));
         
         return { data, hasMore: result.hasMore };
     } catch (e: any) {
