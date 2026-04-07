@@ -20,7 +20,6 @@ import ContactFloat from './components/ContactFloat';
 import * as api from './api';
 import { playOpenModalSound, playCloseModalSound, playSuccessSound, setSoundEnabled, getSoundEnabled, playNotificationSound, playClickSound } from './audio';
 import type { Session, Template, NewTemplateData } from './api';
-import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useSEO } from './hooks/useSEO';
 
@@ -76,14 +75,11 @@ const LazySection: React.FC<{ children: React.ReactNode; minHeight?: string }> =
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
       <AppContent />
-    </ThemeProvider>
   );
 };
 
 const AppContent: React.FC = () => {
-  const { theme } = useTheme();
   // --- UI STATE ---
   const [isUploadModalOpen, setUploadModalOpen] = useState(false);
   const [isDashboardOpen, setDashboardOpen] = useState(false); 
@@ -551,7 +547,7 @@ const AppContent: React.FC = () => {
   const creditsRemaining = Math.max(0, LIMIT_MAX - usageCount);
 
   return (
-    <div className={`${theme} min-h-screen bg-white dark:bg-[#000000] text-black dark:text-white font-sans overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200`}>
+    <div className="min-h-screen bg-[#000000] text-white font-sans overflow-x-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
       <AnimatePresence>
         {showSplash && (
           <motion.div 

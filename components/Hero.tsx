@@ -1,6 +1,5 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useTheme } from '../src/context/ThemeContext';
 import { ArrowRightIcon, UploadIcon, ArrowLeftIcon } from './Icons';
 import { playClickSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -105,7 +104,6 @@ const ParticleText: React.FC<{
 };
 
 const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
-  const { theme, toggleTheme } = useTheme();
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -185,7 +183,7 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
             initial={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="mb-8 relative group flex items-center gap-4"
+            className="mb-8 relative group"
         >
             <div className="relative inline-flex overflow-hidden rounded-full p-[1.5px]">
                 <span className="absolute inset-[-1000%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#0000_0%,#0000_75%,#3b82f6_100%)]" />
@@ -203,14 +201,6 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
                     </span>
                 </div>
             </div>
-            
-            <button 
-                onClick={toggleTheme}
-                className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition-colors"
-                aria-label="Toggle UI Theme"
-            >
-                {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
         </motion.div>
 
         {/* --- CAROUSEL CONTAINER --- */}
