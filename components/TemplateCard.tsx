@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
-import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from 'lucide-react';
+import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
 
 interface TemplateCardProps {
@@ -84,12 +84,6 @@ const videoManager = new VideoController();
 // Helper to downscale Unsplash images for thumbnails (huge performance win)
 const getOptimizedImageUrl = (url: string | undefined | null, width = 600) => {
     if (!url) return null;
-    
-    // Proxy Telegram images to avoid CORS issues
-    if (url.includes('api.telegram.org')) {
-        return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-    }
-
     if (url.includes('images.unsplash.com')) {
         if (url.includes('w=')) {
             return url.replace(/w=\d+/, `w=${width}`);
@@ -225,6 +219,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const handleViewButton = (e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log("View button clicked for template:", id);
     playClickSound();
     onView(id);
   };
@@ -255,9 +250,27 @@ const CardContent: React.FC<TemplateCardProps> = ({
       setSignedBanner(null);
   }, [displayBanner]);
 
-  const handleImageError = async () => {
-      console.error(`[TemplateCard] Image load error for ${title}:`, displayBanner);
+  const handleImageError = async (errorType: string) => {
       setImageError(true);
+      const errorContext = {
+          id,
+          title,
+          imageUrl,
+          bannerUrl,
+          videoUrl,
+          timestamp: new Date().toISOString(),
+          errorType
+      };
+      console.error(`[TemplateCard] ${errorType} failed to load:`, errorContext);
+      try {
+          await fetch('/api/log-error', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ error: `${errorType} failed to load`, context: errorContext })
+          });
+      } catch (e) {
+          console.error('Failed to log error to server', e);
+      }
   };
 
   const cardVariants: any = {
@@ -275,20 +288,22 @@ const CardContent: React.FC<TemplateCardProps> = ({
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      whileHover="hover"
-      className="group relative w-full h-full bg-[#1c1c1c] rounded-2xl border border-white/5 hover:border-[#0088cc]/40 transition-all cursor-default isolate overflow-hidden backface-hidden shadow-lg"
+      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden transition-transform duration-300 ease-out hover:-translate-y-2"
     >
+        <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
+
         <div className="absolute inset-0 z-0 bg-[#111]">
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">
                 {(signedBanner || displayBanner) && !imageError ? (
                     <img 
+                        key={signedBanner || displayBanner!}
                         src={signedBanner || displayBanner!} 
                         alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam
-                            handleImageError();
+                            handleImageError('Image');
                         }}
                         onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -321,6 +336,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         onError={(e) => {
                             console.error(`[TemplateCard] Video error for ${title}:`, videoUrl, e);
                             setVideoError(true);
+                            handleImageError('Video');
                         }}
                     >
                         <source src={videoUrl} type="video/mp4" />
@@ -342,11 +358,11 @@ const CardContent: React.FC<TemplateCardProps> = ({
         <div className="absolute bottom-0 left-0 right-0 p-5 z-30 translate-y-2 group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none">
             <div className="flex justify-between items-end">
                 <div className="flex-1 min-w-0 pr-4">
-                    <h3 className="text-white font-bold text-xl leading-none truncate mb-2 group-hover:text-cyan-200 transition-colors drop-shadow-lg">
+                    <h3 className="text-white font-medium text-lg leading-tight truncate mb-1 group-hover:text-blue-200 transition-colors">
                         {title}
                     </h3>
                     <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
-                         <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
+                         <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/10">
                              <img 
                                 src={displayAvatar} 
                                 className="w-full h-full object-cover" 
@@ -359,23 +375,23 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 }}
                              />
                          </div>
-                         <p className="text-xs text-slate-300 font-medium tracking-wide group-hover/author:text-white">{author}</p>
+                         <p className="text-[11px] text-slate-400 font-medium tracking-wide group-hover/author:text-white transition-colors">{author}</p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                <div className="flex items-center gap-2 transition-opacity duration-200 pointer-events-auto opacity-0 group-hover:opacity-100">
                      {currentUserId && author_uid === currentUserId && (
                         <button 
                             onClick={handleDelete} 
-                            className="group/btn w-11 h-11 rounded-full bg-red-500/20 hover:bg-red-500 backdrop-blur-md border border-red-500/30 flex items-center justify-center transition-all text-red-200 hover:text-white"
+                            className="group/btn w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500 backdrop-blur-md border border-red-500/20 flex items-center justify-center transition-all text-red-300 hover:text-white"
                             title="Delete Template"
                         >
-                            <XIcon className="w-5 h-5" />
+                            <XIcon className="w-4 h-4" />
                         </button>
                      )}
                      <button 
                         onClick={handleLike} 
-                        className="group/btn w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
+                        className="group/btn w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 flex items-center justify-center transition-all overflow-hidden"
                      >
                         <div 
                             className={`w-full h-full flex items-center justify-center p-[2px] transition-[filter] duration-300 ${
@@ -394,29 +410,29 @@ const CardContent: React.FC<TemplateCardProps> = ({
                             />
                         </div>
                      </button>
-                     <button onClick={handleViewButton} className="group/btn w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:bg-slate-200 transition-all">
-                         <ArrowRightIcon className="w-5 h-5" />
+                     <button onClick={handleViewButton} className="group/btn w-9 h-9 rounded-full bg-white text-black flex items-center justify-center shadow-[0_0_10px_rgba(255,255,255,0.2)] hover:bg-slate-200 transition-all">
+                         <ArrowRightIcon className="w-4 h-4" />
                      </button>
                 </div>
             </div>
             
-            <div className="mt-4 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+            <div className="mt-4 w-full h-[1px] bg-white/10 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
             
-            <div className="flex justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <div className="flex gap-4">
-                    <div className="flex items-center gap-1.5 text-slate-400">
+            <div className="flex justify-between mt-3 transition-opacity duration-300">
+                <div className="flex gap-3">
+                    <div className="flex items-center gap-1 text-slate-500">
                         <EyeIcon className="w-3 h-3" />
                         <span className="text-[10px] font-mono">{views >= 1000 ? (views/1000).toFixed(1) + 'k' : views}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-slate-400">
+                    <div className="flex items-center gap-1 text-slate-500">
                         <HeartIcon className="w-3 h-3" />
                         <span className="text-[10px] font-mono">{likes}</span>
                     </div>
                 </div>
                 
                 <div className="flex items-center gap-2">
-                    {hasCode && <span className="text-[10px] font-mono text-cyan-400/80 uppercase tracking-widest flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Code</span></span>}
-                    {hasLink && <span className="text-[10px] font-mono text-blue-400/80 uppercase tracking-widest flex items-center gap-1"><GlobeIcon className="w-3 h-3" /> <span className="hidden sm:inline">Live</span></span>}
+                    {hasCode && <span className="text-[10px] font-mono text-cyan-500/70 uppercase tracking-wider flex items-center gap-1"><FileCodeIcon className="w-3 h-3" /></span>}
+                    {hasLink && <span className="text-[10px] font-mono text-blue-500/70 uppercase tracking-wider flex items-center gap-1"><GlobeIcon className="w-3 h-3" /></span>}
                 </div>
             </div>
         </div>

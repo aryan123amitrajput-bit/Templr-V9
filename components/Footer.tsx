@@ -23,20 +23,20 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
                 
                 {/* Logo Area */}
                 <div className="text-center md:text-left">
-                    <h4 className="text-white font-bold text-lg mb-1 tracking-tight">Templr</h4>
-                    <p className="text-slate-600 text-xs">
+                    <h4 className="text-white font-serif font-medium text-2xl mb-2 tracking-tight">Templr</h4>
+                    <p className="text-slate-500 text-xs tracking-wide uppercase">
                         High-performance template ecosystem.
                     </p>
                 </div>
 
                 {/* Socials */}
-                <div className="flex gap-6 items-center">
-                    <a href="https://x.com/GTqhqh48540" onClick={(e) => handleLink(e, 'https://x.com/GTqhqh48540')} className="text-slate-500 hover:text-white transition-colors"><TwitterIcon className="w-4 h-4" /></a>
+                <div className="flex gap-8 items-center">
+                    <a href="https://x.com/GTqhqh48540" onClick={(e) => handleLink(e, 'https://x.com/GTqhqh48540')} className="text-slate-500 hover:text-white transition-colors"><TwitterIcon className="w-5 h-5" /></a>
                 </div>
             </div>
             
-            <div className="mt-8 pt-8 border-t border-white/5 text-center">
-                <p className="text-slate-700 text-[10px]">© 2024 Templr Inc. All rights reserved.</p>
+            <div className="mt-16 pt-8 border-t border-white/5 text-center">
+                <p className="text-slate-600 text-[10px] uppercase tracking-widest">© 2024 Templr Inc. All rights reserved.</p>
             </div>
         </ScrollReveal>
       </div>
