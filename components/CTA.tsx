@@ -1,7 +1,8 @@
+
 import React, { memo } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
-import { ArrowRightIcon } from './Icons';
+import { ArrowRightIcon, BookOpenIcon } from './Icons';
 
 interface CTAProps {
   onOpenDocumentation?: () => void;
@@ -41,12 +42,19 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
             
             <div className="flex flex-col items-center gap-8">
                 <div className="flex justify-center">
+                    {/* 
+                       ULTRA-PREMIUM GLASS CTA BUTTON 
+                       Spec: Dark Mode Glassmorphism, Liquid Smoke, Ethereal Halo
+                    */}
                     <button 
                       onClick={handleGetStarted}
-                      className="group relative px-14 py-5 rounded-full overflow-hidden transition-all duration-400 hover:scale-105 active:scale-95 bg-white text-black shadow-lg shadow-white/10"
+                      className="group relative px-14 py-5 rounded-full overflow-hidden transition-all duration-400 hover:scale-105 active:scale-95 bg-white/10 hover:bg-white/20 backdrop-blur-3xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.6),inset_0_-1px_1px_rgba(255,255,255,0.1)]"
                     >
+                      {/* Liquid Gloss Top Reflection */}
+                      <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent opacity-50 pointer-events-none"></div>
+
                       {/* Text Content */}
-                      <span className="relative z-20 font-sans font-bold text-xl tracking-wide flex items-center justify-center drop-shadow-sm">
+                      <span className="relative z-20 font-sans font-medium text-white text-xl tracking-wide flex items-center justify-center drop-shadow-sm">
                           Get Started
                       </span>
                     </button>
@@ -55,10 +63,10 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
                 {/* Secondary CTA */}
                 <button 
                     onClick={handleDocumentation}
-                    className="group flex items-center gap-2 px-6 py-2 rounded-full text-slate-500 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest hover:bg-white/5"
+                    className="group flex items-center gap-3 px-8 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 text-slate-300 hover:text-white text-sm font-semibold tracking-wide"
                 >
-                    <span>Read Documentation</span>
-                    <ArrowRightIcon className="w-3 h-3 transition-transform group-hover:translate-x-1 opacity-50 group-hover:opacity-100" />
+                    <BookOpenIcon className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                    <span>Documentation</span>
                 </button>
             </div>
             </div>
