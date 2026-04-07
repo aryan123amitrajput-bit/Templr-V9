@@ -32,7 +32,7 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
       <div className="container mx-auto px-6 relative z-10 text-center">
         <ScrollReveal>
             <div className="max-w-4xl mx-auto">
-            <h2 className="text-6xl md:text-9xl font-bold text-white mb-8 tracking-tighter leading-[0.9]">
+            <h2 className="text-6xl md:text-9xl font-serif font-medium text-white mb-8 tracking-tighter leading-[0.9]">
                 Ship your <br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-600">next idea.</span>
             </h2>

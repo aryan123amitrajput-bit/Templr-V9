@@ -111,19 +111,19 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
     {
         id: 1,
         text: "Design the\nExtraordinary",
-        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-display font-bold tracking-tight [filter:drop-shadow(0_0_100px_rgba(255,255,255,0.8))_drop-shadow(0_0_250px_rgba(255,255,255,0.4))]",
+        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-serif font-medium tracking-tight [filter:drop-shadow(0_0_100px_rgba(255,255,255,0.8))_drop-shadow(0_0_250px_rgba(255,255,255,0.4))]",
         colors: "bg-gradient-to-b from-white via-slate-200 to-slate-500 bg-clip-text text-transparent pb-6"
     },
     {
         id: 2,
         text: "Optimized for phone",
-        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-display font-bold tracking-tight [filter:drop-shadow(0_0_100px_rgba(59,130,246,0.8))_drop-shadow(0_0_250px_rgba(59,130,246,0.4))]",
+        className: "text-6xl md:text-8xl lg:text-9xl pb-4 font-serif font-medium tracking-tight [filter:drop-shadow(0_0_100px_rgba(59,130,246,0.8))_drop-shadow(0_0_250px_rgba(59,130,246,0.4))]",
         colors: "bg-gradient-to-b from-blue-100 via-blue-400 to-blue-800 bg-clip-text text-transparent pb-6"
     },
     {
         id: 3,
         text: "The simplest\nTemplate library",
-        className: "text-5xl md:text-7xl lg:text-8xl pb-4 font-display font-bold tracking-tight [filter:brightness(1.25)_drop-shadow(0_0_100px_rgba(255,100,0,0.8))_drop-shadow(0_0_250px_rgba(255,100,0,0.4))]",
+        className: "text-5xl md:text-7xl lg:text-8xl pb-4 font-serif font-medium tracking-tight [filter:brightness(1.25)_drop-shadow(0_0_100px_rgba(255,100,0,0.8))_drop-shadow(0_0_250px_rgba(255,100,0,0.4))]",
         colors: "bg-gradient-to-b from-amber-300 via-orange-600 to-red-900 bg-clip-text text-transparent pb-6"
     }
   ], []);
