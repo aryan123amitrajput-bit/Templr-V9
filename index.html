@@ -97,13 +97,19 @@
   </script>
   <style>
     :root {
-      --bg-color: #020202;
+      --bg-color: #ffffff;
+      --text-color: #000000;
+    }
+
+    :root.dark {
+      --bg-color: #000000;
+      --text-color: #ffffff;
     }
 
     body {
       font-family: 'Inter', sans-serif;
       background-color: var(--bg-color);
-      color: #ffffff;
+      color: var(--text-color);
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -187,7 +193,7 @@
   </style>
   <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-[#020202]">
+<body class="bg-background">
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
