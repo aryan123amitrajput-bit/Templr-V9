@@ -368,6 +368,9 @@ export const getPublicTemplates = async (
             });
 
             const response = await fetchWithTimeout(`/api/templates?${params.toString()}`, {});
+            if (response.status === 404) {
+                throw new Error("Backend API not found");
+            }
             if (!response.ok) {
                 throw new Error(`Backend returned ${response.status}`);
             }
@@ -381,8 +384,6 @@ export const getPublicTemplates = async (
                 throw new Error("Response is not JSON");
             }
         } catch (e: any) {
-            console.error(`[getPublicTemplates] Attempt ${retryCount} failed:`, e);
-            
             // Fallback to Supabase directly if backend fails
             if (isApiConfigured) {
                 try {
@@ -416,6 +417,8 @@ export const getPublicTemplates = async (
                 }
             }
 
+            console.error(`[getPublicTemplates] Attempt ${retryCount} failed:`, e);
+            
             if (retryCount < 1) {
                 await new Promise(r => setTimeout(r, 1000));
                 return attempt(retryCount + 1);
