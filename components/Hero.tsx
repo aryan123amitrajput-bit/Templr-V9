@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { ArrowRightIcon, UploadIcon, ArrowLeftIcon } from './Icons';
 import { playClickSound } from '../audio';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Canvas } from '@react-three/fiber';
 import Galaxy from './Galaxy';
 import { ShinyButton } from './ui/shiny-button';
 
@@ -172,7 +173,9 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
       {/* --- GALAXY BACKGROUND (Z-[-2]) --- */}
       <div className="absolute inset-0 z-0 pointer-events-none bg-black">
          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-950/30 via-[#050505] to-black z-0"></div>
-         <Galaxy density={3} mouseInteraction={true} />
+         <Canvas>
+            <Galaxy />
+         </Canvas>
       </div>
 
       {/* --- MAIN CONTENT (Z-10) --- */}
@@ -182,21 +185,21 @@ const Hero: React.FC<HeroProps> = ({ onUploadClick }) => {
         <motion.div 
             initial={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
             className="mb-8 relative group"
         >
-            <div className="relative inline-flex overflow-hidden rounded-full p-[1.5px]">
-                <span className="absolute inset-[-1000%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#0000_0%,#0000_75%,#3b82f6_100%)]" />
-                <div className="relative inline-flex items-center gap-3 rounded-full bg-slate-100 dark:bg-slate-950/80 px-6 py-2 text-sm font-medium text-slate-900 dark:text-white backdrop-blur-3xl transition-colors hover:bg-slate-200 dark:hover:bg-slate-900/80">
+            <div className="relative inline-flex overflow-hidden rounded-full p-[1.5px] bg-glow-gradient">
+                <span className="absolute inset-[-1000%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,#0000_0%,#0000_75%,#ffffff_100%)]" />
+                <div className="relative inline-flex items-center gap-3 rounded-full bg-[#020202] px-6 py-2 text-sm font-medium text-white backdrop-blur-3xl transition-colors hover:bg-[#0a0a0a]">
                     <div className="flex items-center gap-1.5">
                          <span className="relative flex h-2 w-2">
-                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-600 dark:bg-cyan-400 opacity-50"></span>
-                             <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-600 dark:bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></span>
+                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-50"></span>
+                             <span className="relative inline-flex rounded-full h-2 w-2 bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]"></span>
                          </span>
-                         <span className="text-[11px] font-bold tracking-[0.2em] text-slate-900 dark:text-white uppercase shadow-black drop-shadow-md">Templr v3.0</span>
+                         <span className="text-[11px] font-bold tracking-[0.2em] text-white uppercase shadow-black drop-shadow-md">Templr v3.0</span>
                     </div>
-                    <div className="h-3 w-[1px] bg-slate-900/20 dark:bg-white/20 mx-1"></div>
-                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium tracking-wide group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
+                    <div className="h-3 w-[1px] bg-white/20 mx-1"></div>
+                    <span className="text-[11px] text-slate-300 font-medium tracking-wide group-hover:text-white transition-colors">
                          The Future of Design
                     </span>
                 </div>

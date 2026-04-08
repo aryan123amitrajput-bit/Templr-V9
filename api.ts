@@ -372,10 +372,14 @@ export const getPublicTemplates = async (
                 throw new Error(`Backend returned ${response.status}`);
             }
 
-            const { data, hasMore } = await response.json();
-            const mappedData = (data || []).map(mapTemplate);
-
-            return { data: mappedData, hasMore };
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                const { data, hasMore } = await response.json();
+                const mappedData = (data || []).map(mapTemplate);
+                return { data: mappedData, hasMore };
+            } else {
+                throw new Error("Response is not JSON");
+            }
         } catch (e: any) {
             console.error(`[getPublicTemplates] Attempt ${retryCount} failed:`, e);
             

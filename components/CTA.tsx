@@ -24,7 +24,7 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
   };
 
   return (
-    <section className="py-40 relative overflow-hidden bg-black">
+    <section className="py-40 relative overflow-hidden bg-glow-gradient">
       
       {/* Giant Glow */}
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-slate-800/20 via-black to-black blur-[100px] pointer-events-none"></div>

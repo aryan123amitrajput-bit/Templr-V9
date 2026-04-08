@@ -288,7 +288,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden transition-transform duration-300 ease-out hover:-translate-y-2"
+      className="group relative w-full h-full bg-glow-gradient cursor-default isolate overflow-hidden backface-hidden transition-transform duration-500 ease-out hover:-translate-y-2"
     >
         <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
 
@@ -296,11 +296,14 @@ const CardContent: React.FC<TemplateCardProps> = ({
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">
                 {(signedBanner || displayBanner) && !imageError ? (
-                    <img 
+                    <motion.img 
                         key={signedBanner || displayBanner!}
                         src={signedBanner || displayBanner!} 
                         alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.5 }}
                         onError={(e) => {
                             // Silently retry to avoid console spam
                             handleImageError('Image');

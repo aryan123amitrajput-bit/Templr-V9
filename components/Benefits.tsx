@@ -64,7 +64,7 @@ const SpotlightCard = ({
       ref={divRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`relative rounded-[24px] border border-slate-800/60 bg-[#0B1121] overflow-hidden group shadow-2xl transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:border-slate-700/60 ${className}`}
+      className={`relative rounded-[24px] border border-white/10 bg-glow-gradient overflow-hidden group shadow-2xl transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:border-white/20 ${className}`}
     >
       {/* 1. Mouse Spotlight Bloom (Interactive) */}
       <div
@@ -121,7 +121,7 @@ const Benefits: React.FC = () => {
   const yPurple = useTransform(scrollYProgress, [0, 1], [100, -100]);
 
   return (
-    <section ref={sectionRef} className="py-32 bg-[#020408] relative overflow-hidden">
+    <section ref={sectionRef} className="py-32 bg-glow-gradient relative overflow-hidden">
       
       {/* --- ATMOSPHERE --- */}
       {/* Deep Background Gradient */}

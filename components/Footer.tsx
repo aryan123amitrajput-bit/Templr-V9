@@ -16,7 +16,7 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
   };
 
   return (
-    <footer className="relative bg-[#030304] border-t border-white/[0.08] pt-16 overflow-hidden flex flex-col">
+    <footer className="relative bg-glow-gradient border-t border-white/[0.08] pt-16 overflow-hidden flex flex-col">
       <div className="container mx-auto px-6 relative z-10">
         <ScrollReveal>
             <div className="flex flex-col md:flex-row justify-between items-center gap-6">

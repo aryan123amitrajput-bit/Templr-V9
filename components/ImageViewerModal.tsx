@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, LayersIcon } from './Icons';
 import { playClickSound } from '../audio';
-import { Template } from '../src/api-client';
+import { Template } from '../api';
 
 interface ImageViewerModalProps {
   isOpen: boolean;
