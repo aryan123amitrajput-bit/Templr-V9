@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { LayersIcon, SmartphoneIcon, EyeIcon, CursorClickIcon, ShieldCheckIcon, ArrowRightIcon } from './Icons';
@@ -64,7 +63,7 @@ const SpotlightCard = ({
       ref={divRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`relative rounded-[24px] border border-white/10 bg-glow-gradient overflow-hidden group shadow-2xl transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:border-white/20 ${className}`}
+      className={`relative rounded-[24px] border border-slate-800/60 bg-[#0B1121] overflow-hidden group shadow-2xl transition-all duration-300 ease-out hover:scale-[1.02] hover:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8)] hover:border-slate-700/60 ${className}`}
     >
       {/* 1. Mouse Spotlight Bloom (Interactive) */}
       <div
@@ -121,7 +120,7 @@ const Benefits: React.FC = () => {
   const yPurple = useTransform(scrollYProgress, [0, 1], [100, -100]);
 
   return (
-    <section ref={sectionRef} className="py-32 bg-glow-gradient relative overflow-hidden">
+    <section ref={sectionRef} className="py-32 bg-[#020408] relative overflow-hidden">
       
       {/* --- ATMOSPHERE --- */}
       {/* Deep Background Gradient */}
@@ -150,13 +149,13 @@ const Benefits: React.FC = () => {
                     <span className="text-blue-400 font-mono text-xs font-bold uppercase tracking-widest">Why Templr?</span>
                 </div>
                 
-                <h2 className="text-4xl md:text-5xl font-serif font-medium text-white tracking-tight mb-6 leading-[1.1]">
-                    Constructed for <br />
+                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-6 leading-[1.1]">
+                    The <span className="text-blue-400">Templr</span> Advantage. <br />
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-slate-400">maximum velocity.</span>
                 </h2>
                 <p className="text-slate-400 text-lg leading-relaxed border-l-2 border-slate-800 pl-6">
-                    We've stripped away the complexity of traditional marketplaces. 
-                    What remains is a pure, high-performance engine for design delivery.
+                    We've built the ultimate ecosystem for high-performance landing page templates. 
+                    From security to performance, we've got you covered.
                 </p>
             </div>
         </ScrollReveal>

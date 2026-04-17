@@ -1,0 +1,13 @@
+export const fetchJson = async (url: string) => {
+  const response = await fetch(url);
+  return await response.json();
+};
+
+export const postJson = async (url: string, data: any) => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return await response.json();
+};

@@ -73,12 +73,6 @@ export const ArrowRightIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-export const ArrowLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-    </svg>
-);
-
 export const SmartphoneIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75A2.25 2.25 0 0015.75 1.5h-13.5M16.5 16.5v.008m0-.008v.008m0-.008h.008m-.008 0H16.5" />
@@ -198,11 +192,5 @@ export const ZapIcon = (props: React.SVGProps<SVGSVGElement>) => (
 export const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
       <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.762 5.319-1.083 7.035-.136.727-.398.97-.658.993-.566.052-1.001-.374-1.548-.733-.856-.562-1.339-.911-2.17-1.458-.96-.633-.338-.982.21-1.552.143-.149 2.627-2.41 2.675-2.616a.19.19 0 0 0-.044-.179.22.22 0 0 0-.183-.012c-.26.06-4.11 2.61-7.732 5.054-.561.385-1.068.574-1.522.564-.5-.01-1.46-.282-2.174-.514-.876-.285-1.571-.436-1.511-.92.031-.252.378-.51 1.04-.773 4.067-1.77 6.779-2.937 8.135-3.5 3.871-1.607 4.674-1.887 5.2-.1.1.1.1.1.1.1.1z" />
-    </svg>
-);
-
-export const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-      <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.998 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
     </svg>
 );

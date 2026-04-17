@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, LayersIcon, ShieldCheckIcon, CpuIcon, UploadIcon, LightbulbIcon } from './Icons';
-import { Template } from '../api';
-import { listenForUserTemplates, deleteTemplate } from '../api';
+import { Template } from '../src/api-client';
+import { listenForUserTemplates, deleteTemplate } from '../src/api-client';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 
 interface DashboardModalProps {

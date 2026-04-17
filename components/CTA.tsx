@@ -2,7 +2,7 @@
 import React, { memo } from 'react';
 import { playClickSound } from '../audio';
 import { ScrollReveal } from './ScrollReveal';
-import { ArrowRightIcon, BookOpenIcon } from './Icons';
+import { ArrowRightIcon } from './Icons';
 
 interface CTAProps {
   onOpenDocumentation?: () => void;
@@ -24,7 +24,7 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
   };
 
   return (
-    <section className="py-40 relative overflow-hidden bg-glow-gradient">
+    <section className="py-40 relative overflow-hidden bg-black">
       
       {/* Giant Glow */}
       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-slate-800/20 via-black to-black blur-[100px] pointer-events-none"></div>
@@ -32,7 +32,7 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
       <div className="container mx-auto px-6 relative z-10 text-center">
         <ScrollReveal>
             <div className="max-w-4xl mx-auto">
-            <h2 className="text-6xl md:text-9xl font-serif font-medium text-white mb-8 tracking-tighter leading-[0.9]">
+            <h2 className="text-6xl md:text-9xl font-bold text-white mb-8 tracking-tighter leading-[0.9]">
                 Ship your <br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-600">next idea.</span>
             </h2>

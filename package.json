@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
@@ -33,6 +34,7 @@
     "framer-motion": "^12.38.0",
     "ioredis": "^5.10.1",
     "lucide-react": "^0.577.0",
+    "maath": "^0.10.8",
     "multer": "^2.1.1",
     "mysql2": "^3.20.0",
     "octokit": "^5.0.5",
@@ -40,6 +42,7 @@
     "react-dom": "^19.2.0",
     "tailwind-merge": "^2.3.0",
     "three": "^0.183.2",
+    "three-stdlib": "^2.36.1",
     "tsx": "^4.21.0"
   },
   "devDependencies": {

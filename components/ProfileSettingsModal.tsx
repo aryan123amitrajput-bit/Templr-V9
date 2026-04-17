@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, SettingsIcon, UserIcon } from './Icons';
 import { playClickSound, playSuccessSound } from '../audio';
-import { Session } from '../api';
-import { updateUserProfile } from '../api';
+import { Session } from '../src/api-client';
+import { updateUserProfile } from '../src/api-client';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;

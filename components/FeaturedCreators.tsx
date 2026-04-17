@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { motion } from 'framer-motion';
 import { ScrollReveal } from './ScrollReveal';
 import { playClickSound } from '../audio';
-import * as api from '../api';
+import * as api from '../src/api-client';
 
 interface FeaturedCreatorsProps {
   onCreatorClick: (name: string) => void;
@@ -43,7 +43,7 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {creators.map((creator, index) => (
-            <ScrollReveal key={creator.email} staggerIndex={index}>
+            <ScrollReveal key={creator.name} staggerIndex={index}>
               <motion.div 
                 whileHover={{ y: -10 }}
                 className="group relative p-6 rounded-3xl bg-[#09090b] border border-white/5 hover:border-white/10 transition-all duration-300 hover:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.5)] cursor-pointer"

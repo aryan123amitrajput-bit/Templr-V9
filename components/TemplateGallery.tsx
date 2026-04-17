@@ -1,7 +1,7 @@
 import React, { useState, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TemplateCard from './TemplateCard';
-import { Template } from '../api';
+import { Template } from '../src/api-client';
 import { ScrollReveal } from './ScrollReveal';
 
 interface TemplateGalleryProps {
@@ -33,24 +33,22 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   }, [templates, activeCategory]);
 
   return (
-    <section className="py-32 bg-glow-gradient">
+    <section className="py-32 bg-[#020408]">
       <div className="container mx-auto px-6 max-w-7xl">
         
         <ScrollReveal>
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-16 gap-8">
-                <h2 className="text-4xl md:text-5xl font-serif font-medium text-white tracking-tight">Marketplace</h2>
+                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight">Marketplace</h2>
                 
                 <div className="flex flex-wrap gap-2">
                     {categories.map(cat => (
-                        <motion.button 
+                        <button 
                             key={cat}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'bg-white/5 text-slate-500 hover:bg-white/10 hover:text-white'}`}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-[#0088cc] text-white shadow-lg shadow-blue-500/20' : 'bg-white/5 text-slate-500 hover:bg-white/10 hover:text-white'}`}
                         >
                             {cat}
-                        </motion.button>
+                        </button>
                     ))}
                 </div>
             </div>
@@ -58,7 +56,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
         {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {[1,2,3,4,5,6].map(i => <div key={i} className="h-96 bg-glow-gradient rounded-3xl animate-pulse"></div>)}
+                {[1,2,3,4,5,6].map(i => <div key={i} className="h-96 bg-white/5 rounded-3xl animate-pulse"></div>)}
             </div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -67,10 +65,10 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                         <motion.div
                             key={template.id}
                             layout
-                            initial={{ opacity: 0, scale: 0.95 }}
+                            initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ duration: 0.3 }}
                         >
                             <TemplateCard 
                                 {...template}
