@@ -15,7 +15,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './server/services/repoService';
 import { freeHostService } from './server/services/freeHostService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './api/services/supabaseService';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import crypto from 'crypto';

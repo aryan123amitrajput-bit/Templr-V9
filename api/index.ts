@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
-import { getSupabase } from '../server/services/supabaseService';
+import { getSupabase } from './services/supabaseService';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToI111666 } from '../server/services/i111666Service';
