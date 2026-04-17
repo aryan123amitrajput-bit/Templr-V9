@@ -235,6 +235,10 @@ export class RepoManager {
       const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json/raw?ref=main`;
       try {
         console.log(`[RepoManager] Fetching registry from GitLab: ${url}`);
+        if (!repo.token) {
+            console.warn(`[RepoManager] Skipping GitLab fetch due to missing token for ${repo.projectId}`);
+            return [];
+        }
         const response = await fetch(url, {
           headers: { 'PRIVATE-TOKEN': repo.token }
         });
@@ -243,6 +247,9 @@ export class RepoManager {
           console.log(`[RepoManager] Successfully fetched from GitLab. Found ${data.length} templates.`);
         } else if (response.status === 404) {
           console.warn(`[RepoManager] GitLab 404 for ${url}`);
+          data = [];
+        } else if (response.status === 401 || response.status === 403) {
+          console.warn(`[RepoManager] GitLab Unauthorized/Forbidden for ${url}. Skipping.`);
           data = [];
         } else {
           throw new Error(`GitLab error: ${response.statusText}`);

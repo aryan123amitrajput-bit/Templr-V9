@@ -5,12 +5,10 @@ import {
   onAuthStateChanged, 
   signOut,
   User as FirebaseUser,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile
 } from 'firebase/auth';
 import { auth } from './firebase';
 import { uploadImage } from './src/services/imageUploadService';
+import { supabase } from './lib/supabaseClient';
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
@@ -20,7 +18,17 @@ export const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
         const result = await signInWithPopup(auth, provider);
-        return { session: { user: result.user } };
+        return { session: { user: {
+            id: result.user.uid,
+            uid: result.user.uid,
+            email: result.user.email || '',
+            user_metadata: {
+                full_name: result.user.displayName || '',
+                avatar_url: fixUrl(result.user.photoURL || ''),
+                usage_count: 0,
+                is_pro: false
+            }
+        }}};
     } catch (error) {
         console.error("Google Sign-In Error:", error);
         throw error;
@@ -28,18 +36,21 @@ export const signInWithGoogle = async () => {
 };
 
 export const signInWithEmail = async (email: string, password: string) => {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    const user = result.user;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    if (!data.user) throw new Error("No user returned");
+    
+    const user = data.user;
     const session = {
         user: {
-            id: user.uid,
-            uid: user.uid,
+            id: user.id,
+            uid: user.id,
             email: user.email || '',
             user_metadata: {
-                full_name: user.displayName || '',
-                avatar_url: fixUrl(user.photoURL || ''),
-                usage_count: 0,
-                is_pro: false
+                full_name: user.user_metadata?.full_name || '',
+                avatar_url: fixUrl(user.user_metadata?.avatar_url || ''),
+                usage_count: user.user_metadata?.usage_count || 0,
+                is_pro: user.user_metadata?.is_pro || false
             }
         }
     };
@@ -47,19 +58,32 @@ export const signInWithEmail = async (email: string, password: string) => {
 };
 
 export const signUpWithEmail = async (email: string, password: string, name: string) => {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(result.user, { displayName: name });
-    const user = result.user;
-    const session = {
-        user: {
-            id: user.uid,
-            uid: user.uid,
-            email: user.email || '',
-            user_metadata: {
+    const { data, error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+            data: {
                 full_name: name,
-                avatar_url: fixUrl(user.photoURL || ''),
+                avatar_url: '',
                 usage_count: 0,
                 is_pro: false
+            }
+        }
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error("No user returned");
+
+    const user = data.user;
+    const session = {
+        user: {
+            id: user.id,
+            uid: user.id,
+            email: user.email || '',
+            user_metadata: {
+                full_name: user.user_metadata?.full_name || name,
+                avatar_url: fixUrl(user.user_metadata?.avatar_url || ''),
+                usage_count: user.user_metadata?.usage_count || 0,
+                is_pro: user.user_metadata?.is_pro || false
             }
         }
     };
@@ -71,7 +95,8 @@ export const signOutUser = async () => {
 };
 
 export const onAuthStateChange = (callback: (event: string, session: any) => void) => {
-    return onAuthStateChanged(auth, (user) => {
+    // Listen to Firebase Auth
+    const unsubFirebase = onAuthStateChanged(auth, (user) => {
         if (user) {
             const session = {
                 user: {
@@ -81,16 +106,54 @@ export const onAuthStateChange = (callback: (event: string, session: any) => voi
                     user_metadata: {
                         full_name: user.displayName,
                         avatar_url: user.photoURL,
-                        usage_count: 0, // Will be fetched from Firestore
-                        is_pro: false   // Will be fetched from Firestore
+                        usage_count: 0, 
+                        is_pro: false 
                     }
                 }
             };
             callback('SIGNED_IN', session);
         } else {
-            callback('SIGNED_OUT', null);
+            // Check if we are still signed in with Supabase
+            supabase.auth.getSession().then(({ data }) => {
+                if (!data.session) {
+                    callback('SIGNED_OUT', null);
+                }
+            });
         }
     });
+
+    // Listen to Supabase Auth
+    const { data: { subscription: unsubSupabase } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            if (session) {
+                const user = session.user;
+                const mappedSession = {
+                    user: {
+                        id: user.id,
+                        uid: user.id,
+                        email: user.email,
+                        user_metadata: {
+                            full_name: user.user_metadata?.full_name || '',
+                            avatar_url: user.user_metadata?.avatar_url || '',
+                            usage_count: user.user_metadata?.usage_count || 0,
+                            is_pro: user.user_metadata?.is_pro || false
+                        }
+                    }
+                };
+                callback('SIGNED_IN', mappedSession);
+            }
+        } else if (event === 'SIGNED_OUT') {
+            // Check if we are still signed in with Firebase
+            if (!auth.currentUser) {
+                callback('SIGNED_OUT', null);
+            }
+        }
+    });
+
+    return () => {
+        unsubFirebase();
+        unsubSupabase.unsubscribe();
+    };
 };
 
 export interface NewTemplateData {
