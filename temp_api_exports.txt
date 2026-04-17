@@ -1,0 +1,33 @@
+export const PROVIDED_URL = ''; // CLEARED PER USER REQUEST
+export const PROVIDED_KEY = ''; // CLEARED PER USER REQUEST
+export const activeApiUrl = config.url;
+export const isApiConfigured = config.url && config.url !== 'https://placeholder.supabase.co';
+export const testConnection = async (url: string, key: string): Promise<{ success: boolean; message: string }> => {
+export const fetchWithTimeout = async (url: string, options: any = {}) => {
+export const supabase = createClient(
+export const signInWithGoogle = async () => {
+export interface NewTemplateData {
+export type Session = {
+export type AuthChangeEvent = 'SIGNED_IN' | 'SIGNED_OUT';
+export interface Template {
+export interface CreatorStats {
+export const fixUrl = (url?: string | string[]): string => {
+export const unfixUrl = (url?: string): string => url || '';
+export const getPublicTemplates = async (
+export const getTemplateById = async (id: string): Promise<Template | null> => {
+export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
+export const listenForUserTemplates = (userEmail: string, callback: (templates: Template[]) => void) => {
+export const addTemplate = async (templateData: NewTemplateData, user?: Session['user'] | null): Promise<Template> => {
+export const updateTemplateData = async (id: string, data: Partial<NewTemplateData>, userEmail: string): Promise<void> => {
+export const updateUserProfile = async (updates: { full_name?: string; avatar_url?: string; banner_url?: string }) => {
+export const updateUserUsage = async (count: number) => {
+export const setProStatus = async (status: boolean) => {
+export const updateTemplate = async (templateId: string, updates: Partial<Template>): Promise<void> => {
+export const deleteTemplate = async (templateId: string): Promise<void> => {
+export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
+export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
+export const getSession = async (): Promise<Session | null> => {
+export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: Session | null) => void) => {
+export const signInWithEmail = async (email: string, pass: string) => {
+export const signUpWithEmail = async (email: string, pass: string, name: string) => {
+export const signOut = async () => {

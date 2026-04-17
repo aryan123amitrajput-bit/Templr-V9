@@ -63,10 +63,10 @@ const CTA: React.FC<CTAProps> = ({ onOpenDocumentation }) => {
                 {/* Secondary CTA */}
                 <button 
                     onClick={handleDocumentation}
-                    className="group flex items-center gap-3 px-8 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 text-slate-300 hover:text-white text-sm font-semibold tracking-wide"
+                    className="group flex items-center gap-2 px-6 py-2 rounded-full text-slate-500 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest hover:bg-white/5"
                 >
-                    <BookOpenIcon className="w-4 h-4 opacity-70 group-hover:opacity-100" />
-                    <span>Documentation</span>
+                    <span>Read Documentation</span>
+                    <ArrowRightIcon className="w-3 h-3 transition-transform group-hover:translate-x-1 opacity-50 group-hover:opacity-100" />
                 </button>
             </div>
             </div>

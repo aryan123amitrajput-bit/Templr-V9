@@ -1,20 +1,41 @@
-import React from 'react';
-import { motion } from 'framer-motion';
 
-export const BorderBeam = ({ className }: { className?: string }) => {
+import React from "react";
+
+interface BorderBeamProps {
+  className?: string;
+  size?: number;
+  duration?: number;
+  borderWidth?: number;
+  anchor?: number;
+  colorFrom?: string;
+  colorTo?: string;
+  delay?: number;
+}
+
+export const BorderBeam = ({
+  className = "",
+  size = 200,
+  duration = 15,
+  anchor = 90,
+  borderWidth = 1.5,
+  colorFrom = "#ffaa40",
+  colorTo = "#9c40ff",
+  delay = 0,
+}: BorderBeamProps) => {
   return (
-    <div className={`absolute inset-0 rounded-[inherit] border-[1px] border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#fff,#fff)] ${className}`}>
-      <motion.div
-        className="absolute inset-0 rounded-[inherit] bg-gradient-to-r from-transparent via-blue-500 to-transparent"
-        animate={{
-          x: ['-100%', '100%'],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: 'linear',
-        }}
-      />
-    </div>
+    <div
+      style={
+        {
+          "--size": size,
+          "--duration": duration,
+          "--anchor": anchor,
+          "--border-width": borderWidth,
+          "--color-from": colorFrom,
+          "--color-to": colorTo,
+          "--delay": delay,
+        } as React.CSSProperties
+      }
+      className={`pointer-events-none absolute inset-0 rounded-[inherit] [border:calc(var(--border-width)*1px)_solid_transparent] ![mask-clip:padding-box,border-box] ![mask-composite:intersect] [mask:linear-gradient(transparent,transparent),linear-gradient(white,white)] after:absolute after:aspect-square after:w-[calc(var(--size)*1px)] after:animate-border-beam after:[animation-delay:var(--delay)s] after:[background:linear-gradient(to_left,var(--color-from),var(--color-to),transparent)] after:[offset-anchor:calc(var(--anchor)*1%)_50%] after:[offset-path:rect(0_auto_auto_0_round_calc(var(--size)*1px))] ${className}`}
+    />
   );
 };

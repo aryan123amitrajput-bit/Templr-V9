@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, UploadIcon, ZipIcon, ShieldCheckIcon, CheckCircleIcon, FileCodeIcon, LinkIcon, GlobeIcon, LockIcon, LayersIcon, SmartphoneIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound, playTypingSound } from '../audio';
-import { uploadFile, NewTemplateData, Template } from '../src/api-client';
+import { uploadFile, NewTemplateData, Template } from '../api';
 import { assetManager } from '../lib/assetManager';
 import { NotificationType } from './Notification';
 
@@ -333,13 +333,11 @@ const UploadModal: React.FC<UploadModalProps> = ({
                   uploadHost = result.host;
                   if (!imageUrl) imageUrl = DEFAULT_VIDEO_THUMB;
               } else {
-                  /*
                   const result = await assetManager.uploadImage(previewFile);
                   imageUrl = result.url;
                   uploadHost = result.provider;
                   onShowNotification(`Image successfully hosted on ${uploadHost}`, 'info');
                   videoUrl = ''; 
-                  */
               }
           }
 
@@ -355,15 +353,22 @@ const UploadModal: React.FC<UploadModalProps> = ({
           }
 
           let templateUrl = '';
+          let textHost = '';
           if (codeMode === 'paste' && sourceCode) {
               setUploadStatus("Saving Code...");
               try {
                   // If sourceCode is valid JSON, upload it as JSON
                   const parsedJson = JSON.parse(sourceCode);
-                  templateUrl = await assetManager.uploadTemplateJSON(parsedJson);
+                  const result = await assetManager.uploadTemplateJSON(parsedJson);
+                  templateUrl = result.url;
+                  textHost = result.provider;
+                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
               } catch (e) {
                   // If not valid JSON, just upload it as text/code
-                  templateUrl = await assetManager.uploadTemplateJSON({ code: sourceCode });
+                  const result = await assetManager.uploadTemplateJSON({ code: sourceCode });
+                  templateUrl = result.url;
+                  textHost = result.provider;
+                  onShowNotification(`Code successfully hosted on ${textHost}`, 'info');
               }
           }
 
@@ -390,7 +395,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
           });
 
           playSuccessSound();
-          const successMsg = uploadHost ? `Media Hosted on ${uploadHost}` : (isEditing ? "Updated successfully!" : "Published successfully!");
+          let successMsg = isEditing ? "Updated successfully!" : "Published successfully!";
+          if (uploadHost && textHost) {
+              successMsg = `Media hosted on ${uploadHost}, Code hosted on ${textHost}`;
+          } else if (uploadHost) {
+              successMsg = `Media hosted on ${uploadHost}`;
+          } else if (textHost) {
+              successMsg = `Code hosted on ${textHost}`;
+          }
           onShowNotification(successMsg, 'success');
           
           // Small delay before navigating to ensure notification is processed

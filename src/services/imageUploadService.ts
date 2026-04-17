@@ -121,7 +121,7 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             direct_url: data.url,
             thumbnail_url: data.url,
             viewer_url: data.url,
-            fallback_used: false
+            fallback_used: data.host !== '0008888 (Primary)'
         };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);

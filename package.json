@@ -5,24 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "tsx server.ts",
+    "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@callstack/liquid-glass": "^0.7.1",
     "@google/genai": "^1.42.0",
     "@notionhq/client": "^5.13.0",
-    "@octokit/rest": "^22.0.1",
     "@radix-ui/react-slot": "^1.1.2",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.100.0",
     "@types/multer": "^2.1.0",
     "@vercel/analytics": "^1.6.1",
-    "axios": "^1.14.0",
-    "bullmq": "^5.71.1",
+    "axios": "^1.13.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -30,21 +25,14 @@
     "express": "^5.2.1",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
-    "form-data": "^4.0.5",
     "framer-motion": "^12.38.0",
-    "ioredis": "^5.10.1",
-    "lottie-react": "^2.4.1",
     "lucide-react": "^0.577.0",
-    "maath": "^0.10.8",
     "multer": "^2.1.1",
     "mysql2": "^3.20.0",
     "octokit": "^5.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "tailwind-merge": "^2.3.0",
-    "three": "^0.183.2",
-    "three-stdlib": "^2.36.1",
-    "tsx": "^4.21.0"
+    "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -53,6 +41,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

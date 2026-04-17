@@ -1,0 +1,96 @@
+881:export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
+882-    if (!url) throw new Error("No URL provided for upload.");
+883-    
+884-    try {
+885-        const response = await fetch('/api/upload/url', {
+886-            method: 'POST',
+887-            headers: {
+888-                'Content-Type': 'application/json'
+889-            },
+890-            body: JSON.stringify({ url })
+891-        });
+892-
+893-        if (!response.ok) {
+894-            const errorData = await response.json().catch(() => ({}));
+895-            throw new Error(errorData.error || `Upload from URL failed: ${response.statusText}`);
+896-        }
+897-
+898-        const data = await response.json();
+899-        return { url: data.url, host: data.host };
+900-    } catch (err: any) {
+901-        throw new Error("Upload from URL failed: " + err.message);
+902-    }
+903-};
+904-
+905-export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
+906-    if (!file) throw new Error("No file provided for upload.");
+907-    
+908-    // Use specialized image upload service for images to ensure iimg.live prioritization and verification
+909-    if (file.type.startsWith('image/')) {
+910-        try {
+911-            const result = await uploadImage(file);
+881:export const uploadFileFromUrl = async (url: string): Promise<{ url: string; host: string }> => {
+882-    if (!url) throw new Error("No URL provided for upload.");
+883-    
+884-    try {
+885-        const response = await fetch('/api/upload/url', {
+886-            method: 'POST',
+887-            headers: {
+888-                'Content-Type': 'application/json'
+889-            },
+890-            body: JSON.stringify({ url })
+891-        });
+892-
+893-        if (!response.ok) {
+894-            const errorData = await response.json().catch(() => ({}));
+895-            throw new Error(errorData.error || `Upload from URL failed: ${response.statusText}`);
+896-        }
+897-
+898-        const data = await response.json();
+899-        return { url: data.url, host: data.host };
+900-    } catch (err: any) {
+901-        throw new Error("Upload from URL failed: " + err.message);
+902-    }
+903-};
+904-
+905:export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
+906-    if (!file) throw new Error("No file provided for upload.");
+907-    
+908-    // Use specialized image upload service for images to ensure iimg.live prioritization and verification
+909-    if (file.type.startsWith('image/')) {
+910-        try {
+911-            const result = await uploadImage(file);
+912-            return { url: result.direct_url, host: result.provider };
+913-        } catch (err: any) {
+914-            console.warn("[Upload] Client-side uploadImage failed, falling back to backend:", err.message);
+915-        }
+916-    }
+917-
+918-    if (!isApiConfigured) {
+919-        return { url: URL.createObjectURL(file), host: 'Local/Mock' };
+920-    }
+921-    
+922-    // Sanitize path just in case
+923-    const safePath = path.replace(/[^a-zA-Z0-9/._-]/g, '_');
+924-
+925-    const attempt = async (retryCount = 0): Promise<{ url: string; host: string }> => {
+926-        try {
+927-            const formData = new FormData();
+928-            formData.append('file', file);
+929-            formData.append('path', safePath);
+930-            
+931-            const response = await fetch('/api/upload', {
+932-                method: 'POST',
+933-                body: formData
+934-            });
+935-
+936-            if (!response.ok) {
+937-                const contentType = response.headers.get("content-type");
+938-                if (contentType && contentType.includes("application/json")) {
+939-                    const errorData = await response.json();
+940-                    throw new Error(errorData.error || 'File upload failed');
+941-                } else {
+942-                    const errorText = await response.text();
+943-                    throw new Error(`File upload failed: ${errorText.substring(0, 100)}`);
+944-                }
+945-            }

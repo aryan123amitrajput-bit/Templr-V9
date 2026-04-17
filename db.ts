@@ -14,6 +14,7 @@ export interface Template {
   tags?: string[];
   description: string;
   price: string; 
+  sourceCode: string; // The actual code
   
   fileUrl?: string; // External Link (or DL link if zip)
   fileName?: string; 
@@ -62,6 +63,7 @@ export const templates: Template[] = [
     sales: 120, 
     earnings: 5880, 
     fileUrl: 'https://example.com', 
+    sourceCode: '// Full React Source Code Included\nexport default function App() {\n  return <div>Welcome to CyberSpace</div>\n}',
     fileType: 'code',
     createdAt: Date.now()
   },
@@ -84,6 +86,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: 'https://ui.shadcn.com', 
+    sourceCode: '', // Empty code triggers Link Only mode
     fileType: 'link',
     createdAt: Date.now() - 100000 
   },
@@ -106,6 +109,7 @@ export const templates: Template[] = [
     sales: 45, 
     earnings: 0, 
     fileUrl: '', // Empty URL
+    sourceCode: '', // Empty Code
     fileType: 'image',
     createdAt: Date.now() - 200000 
   },
@@ -128,6 +132,7 @@ export const templates: Template[] = [
     sales: 85, 
     earnings: 5015, 
     fileUrl: '', // Empty URL
+    sourceCode: '<div class="glass-panel">Dashboard</div>', // Has Code
     fileType: 'code',
     createdAt: Date.now() - 300000 
   },
@@ -150,6 +155,7 @@ export const templates: Template[] = [
     sales: 200, 
     earnings: 5800, 
     fileUrl: 'https://expo.dev', 
+    sourceCode: 'const App = () => <View>...</View>', 
     fileType: 'code',
     createdAt: Date.now() - 400000 
   },
@@ -172,6 +178,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: 'https://uniswap.org', 
+    sourceCode: '', 
     fileType: 'link',
     createdAt: Date.now() - 500000 
   },
@@ -194,6 +201,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: '', 
+    sourceCode: '', 
     fileType: 'image',
     createdAt: Date.now() - 600000 
   },
@@ -216,6 +224,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: '', 
+    sourceCode: 'export const useWindowSize = () => { ... }', 
     fileType: 'code',
     createdAt: Date.now() - 700000 
   },
@@ -238,6 +247,7 @@ export const templates: Template[] = [
     sales: 50, 
     earnings: 1950, 
     fileUrl: 'https://shopify.com', 
+    sourceCode: 'const Cart = () => ...', 
     fileType: 'code',
     createdAt: Date.now() - 800000 
   },
@@ -260,6 +270,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: '', 
+    sourceCode: '', 
     fileType: 'image',
     createdAt: Date.now() - 900000 
   },
@@ -282,6 +293,7 @@ export const templates: Template[] = [
     sales: 30, 
     earnings: 570, 
     fileUrl: 'https://ghost.org', 
+    sourceCode: '', 
     fileType: 'link',
     createdAt: Date.now() - 1000000 
   },
@@ -304,6 +316,7 @@ export const templates: Template[] = [
     sales: 0, 
     earnings: 0, 
     fileUrl: '', 
+    sourceCode: 'function bubbleSort(arr) { ... }', 
     fileType: 'code',
     createdAt: Date.now() - 1100000 
   },

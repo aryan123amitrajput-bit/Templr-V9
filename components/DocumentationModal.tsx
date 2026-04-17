@@ -1,95 +1,229 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XIcon, BookOpenIcon, CodeIcon, ZapIcon, ShieldCheckIcon } from './Icons';
-import { playClickSound } from '../audio';
+import { XMarkIcon, BookOpenIcon, LayoutIcon, MousePointerClickIcon, RocketIcon, UsersIcon, SparklesIcon } from './Icons';
+import { playCloseModalSound } from '../audio';
 
 interface DocumentationModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const DocSection = ({ title, icon: Icon, children }: { title: string, icon: any, children: React.ReactNode }) => (
-    <div className="mb-10">
-        <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                <Icon className="w-5 h-5" />
-            </div>
-            <h3 className="text-xl font-bold text-white">{title}</h3>
-        </div>
-        <div className="text-slate-400 leading-relaxed text-sm pl-12">
-            {children}
-        </div>
-    </div>
-);
-
 const DocumentationModal: React.FC<DocumentationModalProps> = ({ isOpen, onClose }) => {
-  
   useEffect(() => {
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
     };
-    if (isOpen) window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-0 md:p-6" onClick={onClose}>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
-
-            <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                transition={{ type: "spring", duration: 0.5, bounce: 0 }}
-                className="relative w-full max-w-3xl h-full md:h-[85vh] bg-[#030304] border border-white/10 rounded-none md:rounded-[32px] overflow-hidden flex flex-col shadow-2xl"
-                onClick={e => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex-shrink-0 p-8 border-b border-white/5 bg-[#030304] flex justify-between items-center">
-                    <div>
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Documentation</h2>
-                        <p className="text-slate-500 text-sm">Everything you need to build with Templr.</p>
-                    </div>
-                    <button onClick={() => { playClickSound(); onClose(); }} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-all">
-                        <XIcon className="w-5 h-5"/>
-                    </button>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { playCloseModalSound(); onClose(); }}
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          />
+          
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="relative w-full max-w-4xl max-h-[90vh] bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+                  <BookOpenIcon className="w-5 h-5 text-slate-300" />
                 </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-8 md:p-12 bg-[#030304]">
-                    
-                    <DocSection title="Getting Started" icon={ZapIcon}>
-                        <p className="mb-4">Templr is designed for speed. Simply upload your template, and our engine will automatically process it for preview and deployment.</p>
-                        <ul className="list-disc list-inside space-y-2 text-slate-500">
-                            <li>Upload your zip file</li>
-                            <li>Configure metadata</li>
-                            <li>Publish to the marketplace</li>
-                        </ul>
-                    </DocSection>
-
-                    <DocSection title="Technical Specs" icon={CodeIcon}>
-                        <p className="mb-4">We support all modern web frameworks. Ensure your template includes a <code>package.json</code> for automatic dependency installation.</p>
-                        <div className="bg-[#09090b] p-4 rounded-lg border border-white/5 font-mono text-xs text-slate-300">
-                            {`{ "name": "my-template", "dependencies": { ... } }`}
-                        </div>
-                    </DocSection>
-
-                    <DocSection title="Security & Compliance" icon={ShieldCheckIcon}>
-                        <p>All templates are scanned for malicious code before being approved for the marketplace. Ensure your code follows our security guidelines to avoid rejection.</p>
-                    </DocSection>
-
-                    <div className="mt-12 pt-8 border-t border-white/5 text-center">
-                        <p className="text-slate-500 text-xs font-mono uppercase tracking-widest">Still need help?</p>
-                        <a href="mailto:support@templr.com" className="text-blue-400 hover:text-blue-300 text-sm font-bold mt-2 block">support@templr.com</a>
-                    </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-tight">Templr Documentation</h2>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">Learn how to discover, use, and launch landing page templates faster with Templr.</p>
                 </div>
-            </motion.div>
+              </div>
+              <button
+                onClick={() => { playCloseModalSound(); onClose(); }}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-16">
+              
+              {/* Hero Section */}
+              <section className="text-center max-w-2xl mx-auto">
+                <h1 className="text-4xl sm:text-5xl font-bold text-white tracking-tight mb-4">
+                  Templr Documentation
+                </h1>
+                <p className="text-lg text-slate-400 mb-6 leading-relaxed">
+                  Learn how to discover, use, and launch landing page templates faster with Templr.
+                </p>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+                  <SparklesIcon className="w-4 h-4 text-cyan-400" />
+                  <span className="text-sm font-medium text-slate-300">Dribbble is for inspiration. Templr is for real templates.</span>
+                </div>
+              </section>
+
+              {/* What is Templr */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                    <LayoutIcon className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">What is Templr</h3>
+                </div>
+                <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <p className="text-slate-300 leading-relaxed">
+                    Templr is a platform where users can discover and use ready-made landing page templates instead of starting from a blank page. We bridge the gap between design inspiration and usable code, providing a curated gallery of high-quality, modern SaaS designs that you can immediately apply to your projects.
+                  </p>
+                </div>
+              </section>
+
+              {/* How Templr Works */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <MousePointerClickIcon className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">How Templr Works</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {[
+                    { step: '1', title: 'Browse templates', desc: 'Explore our curated gallery of high-quality designs.' },
+                    { step: '2', title: 'Choose a design', desc: 'Find the perfect layout that matches your vision.' },
+                    { step: '3', title: 'Customize and launch', desc: 'Adapt the structure and content to your needs.' }
+                  ].map((item, idx) => (
+                    <div key={idx} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 relative overflow-hidden group hover:bg-white/[0.04] transition-colors">
+                      <div className="absolute top-0 right-0 p-4 opacity-10 font-bold text-6xl text-white pointer-events-none">
+                        {item.step}
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm mb-4">
+                        {item.step}
+                      </div>
+                      <h4 className="text-lg font-bold text-white mb-2">{item.title}</h4>
+                      <p className="text-sm text-slate-400">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* What You Can Find */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                    <SparklesIcon className="w-4 h-4 text-purple-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">What You Can Find on Templr</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    'Landing page templates',
+                    'Modern SaaS designs',
+                    'Ready UI layouts',
+                    'Inspiration + usable templates'
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div className="w-2 h-2 rounded-full bg-purple-400"></div>
+                      <span className="text-slate-300 font-medium">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* How to Use a Template */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                    <LayoutIcon className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">How to Use a Template</h3>
+                </div>
+                <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <ol className="space-y-4">
+                    {[
+                      'Open a template from the gallery.',
+                      'View the design details and structure.',
+                      'Copy the structure or recreate it in your project.',
+                      'Customize text, colors, and content to match your brand.'
+                    ].map((step, idx) => (
+                      <li key={idx} className="flex gap-4">
+                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white">
+                          {idx + 1}
+                        </span>
+                        <span className="text-slate-300 mt-0.5">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </section>
+
+              {/* Who Templr is For */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                    <UsersIcon className="w-4 h-4 text-orange-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">Who Templr is For</h3>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    'Indie hackers',
+                    'Startup founders',
+                    'Developers',
+                    'UI/UX designers',
+                    'Builders launching products'
+                  ].map((user, idx) => (
+                    <div key={idx} className="px-4 py-2 rounded-full bg-white/[0.02] border border-white/5 text-slate-300 text-sm font-medium">
+                      {user}
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Why Use Templr */}
+              <section>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+                    <RocketIcon className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">Why Use Templr</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    'Skip the blank page problem',
+                    'Save hours of design work',
+                    'Launch projects faster',
+                    'Discover modern UI patterns'
+                  ].map((benefit, idx) => (
+                    <div key={idx} className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div className="mt-1 w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0">
+                        <div className="w-2 h-2 rounded-full bg-rose-400"></div>
+                      </div>
+                      <span className="text-slate-300 font-medium">{benefit}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+            </div>
+          </motion.div>
         </div>
+      )}
     </AnimatePresence>
   );
 };
 
-export default DocumentationModal;
+export default React.memo(DocumentationModal);

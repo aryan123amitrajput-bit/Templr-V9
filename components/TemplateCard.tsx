@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
-import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from 'lucide-react';
+import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
 
 interface TemplateCardProps {
@@ -84,12 +84,6 @@ const videoManager = new VideoController();
 // Helper to downscale Unsplash images for thumbnails (huge performance win)
 const getOptimizedImageUrl = (url: string | undefined | null, width = 600) => {
     if (!url) return null;
-    
-    // Proxy Telegram images to avoid CORS issues
-    if (url.includes('api.telegram.org')) {
-        return `/api/image-proxy?url=${encodeURIComponent(url)}`;
-    }
-
     if (url.includes('images.unsplash.com')) {
         if (url.includes('w=')) {
             return url.replace(/w=\d+/, `w=${width}`);
@@ -225,6 +219,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const handleViewButton = (e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log("View button clicked for template:", id);
     playClickSound();
     onView(id);
   };
@@ -255,9 +250,27 @@ const CardContent: React.FC<TemplateCardProps> = ({
       setSignedBanner(null);
   }, [displayBanner]);
 
-  const handleImageError = async () => {
-      console.error(`[TemplateCard] Image load error for ${title}:`, displayBanner);
+  const handleImageError = async (errorType: string) => {
       setImageError(true);
+      const errorContext = {
+          id,
+          title,
+          imageUrl,
+          bannerUrl,
+          videoUrl,
+          timestamp: new Date().toISOString(),
+          errorType
+      };
+      console.error(`[TemplateCard] ${errorType} failed to load:`, errorContext);
+      try {
+          await fetch('/api/log-error', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ error: `${errorType} failed to load`, context: errorContext })
+          });
+      } catch (e) {
+          console.error('Failed to log error to server', e);
+      }
   };
 
   const cardVariants: any = {
@@ -275,20 +288,22 @@ const CardContent: React.FC<TemplateCardProps> = ({
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      whileHover="hover"
-      className="group relative w-full h-full bg-[#1c1c1c] rounded-2xl border border-white/5 hover:border-[#0088cc]/40 transition-all cursor-default isolate overflow-hidden backface-hidden shadow-lg"
+      className="group relative w-full h-full bg-[#050505] cursor-default isolate overflow-hidden backface-hidden transition-transform duration-300 ease-out hover:-translate-y-2"
     >
+        <div className="absolute inset-0 rounded-[24px] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] z-0 pointer-events-none"></div>
+
         <div className="absolute inset-0 z-0 bg-[#111]">
             {/* Background Image (Always present as fallback/base) */}
             <div className="absolute inset-0 z-0 bg-zinc-900">
                 {(signedBanner || displayBanner) && !imageError ? (
                     <img 
+                        key={signedBanner || displayBanner!}
                         src={signedBanner || displayBanner!} 
                         alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam
-                            handleImageError();
+                            handleImageError('Image');
                         }}
                         onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -321,6 +336,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                         onError={(e) => {
                             console.error(`[TemplateCard] Video error for ${title}:`, videoUrl, e);
                             setVideoError(true);
+                            handleImageError('Video');
                         }}
                     >
                         <source src={videoUrl} type="video/mp4" />
@@ -363,7 +379,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                <div className="flex items-center gap-3 transition-opacity duration-200 pointer-events-auto opacity-0 group-hover:opacity-100">
                      {currentUserId && author_uid === currentUserId && (
                         <button 
                             onClick={handleDelete} 
@@ -402,7 +418,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
             
             <div className="mt-4 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
             
-            <div className="flex justify-between mt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <div className="flex justify-between mt-3 transition-opacity duration-300">
                 <div className="flex gap-4">
                     <div className="flex items-center gap-1.5 text-slate-400">
                         <EyeIcon className="w-3 h-3" />
