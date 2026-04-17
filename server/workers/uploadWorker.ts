@@ -12,7 +12,7 @@ uploadQueue.setProcessor(async (job) => {
 
     // 1. Try Telegram (User Preferred Primary)
     try {
-        const tgUri = await telegramService.uploadImage(fileBuffer, `${templateId}.jpg`);
+        const tgUri = await telegramService.uploadImage(fileBuffer, `${templateId}.jpg`, 'image/jpeg');
         const match = tgUri.match(/^tg:\/\/(\d+)\/(.+)$/);
         if (match) {
             const botIndex = match[1];

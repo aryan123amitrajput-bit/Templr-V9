@@ -33,6 +33,7 @@
     "form-data": "^4.0.5",
     "framer-motion": "^12.38.0",
     "ioredis": "^5.10.1",
+    "lottie-react": "^2.4.1",
     "lucide-react": "^0.577.0",
     "maath": "^0.10.8",
     "multer": "^2.1.1",

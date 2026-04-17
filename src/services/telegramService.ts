@@ -16,7 +16,7 @@ export const sendTelegramMessage = async (message: string) => {
 
 export const telegramService = {
   isConfigured: () => !!TELEGRAM_BOT_TOKEN && !!TELEGRAM_CHAT_ID,
-  uploadImage: async (buffer: Buffer, filename: string) => 'tg://123/456',
+  uploadImage: async (buffer: Buffer, filename: string, mimetype: string) => 'tg://123/456',
   uploadDocument: async (buffer: Buffer, filename: string, mimetype: string) => 'tg://123/456',
   getFileDownloadUrl: async (tgUri: string) => 'https://api.telegram.org/file/bot123/456',
 };
