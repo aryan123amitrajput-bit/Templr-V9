@@ -21,6 +21,47 @@ import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// --- BACKGROUND CACHE WIRE ---
+class CacheWire {
+  public registry: any[] = [];
+  public lastUpdated = 0;
+  
+  constructor() {
+    this.refresh();
+    setInterval(() => this.refresh(), 30000); 
+  }
+  
+  async refresh() {
+    try {
+      const [gitRegistry, supabaseData] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        getSupabaseTemplates().catch(() => [])
+      ]);
+
+      const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const templatesMap = new Map();
+      gitRegistry.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+      });
+      mappedSupabase.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
+
+      let freshRegistry = Array.from(templatesMap.values());
+      freshRegistry = freshRegistry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+      freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      
+      this.registry = freshRegistry;
+      this.lastUpdated = Date.now();
+      console.log(`[Server CacheWire] 🔌 Synchronized ${this.registry.length} templates into memory.`);
+    } catch (error) {
+      console.error('[Server CacheWire] Sync failed:', error);
+    }
+  }
+}
+
+const backgroundWire = new CacheWire();
+
 // Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
 const firebaseConfigPath = path.join(__dirname, 'firebase-applet-config.json');
 let firebaseConfig: any = null;
@@ -500,6 +541,10 @@ function mapSupabaseToTemplate(t: any) {
     }
   });
 
+  app.get('/api/registry', async (req, res) => {
+    res.json(await freeHostService.getRegistry());
+  });
+
   // Get Public Templates
   app.get('/api/templates', async (req, res) => {
     console.log(`[API] Received request for /api/templates. Query:`, req.query);
@@ -512,25 +557,25 @@ function mapSupabaseToTemplate(t: any) {
       const userId = req.query.userId as string;
       const email = req.query.email as string;
 
-      // 1. Get templates from Supabase (Primary source for full metadata)
-      console.log(`[API] Fetching templates from Supabase...`);                
-      let data: any[] = [];
-      try {
-        const supabaseTemplates = await getSupabaseTemplates();
-        console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
-        data = supabaseTemplates.map(mapSupabaseToTemplate);
-      } catch (e) {
-        console.error('[API] Supabase fetch error:', e);
-      }
+      let data: any[] = [...backgroundWire.registry];
 
-      // 2. Get templates from repositories (GitHub/GitLab)
-      console.log(`[API] Fetching templates from RepoManager...`);
-      try {
-        const repoTemplates = await repoManager.getMergedRegistry();
-        console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
-        data.push(...repoTemplates);
-      } catch (e) {
-        console.error('[API] Repo fetch error:', e);
+      if (data.length === 0) {
+          console.log(`[API] Fetching templates from Supabase and GitHub natively...`);                
+          try {
+            const supabaseTemplates = await getSupabaseTemplates();
+            console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
+            data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
+          } catch (e) {
+            console.error('[API] Supabase fetch error:', e);
+          }
+
+          try {
+            const repoTemplates = await repoManager.getMergedRegistry();
+            console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
+            data.push(...repoTemplates);
+          } catch (e) {
+            console.error('[API] Repo fetch error:', e);
+          }
       }
 
       // 3. Get templates from freeHostService

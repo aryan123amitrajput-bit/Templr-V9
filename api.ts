@@ -14,6 +14,59 @@ import { supabase } from './lib/supabaseClient';
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
 // ==========================================
 
+// --- THE "WIRE" (Instant Background Prefetch Cache) ---
+class TemplateWireCache {
+    private cache: any[] = [];
+    private isWired = false;
+    private wirePromise: Promise<void> | null = null;
+    
+    constructor() {
+        this.installWire();
+    }
+    
+    private async installWire() {
+        this.wirePromise = (async () => {
+            try {
+                // Instantly wire directly into the backend registry & first page on startup
+                console.log("[TemplateWire] 🔌 Initializing direct wire to external services in background...");
+                const [registryRes, initialRes] = await Promise.all([
+                    fetch('/api/registry').catch(() => null),
+                    fetch('/api/templates?page=0&limit=24').catch(() => null)
+                ]);
+                
+                if (initialRes && initialRes.ok) {
+                    const data = await initialRes.json();
+                    if (data && data.data) {
+                        this.cache = data.data;
+                        this.isWired = true;
+                        console.log(`[TemplateWire] ⚡ Successfully locked memory to ${this.cache.length} templates instantly.`);
+                    }
+                }
+            } catch (error) {
+                console.error("[TemplateWire] ❌ Wire interference:", error);
+            }
+        })();
+    }
+    
+    async getCachedTemplates(page: number, limit: number, category: string, reqSearch: string, sortBy: string) {
+        if (!this.isWired && this.wirePromise) {
+            await this.wirePromise;
+        }
+        
+        // Only safely return cached wire if standard default request
+        if (this.isWired && page === 0 && (!category || category === 'All') && !reqSearch && sortBy === 'newest') {
+            return {
+                data: this.cache.slice(0, limit),
+                hasMore: this.cache.length > limit,
+                fromWire: true
+            };
+        }
+        return null;
+    }
+}
+
+export const activeWireCache = new TemplateWireCache();
+
 export const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
@@ -364,6 +417,13 @@ export const getPublicTemplates = async (
     currentUserId?: string
 ): Promise<{ data: Template[], hasMore: boolean, error?: string }> => {
     try {
+        // Intercept via the Instant Pre-Wired Cache
+        const wiredCache = await activeWireCache.getCachedTemplates(page, limitNum, category, searchQuery, sortBy);
+        if (wiredCache) {
+            console.log(`[Templates] ⚡ Served instantly from the Background Wire!`);
+            return { data: wiredCache.data.map((t: any) => mapTemplate(t)), hasMore: wiredCache.hasMore };
+        }
+
         const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
         const response = await fetch(url);
         if (!response.ok) throw new Error("Failed to fetch templates");

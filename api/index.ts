@@ -27,6 +27,54 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// --- BACKGROUND CACHE WIRE ---
+// Constantly caches standard template requests to return INSTANTLY on trigger
+class CacheWire {
+  public registry: any[] = [];
+  public lastUpdated = 0;
+  
+  constructor() {
+    this.refresh();
+    setInterval(() => this.refresh(), 30000); // Re-wire every 30 seconds
+  }
+  
+  async refresh() {
+    try {
+      if (!supabase) return;
+      const [gitRegistry, { data: supabaseData }, { data: deletedTemplates }] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        supabase.from('templates').select('*').order('created_at', { ascending: false }),
+        supabase.from('deleted_templates').select('id')
+      ]);
+
+      const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const templatesMap = new Map();
+      gitRegistry.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+      });
+      mappedSupabase.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
+
+      let freshRegistry = Array.from(templatesMap.values());
+      freshRegistry = freshRegistry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+      
+      const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
+      freshRegistry = freshRegistry.filter((t: any) => !deletedIds.has(t.id));
+      
+      freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      
+      this.registry = freshRegistry;
+      this.lastUpdated = Date.now();
+      console.log(`[CacheWire] 🔌 Synchronized ${this.registry.length} templates into memory.`);
+    } catch (error) {
+      console.error('[CacheWire] Sync failed:', error);
+    }
+  }
+}
+
+const backgroundWire = new CacheWire();
+
 // Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
 // In Vercel, the root is one level up from /api
 const firebaseConfigPath = path.join(__dirname, '..', 'firebase-applet-config.json');
@@ -1104,35 +1152,38 @@ app.get('/api/templates', async (req, res) => {
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
-    const [gitRegistry, { data: supabaseData }] = await Promise.all([
-      repoManager.getMergedRegistry(),
-      supabase.from('templates').select('*').order('created_at', { ascending: false })
-    ]);
+    // Intercept with Live Cache Wire immediately if available
+    let registry = [...backgroundWire.registry];
 
-    clearTimeout(timeoutId);
+    // Fallback if cache is completely empty/cold
+    if (registry.length === 0) {
+      const [gitRegistry, { data: supabaseData }] = await Promise.all([
+        repoManager.getMergedRegistry(),
+        supabase.from('templates').select('*').order('created_at', { ascending: false })
+      ]);
 
-    const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const templatesMap = new Map();
+      gitRegistry.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, { ...t, _source: 'git' });
+        }
+      });
+      mappedSupabase.forEach((t: any) => {
+        if (!templatesMap.has(t.id)) {
+          templatesMap.set(t.id, t);
+        }
+      });
+
+      registry = Array.from(templatesMap.values());
+      registry = registry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+
+      const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
+      const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
+      registry = registry.filter((t: any) => !deletedIds.has(t.id));
+    }
     
-    const templatesMap = new Map();
-    gitRegistry.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, { ...t, _source: 'git' });
-      }
-    });
-    mappedSupabase.forEach((t: any) => {
-      if (!templatesMap.has(t.id)) {
-        templatesMap.set(t.id, t);
-      }
-    });
-
-    let registry = Array.from(templatesMap.values());
-
-    // Filter out templates without previews
-    registry = registry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
-
-    const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
-    const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
-    registry = registry.filter((t: any) => !deletedIds.has(t.id));
+    clearTimeout(timeoutId);
 
     if (category && category !== 'All') {
       registry = registry.filter((t: any) => t.category === category);
@@ -1147,7 +1198,7 @@ app.get('/api/templates', async (req, res) => {
       registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
     } else if (sortBy === 'likes') {
       registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-    } else {
+    } else if (backgroundWire.registry.length === 0) { // Only resort if pulled cold
       registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     }
 
