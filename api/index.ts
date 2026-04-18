@@ -32,53 +32,78 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 class CacheWire {
   public registry: any[] = [];
   public lastUpdated = 0;
+  private syncPromise: Promise<void> | null = null;
   
   constructor() {
-    setTimeout(() => this.refresh(), 2000);
+    this.syncPromise = this.refresh();
     setInterval(() => this.refresh(), 30000); // Re-wire every 30 seconds
+  }
+
+  public async ensureSynchronized(timeoutMs = 5000) {
+    if (this.registry.length > 0) return;
+    if (this.syncPromise) {
+      await Promise.race([
+        this.syncPromise,
+        new Promise(resolve => setTimeout(resolve, timeoutMs))
+      ]);
+    }
   }
   
   async refresh() {
+    console.log("[CacheWire] 🔌 Synchronizing Wire...");
     try {
-      if (!supabase) return;
-      const [gitRegistry, { data: supabaseData }, { data: deletedTemplates }] = await Promise.all([
-        repoManager.getMergedRegistry().catch(() => []),
-        supabase.from('templates').select('*').order('created_at', { ascending: false }).catch(() => ({ data: [] })),
-        supabase.from('deleted_templates').select('id').catch(() => ({ data: [] }))
+      // Small delay on Vercel to ensure env populates
+      if (process.env.VERCEL) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+      
+      const [gitRegistry, supabaseData, deletedTemplatesData, freeHostData] = await Promise.all([
+        repoManager.getMergedRegistry().catch((e) => {
+          console.error('[CacheWire] Repo error:', e);
+          return [];
+        }),
+        supabase 
+          ? supabase.from('templates').select('*').order('created_at', { ascending: false }).then(res => res.data || []).catch(() => [])
+          : Promise.resolve([]),
+        supabase
+          ? supabase.from('deleted_templates').select('id').then(res => res.data || []).catch(() => [])
+          : Promise.resolve([]),
+        freeHostService.getTemplates(0, 100).catch(() => [])
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
       const templatesMap = new Map();
       
       if (Array.isArray(gitRegistry)) {
         gitRegistry.forEach((t: any) => {
-          if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+          if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
         });
       }
       
+      mappedFreeHost.forEach((t: any) => {
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
+      
       mappedSupabase.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      // Disabled aggressive thumbnail filtering to prevent templates disappearing
-      freshRegistry = freshRegistry.filter((t: any) => t);
       
-      const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
+      const deletedIds = new Set((deletedTemplatesData || []).map((t: any) => t.id));
       freshRegistry = freshRegistry.filter((t: any) => !deletedIds.has(t.id));
       
       freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       
       this.registry = freshRegistry;
       this.lastUpdated = Date.now();
-      console.log(`[CacheWire] 🔌 Synchronized ${this.registry.length} templates implicitly into memory.`);
+      console.log(`[CacheWire] ⚡ synchronized ${this.registry.length} templates implicitly into memory.`);
     } catch (error) {
-      console.error('[CacheWire] Sync failed:', error);
+      console.error('[CacheWire] Sync total failure:', error);
     }
   }
 }
-
-const backgroundWire = new CacheWire();
 
 // Firebase Admin is still initialized for Auth if needed, but Firestore is removed.
 // In Vercel, the root is one level up from /api
@@ -115,7 +140,17 @@ try {
   console.error("Supabase initialization failed, using mock client:", e);
   supabase = {
     from: () => ({
-      select: () => ({ eq: () => ({ single: () => ({ data: null, error: 'Supabase not configured' }) }), data: [], error: 'Supabase not configured' }),
+      select: () => ({ 
+        order: () => ({
+          then: (cb: any) => Promise.resolve(cb({ data: [], error: 'Supabase not configured' })),
+          catch: (cb: any) => Promise.resolve(cb(new Error('Supabase not configured'))),
+          data: [],
+          error: 'Supabase not configured'
+        }),
+        eq: () => ({ single: () => ({ data: null, error: 'Supabase not configured' }) }), 
+        data: [], 
+        error: 'Supabase not configured' 
+      }),
       update: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
       delete: () => ({ eq: () => ({ error: 'Supabase not configured' }) }),
       insert: () => ({ error: 'Supabase not configured' }),
@@ -137,6 +172,8 @@ try {
     },
   };
 }
+
+const backgroundWire = new CacheWire();
 
 // GitHub Configuration
 const GITHUB_REPO_DEFAULT = 'Templr-V9';
@@ -1157,11 +1194,18 @@ app.get('/api/templates', async (req, res) => {
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
 
+    // FORCE SYNC WAIT for Vercel Cold Starts
+    if (backgroundWire.registry.length === 0) {
+      console.log("[API] Cache is cold, waiting for synchronization wire...");
+      await backgroundWire.ensureSynchronized(8000); 
+    }
+
     // Intercept with Live Cache Wire immediately if available
     let registry = [...backgroundWire.registry];
 
-    // Fallback if cache is completely empty/cold
+    // Fallback if cache is STILL empty/cold after wait
     if (registry.length === 0) {
+      console.log("[API] Cache still cold after wait, performing direct fetch...");
       const gitRegistry = await repoManager.getMergedRegistry().catch((e) => {
         console.error('[API] Repo fetch error:', e);
         return [];

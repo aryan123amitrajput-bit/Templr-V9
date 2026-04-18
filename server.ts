@@ -25,47 +25,64 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 class CacheWire {
   public registry: any[] = [];
   public lastUpdated = 0;
+  private syncPromise: Promise<void> | null = null;
   
   constructor() {
-    // Wait slightly to ensure env/supabase loads before triggering first sync.
-    setTimeout(() => this.refresh(), 2000);
+    this.syncPromise = this.refresh();
     setInterval(() => this.refresh(), 30000); 
+  }
+
+  public async ensureSynchronized(timeoutMs = 5000) {
+    if (this.registry.length > 0) return;
+    if (this.syncPromise) {
+      await Promise.race([
+        this.syncPromise,
+        new Promise(resolve => setTimeout(resolve, timeoutMs))
+      ]);
+    }
   }
   
   async refresh() {
+    console.log("[Server CacheWire] 🔌 Synchronizing Wire...");
     try {
-      const [gitRegistry, supabaseData] = await Promise.all([
+      const [gitRegistry, supabaseData, freeHostData] = await Promise.all([
         repoManager.getMergedRegistry().catch(() => []),
         getSupabaseTemplates().catch((e) => {
           console.error('[Server CacheWire] Supabase fetch error:', e);
           return [];
-        })
+        }),
+        freeHostService.getTemplates(0, 100).catch(() => [])
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
+      const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
       const templatesMap = new Map();
       
       if (Array.isArray(gitRegistry)) {
         gitRegistry.forEach((t: any) => {
-          if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+          if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
         });
       }
       
+      mappedFreeHost.forEach((t: any) => {
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
+      
       mappedSupabase.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      // Re-include templates without thumbnail for safety
+      // Disabled aggressive thumbnail filtering
       freshRegistry = freshRegistry.filter((t: any) => t);
       
       freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       
       this.registry = freshRegistry;
       this.lastUpdated = Date.now();
-      console.log(`[Server CacheWire] 🔌 Synchronized ${this.registry.length} templates implicitly into memory.`);
+      console.log(`[Server CacheWire] ⚡ synchronized ${this.registry.length} templates implicitly into memory.`);
     } catch (error) {
-      console.error('[Server CacheWire] Sync failed:', error);
+      console.error('[Server CacheWire] Sync failure:', error);
     }
   }
 }
