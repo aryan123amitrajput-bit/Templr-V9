@@ -9,7 +9,7 @@ import { uploadToCatbox } from './api/services/catboxService';
 import { uploadToBeeIMG } from './api/services/beeimgService';
 import { uploadToPasteRs } from './api/services/pasteService';
 import { telegramService } from './api/services/telegramService';
-import { Octokit } from 'octokit';
+import { Octokit } from '@octokit/rest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './api/services/repoService';

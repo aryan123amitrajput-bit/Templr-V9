@@ -10,7 +10,7 @@ import { uploadToGifyu } from './services/gifyuService';
 import { uploadToCatbox } from './services/catboxService';
 import { uploadToBeeIMG } from './services/beeimgService';
 import { telegramService } from './services/telegramService';
-import { Octokit } from 'octokit';
+import { Octokit } from '@octokit/rest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager } from './services/repoService';
@@ -1162,18 +1162,28 @@ app.get('/api/templates', async (req, res) => {
 
     // Fallback if cache is completely empty/cold
     if (registry.length === 0) {
-      const [gitRegistry, { data: supabaseData }] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        supabase.from('templates').select('*').order('created_at', { ascending: false })
-      ]);
+      const gitRegistry = await repoManager.getMergedRegistry().catch((e) => {
+        console.error('[API] Repo fetch error:', e);
+        return [];
+      });
+      const supabaseData = supabase 
+        ? await supabase.from('templates').select('*').order('created_at', { ascending: false }).then(res => res.data).catch((e) => {
+            console.error('[API] Supabase fetch error:', e);
+            return [];
+          })
+        : [];
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const templatesMap = new Map();
-      gitRegistry.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, { ...t, _source: 'git' });
-        }
-      });
+      
+      if (Array.isArray(gitRegistry)) {
+        gitRegistry.forEach((t: any) => {
+          if (!templatesMap.has(t.id)) {
+            templatesMap.set(t.id, { ...t, _source: 'git' });
+          }
+        });
+      }
+      
       mappedSupabase.forEach((t: any) => {
         if (!templatesMap.has(t.id)) {
           templatesMap.set(t.id, t);
@@ -1181,9 +1191,11 @@ app.get('/api/templates', async (req, res) => {
       });
 
       registry = Array.from(templatesMap.values());
-      registry = registry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
-
-      const { data: deletedTemplates } = await supabase.from('deleted_templates').select('id');
+      
+      const deletedTemplates = supabase 
+        ? await supabase.from('deleted_templates').select('id').then(res => res.data).catch(() => []) 
+        : [];
+        
       const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
       registry = registry.filter((t: any) => !deletedIds.has(t.id));
     }
