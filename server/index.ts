@@ -2,7 +2,6 @@ import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { uploadToI111666 } from './services/i111666Service';
 import { uploadToImgBB } from './services/imgbbService';
 import { uploadToGifyu } from './services/gifyuService';
 import { uploadToImgHippo } from './services/imghippoService';
@@ -50,16 +49,7 @@ app.post('/api/templates/upload', upload.single('preview'), async (req, res) => 
     let publicUrl = '';
     let hostUsed = '';
 
-    // 1. Try i111666 (Primary External)
-    try {
-        const result = await uploadToI111666(file.buffer, file.originalname, file.mimetype);
-        publicUrl = result.direct_url;
-        hostUsed = 'i111666';
-    } catch (e: any) {
-        console.warn('[Upload] i111666 failed, trying ImgBB...', e.message);
-    }
-
-    // 2. Try ImgBB
+    // 1. Try ImgBB
     if (!publicUrl) {
         try {
             const result = await uploadToImgBB(file.buffer, file.originalname, file.mimetype);

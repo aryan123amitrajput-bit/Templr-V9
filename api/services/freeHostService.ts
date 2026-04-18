@@ -43,12 +43,19 @@ class FreeHostService {
     totalTemplates: 0,
     lastUpdated: new Date().toISOString()
   };
+  private loadPromise: Promise<void> | null = null;
 
   private readonly BATCH_SIZE = 500;
   private readonly JSON_HOSTING_API = 'https://jsonhosting.com/api/json';
 
   constructor() {
-    this.loadRegistry();
+    this.loadPromise = this.loadRegistry();
+  }
+
+  private async ensureLoaded() {
+    if (this.loadPromise) {
+      await this.loadPromise;
+    }
   }
 
   private async loadRegistry() {
@@ -79,11 +86,13 @@ class FreeHostService {
     }
   }
 
-  public getRegistry() {
+  public async getRegistry() {
+    await this.ensureLoaded();
     return this.registry;
   }
 
   public async addTemplate(template: TemplateMetadata) {
+    await this.ensureLoaded();
     let lastBatch = this.registry.batches[this.registry.batches.length - 1];
 
     if (!lastBatch || lastBatch.count >= this.BATCH_SIZE) {
@@ -124,6 +133,7 @@ class FreeHostService {
   }
 
   public async deleteTemplate(templateId: string) {
+    await this.ensureLoaded();
     console.log(`[FreeHostService] Attempting to delete template: ${templateId}`);
     let registryUpdated = false;
 
@@ -184,6 +194,7 @@ class FreeHostService {
   }
 
   public async updateTemplate(templateId: string, updates: any) {
+    await this.ensureLoaded();
     for (const batch of this.registry.batches) {
       const batchContent = await this.fetchBatchContent(batch.url);
       if (batchContent && batchContent.templates) {
@@ -208,6 +219,7 @@ class FreeHostService {
   }
 
   public async getTemplateById(templateId: string) {
+    await this.ensureLoaded();
     for (const batch of this.registry.batches) {
       const content = await this.fetchBatchContent(batch.url);
       if (content && content.templates) {
@@ -219,6 +231,7 @@ class FreeHostService {
   }
 
   public async getTemplates(page: number, limit: number, category?: string, searchQuery?: string) {
+    await this.ensureLoaded();
     const startIdx = page * limit;
     const endIdx = startIdx + limit;
     

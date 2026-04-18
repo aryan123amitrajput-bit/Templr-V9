@@ -2,20 +2,19 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { uploadToImgBB } from './server/services/imgbbService';
-import { uploadToImgHippo } from './server/services/imghippoService';
-import { uploadToI111666 } from './server/services/i111666Service';
-import { uploadToGifyu } from './server/services/gifyuService';
-import { uploadToCatbox } from './server/services/catboxService';
-import { uploadToBeeIMG } from './server/services/beeimgService';
-import { uploadToPasteRs } from './server/services/pasteService';
-import { telegramService } from './server/services/telegramService';
+import { uploadToImgBB } from './api/services/imgbbService';
+import { uploadToImgHippo } from './api/services/imghippoService';
+import { uploadToGifyu } from './api/services/gifyuService';
+import { uploadToCatbox } from './api/services/catboxService';
+import { uploadToBeeIMG } from './api/services/beeimgService';
+import { uploadToPasteRs } from './api/services/pasteService';
+import { telegramService } from './api/services/telegramService';
 import { Octokit } from 'octokit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager, TemplateMetadata } from './server/services/repoService';
-import { freeHostService } from './server/services/freeHostService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
+import { repoManager, TemplateMetadata } from './api/services/repoService';
+import { freeHostService } from './api/services/freeHostService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './api/services/supabaseService';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -155,77 +154,105 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     const isVideo = mimetype.startsWith('video/');
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
-    
-    // 1. Try Telegram (Primary)
+
+    type UploadProvider = {
+        name: string;
+        upload: () => Promise<{ imageUrl: string; hostUsed: string }>;
+    };
+
+    const providers: UploadProvider[] = [];
+
+    // BeeIMG
+    providers.push({
+        name: 'BeeIMG',
+        upload: async () => {
+            const apiKey = process.env.BEEIMG_API_KEY || '';
+            const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+            return { imageUrl: url, hostUsed: 'BeeIMG' };
+        }
+    });
+
+    // Catbox (supports anonymous, valid userhash optional)
+    providers.push({
+        name: 'Catbox',
+        upload: async () => {
+            let userhash = process.env.CATBOX_USERHASH;
+            if (userhash && userhash.length < 5) userhash = undefined; // Ignore dummy/empty values
+            const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+            return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+        }
+    });
+
+    // ImgHippo (requires API key)
+    if (process.env.IMGHIPPO_API_KEY) {
+        providers.push({
+            name: 'ImgHippo',
+            upload: async () => {
+                const result = await uploadToImgHippo(buffer, originalname);
+                return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+            }
+        });
+    }
+
+    // ImgBB
+    providers.push({
+        name: 'ImgBB',
+        upload: async () => {
+            const result = await uploadToImgBB(buffer, originalname, mimetype);
+            return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
+        }
+    });
+
+    // Gifyu (requires API key)
+    if (process.env.GIFYU_API_KEY) {
+        providers.push({
+            name: 'Gifyu',
+            upload: async () => {
+                const result = await uploadToGifyu(buffer, originalname, mimetype);
+                return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
+            }
+        });
+    }
+
     if (telegramService.isConfigured() && !isVideo) {
+        providers.push({
+            name: 'Telegram',
+            upload: async () => {
+                const tgUri = await telegramService.uploadImage(buffer, originalname);
+                const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+            }
+        });
+    }
+
+    // Supabase is the fallback
+    const fallbackProvider: UploadProvider = {
+        name: 'Supabase',
+        upload: async () => {
+            const url = await uploadToSupabase(buffer, originalname, mimetype);
+            return { imageUrl: url, hostUsed: 'Supabase' };
+        }
+    };
+
+    // Shuffle providers randomly
+    const shuffledProviders = providers.sort(() => 0.5 - Math.random());
+    shuffledProviders.push(fallbackProvider);
+
+    for (let i = 0; i < shuffledProviders.length; i++) {
+        const provider = shuffledProviders[i];
         try {
-            const tgUri = await telegramService.uploadImage(buffer, originalname);
-            // Return a URL that points to our proxy endpoint
-            const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-            return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+            console.log(`[Upload] Attempting upload with ${provider.name}...`);
+            return await provider.upload();
         } catch (e: any) {
-            console.warn('[Upload] Telegram failed, trying BeeIMG...', e.message);
+            console.warn(`[Upload] ${provider.name} failed:`, e.message);
+            if (i === shuffledProviders.length - 1) {
+                console.error('[Upload] All external hosts failed including fallback.', e);
+                throw new Error('Upload failed on all available external hosts.');
+            }
         }
     }
-
-    // 2. Try BeeIMG
-    try {
-        const apiKey = process.env.BEEIMG_API_KEY || '';
-        const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-        return { imageUrl: url, hostUsed: 'BeeIMG' };
-    } catch (e: any) {
-        console.warn('[Upload] BeeIMG failed, trying Catbox...', e.message);
-    }
-
-    // 2. Try Catbox
-    try {
-        const userhash = process.env.CATBOX_USERHASH || '';
-        const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-        return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
-    } catch (e: any) {
-        console.warn('[Upload] Catbox failed, trying i111666...', e.message);
-    }
-
-    // 3. Try i111666
-    try {
-        const result = await uploadToI111666(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'i111666' };
-    } catch (e: any) {
-        console.warn('[Upload] i111666 failed, trying ImgHippo...', e.message);
-    }
-
-    // 4. Try ImgHippo
-    try {
-        const result = await uploadToImgHippo(buffer, originalname);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgHippo failed, trying ImgBB...', e.message);
-    }
-
-    // 5. Try ImgBB
-    try {
-        const result = await uploadToImgBB(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'ImgBB' };
-    } catch (e: any) {
-        console.warn('[Upload] ImgBB failed, trying Gifyu...', e.message);
-    }
-
-    // 6. Try Gifyu
-    try {
-        const result = await uploadToGifyu(buffer, originalname, mimetype);
-        return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
-    } catch (e: any) {
-        console.warn('[Upload] Gifyu failed, trying Supabase...', e.message);
-    }
-
-    // 7. Try Supabase (Last)
-    try {
-        const url = await uploadToSupabase(buffer, originalname, mimetype);
-        return { imageUrl: url, hostUsed: 'Supabase' };
-    } catch (e: any) {
-        console.error('[Upload] All external hosts failed:', e.message);
-        throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');
-    }
+    
+    throw new Error('Upload failed on all available external hosts.');
 }
 
 async function startServer() {
@@ -454,11 +481,18 @@ function mapSupabaseToTemplate(t: any) {
   // Text Hosting Proxy (Paste.rs)
   app.post('/api/upload/pastesrs', async (req, res) => {
     try {
-      const { content } = req.body;
-      if (!content) return res.status(400).json({ error: 'Content is required' });
+      const { content, title, name, link } = req.body;
+      
+      let finalContent = content;
+      const templateName = title || name;
+      if (templateName || link) {
+          finalContent = `/*\n * Template Name: ${templateName || 'Unknown'}\n * Template Link: ${link || 'N/A'}\n */\n\n${content}`;
+      }
+
+      if (!finalContent) return res.status(400).json({ error: 'Content is required' });
       
       console.log('[Paste.rs Upload] Received request');
-      const url = await uploadToPasteRs(content);
+      const url = await uploadToPasteRs(finalContent);
       res.json({ success: true, url, host: 'Paste.rs' });
     } catch (error: any) {
       console.error('Paste.rs Upload Error:', error);
@@ -468,6 +502,7 @@ function mapSupabaseToTemplate(t: any) {
 
   // Get Public Templates
   app.get('/api/templates', async (req, res) => {
+    console.log(`[API] Received request for /api/templates. Query:`, req.query);
     try {
       const page = parseInt(req.query.page as string) || 0;
       const limitNum = parseInt(req.query.limit as string) || 6;
@@ -932,7 +967,12 @@ function mapSupabaseToTemplate(t: any) {
       if (updates.sourceCode && updates.sourceCode.length > 0 && !updates.sourceCode.startsWith('http')) {
           try {
               console.log(`[Paste.rs Update] Uploading source code for template: ${id}`);
-              updates.source_code = await uploadToPasteRs(updates.sourceCode);
+              
+              const updateTitle = updates.title || updates.name || 'Update Request';
+              const updateLink = updates.image_url || updates.preview_url || updates.thumbnail || 'Link not provided';
+              const formattedCode = `/*\n * Template Name: ${updateTitle}\n * Template Link: ${updateLink}\n */\n\n${updates.sourceCode}`;
+              
+              updates.source_code = await uploadToPasteRs(formattedCode);
               delete updates.sourceCode;
               console.log(`[Paste.rs Update] Success: ${updates.source_code}`);
           } catch (e: any) {

@@ -58,7 +58,32 @@ const fileToBase64 = (blob: Blob): Promise<string> => {
     });
 };
 
-// 3. Main Upload Orchestrator
+// 3. Native Frontend Fallbacks (Bypass blocked Vercel backends)
+const uploadToCatboxDirect = async (blob: Blob): Promise<string> => {
+    const formData = new FormData();
+    formData.append('reqtype', 'fileupload');
+    formData.append('fileToUpload', blob, 'image.jpg');
+    const response = await fetch('https://catbox.moe/user/api.php', {
+        method: 'POST',
+        body: formData
+    });
+    if (!response.ok) throw new Error('Catbox direct upload failed');
+    return (await response.text()).trim();
+};
+
+const uploadToBeeIMGDirect = async (blob: Blob): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', blob, 'image.jpg');
+    const response = await fetch('https://beeimg.com/api/upload/file/json/', {
+        method: 'POST',
+        body: formData
+    });
+    if (!response.ok) throw new Error('BeeIMG direct upload failed');
+    const result = await response.json();
+    return `https://${result.files.url}`;
+};
+
+// 4. Main Upload Orchestrator
 export const uploadFromUrl = async (url: string): Promise<UploadResult> => {
     try {
         console.log(`[Orchestrator] Fetching image from URL via backend: ${url}`);
@@ -98,31 +123,63 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
         const base64File = await fileToBase64(optimizedBlob);
         
         console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                file: base64File, 
-                path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
-            })
-        });
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    file: base64File, 
+                    path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
+                })
+            });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Backend upload failed: ${response.statusText}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Backend upload failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return {
+                success: true,
+                provider: data.host || 'Multi-service Proxy',
+                direct_url: data.url,
+                thumbnail_url: data.url,
+                viewer_url: data.url,
+                fallback_used: data.host !== '0008888 (Primary)'
+            };
+        } catch (backendError) {
+            console.warn(`[Orchestrator] Vercel backend failed. ATTEMPTING 3RD PARTY FRONTEND FALLBACKS...`);
+            
+            // Native Frontend Providers Randomizer!
+            const fallbacks = [
+                { name: 'Catbox Direct', fn: uploadToCatboxDirect },
+                { name: 'BeeIMG Direct', fn: uploadToBeeIMGDirect }
+            ];
+            
+            // Shuffle
+            fallbacks.sort(() => 0.5 - Math.random());
+            
+            for (const fb of fallbacks) {
+                try {
+                    console.log(`[Frontend Fallback] Attempting ${fb.name}...`);
+                    const url = await fb.fn(optimizedBlob);
+                    return {
+                        success: true,
+                        provider: fb.name,
+                        direct_url: url,
+                        thumbnail_url: url,
+                        viewer_url: url,
+                        fallback_used: true
+                    };
+                } catch (e) {
+                    console.error(`[Frontend Fallback] ${fb.name} failed`, e);
+                }
+            }
+            
+            throw backendError;
         }
-
-        const data = await response.json();
-        return {
-            success: true,
-            provider: data.host || 'Multi-service Proxy',
-            direct_url: data.url,
-            thumbnail_url: data.url,
-            viewer_url: data.url,
-            fallback_used: data.host !== '0008888 (Primary)'
-        };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);
         console.error(`[Orchestrator] Image upload failed:`, lastError);
