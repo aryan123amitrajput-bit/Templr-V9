@@ -10,9 +10,9 @@ export function getSupabase() {
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     
     console.log("Initializing Supabase client...");
-    console.log("SUPABASE_URL:", supabaseUrl ? "Set" : "Not Set");
-    console.log("SUPABASE_SERVICE_ROLE_KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "Set" : "Not Set");
-    console.log("SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "Set" : "Not Set");
+    console.log("SUPABASE_URL is defined:", !!supabaseUrl);
+    console.log("SUPABASE_SERVICE_ROLE_KEY is defined:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log("SUPABASE_ANON_KEY is defined:", !!process.env.SUPABASE_ANON_KEY);
 
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) are required');
@@ -70,7 +70,7 @@ export async function getTemplates(): Promise<any[]> {
     .select('*');
   
   if (error) {
-    console.error('[Supabase Fetch Error]', error);
+    console.error('[Supabase Fetch Error] Details:', JSON.stringify(error));
     return [];
   }
   

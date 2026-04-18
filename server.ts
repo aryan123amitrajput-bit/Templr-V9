@@ -478,6 +478,7 @@ function mapSupabaseToTemplate(t: any) {
       const email = req.query.email as string;
 
       // 1. Get templates from Supabase (Primary source for full metadata)
+      console.log(`[API] Fetching templates from Supabase...`);                
       let data: any[] = [];
       try {
         const supabaseTemplates = await getSupabaseTemplates();
@@ -488,6 +489,7 @@ function mapSupabaseToTemplate(t: any) {
       }
 
       // 2. Get templates from repositories (GitHub/GitLab)
+      console.log(`[API] Fetching templates from RepoManager...`);
       try {
         const repoTemplates = await repoManager.getMergedRegistry();
         console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
@@ -497,6 +499,7 @@ function mapSupabaseToTemplate(t: any) {
       }
 
       // 3. Get templates from freeHostService
+      console.log(`[API] Fetching templates from FreeHostService...`);
       try {
         const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
         console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
