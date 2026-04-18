@@ -34,7 +34,7 @@ class CacheWire {
   public lastUpdated = 0;
   
   constructor() {
-    this.refresh();
+    setTimeout(() => this.refresh(), 2000);
     setInterval(() => this.refresh(), 30000); // Re-wire every 30 seconds
   }
   
@@ -42,22 +42,27 @@ class CacheWire {
     try {
       if (!supabase) return;
       const [gitRegistry, { data: supabaseData }, { data: deletedTemplates }] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        supabase.from('templates').select('*').order('created_at', { ascending: false }),
-        supabase.from('deleted_templates').select('id')
+        repoManager.getMergedRegistry().catch(() => []),
+        supabase.from('templates').select('*').order('created_at', { ascending: false }).catch(() => ({ data: [] })),
+        supabase.from('deleted_templates').select('id').catch(() => ({ data: [] }))
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const templatesMap = new Map();
-      gitRegistry.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
-      });
+      
+      if (Array.isArray(gitRegistry)) {
+        gitRegistry.forEach((t: any) => {
+          if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+        });
+      }
+      
       mappedSupabase.forEach((t: any) => {
         if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      freshRegistry = freshRegistry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+      // Disabled aggressive thumbnail filtering to prevent templates disappearing
+      freshRegistry = freshRegistry.filter((t: any) => t);
       
       const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
       freshRegistry = freshRegistry.filter((t: any) => !deletedIds.has(t.id));
@@ -66,7 +71,7 @@ class CacheWire {
       
       this.registry = freshRegistry;
       this.lastUpdated = Date.now();
-      console.log(`[CacheWire] 🔌 Synchronized ${this.registry.length} templates into memory.`);
+      console.log(`[CacheWire] 🔌 Synchronized ${this.registry.length} templates implicitly into memory.`);
     } catch (error) {
       console.error('[CacheWire] Sync failed:', error);
     }

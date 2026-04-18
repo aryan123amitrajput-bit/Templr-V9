@@ -27,33 +27,43 @@ class CacheWire {
   public lastUpdated = 0;
   
   constructor() {
-    this.refresh();
+    // Wait slightly to ensure env/supabase loads before triggering first sync.
+    setTimeout(() => this.refresh(), 2000);
     setInterval(() => this.refresh(), 30000); 
   }
   
   async refresh() {
     try {
       const [gitRegistry, supabaseData] = await Promise.all([
-        repoManager.getMergedRegistry(),
-        getSupabaseTemplates().catch(() => [])
+        repoManager.getMergedRegistry().catch(() => []),
+        getSupabaseTemplates().catch((e) => {
+          console.error('[Server CacheWire] Supabase fetch error:', e);
+          return [];
+        })
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const templatesMap = new Map();
-      gitRegistry.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
-      });
+      
+      if (Array.isArray(gitRegistry)) {
+        gitRegistry.forEach((t: any) => {
+          if (!templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
+        });
+      }
+      
       mappedSupabase.forEach((t: any) => {
         if (!templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      freshRegistry = freshRegistry.filter((t: any) => (t.preview_url && t.preview_url.trim() !== '') || (t.thumbnail && t.thumbnail.trim() !== ''));
+      // Re-include templates without thumbnail for safety
+      freshRegistry = freshRegistry.filter((t: any) => t);
+      
       freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       
       this.registry = freshRegistry;
       this.lastUpdated = Date.now();
-      console.log(`[Server CacheWire] 🔌 Synchronized ${this.registry.length} templates into memory.`);
+      console.log(`[Server CacheWire] 🔌 Synchronized ${this.registry.length} templates implicitly into memory.`);
     } catch (error) {
       console.error('[Server CacheWire] Sync failed:', error);
     }
@@ -578,32 +588,9 @@ function mapSupabaseToTemplate(t: any) {
           }
       }
 
-      // 3. Get templates from freeHostService
-      console.log(`[API] Fetching templates from FreeHostService...`);
-      try {
-        const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
-        console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
-        const mappedFreeTemplates = freeTemplates.map((t: any) => ({
-          id: t.id,
-          title: t.name,
-          thumbnail: t.image_preview,
-          author: t.creator,
-          author_id: t.creator_id || t.author_id,
-          tags: t.tags || [],
-          category: t.category,
-          created_at: t.created_at,
-          likes: t.stats?.likes || 0,
-          views: t.stats?.views || 0,
-          status: 'approved'
-        }));
-        data.push(...mappedFreeTemplates);
-      } catch (e) {
-        console.error('[API] FreeHost fetch error:', e);
-      }
-
-      console.log(`[API] Total templates after merging: ${data.length}`);
+      console.log(`[API] Total templates after caching and Git/Supabase merge: ${data.length}`);
       
-      // Remove duplicates by ID
+      // Remove duplicates by ID from Git/Supabase cache
       const uniqueTemplates: any[] = [];
       const seenIds = new Set();
       for (const t of data) {
@@ -614,8 +601,6 @@ function mapSupabaseToTemplate(t: any) {
       }
       data = uniqueTemplates;
       
-      console.log(`[API] All template IDs: ${JSON.stringify(data.map(t => t.id))}`);
-
       // Filter by status 'approved' (or allow if status is missing)
       data = data.filter((t: any) => !t.status || t.status === 'approved');
 
@@ -646,12 +631,66 @@ function mapSupabaseToTemplate(t: any) {
         data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       }
 
-      const hasMore = data.length > (page + 1) * limitNum;
-      const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
+      // Pagination with freeHostService
+      const start = page * limitNum;
+      const gitSupabaseCount = data.length;
+      
+      let paginatedData = [];
+      if (start < gitSupabaseCount) {
+        paginatedData = data.slice(start, start + limitNum);
+        if (paginatedData.length < limitNum) {
+          const needed = limitNum - paginatedData.length;
+          try {
+            const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
+            const mappedFreeTemplates = extra.map((t: any) => ({
+              id: t.id,
+              title: t.name,
+              thumbnail: t.image_preview,
+              author: t.creator,
+              author_id: t.creator_id || t.author_id,
+              tags: t.tags || [],
+              category: t.category,
+              created_at: t.created_at,
+              likes: t.stats?.likes || 0,
+              views: t.stats?.views || 0,
+              status: 'approved'
+            }));
+            paginatedData.push(...mappedFreeTemplates);
+          } catch (e) {
+             console.error('[API] FreeHost fetch extra error:', e);
+          }
+        }
+      } else {
+        const freeHostOffset = start - gitSupabaseCount;
+        const freeHostPage = Math.floor(freeHostOffset / limitNum);
+        const freeHostLimit = limitNum;
+        try {
+          const extra = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
+          const mappedFreeTemplates = extra.map((t: any) => ({
+            id: t.id,
+            title: t.name,
+            thumbnail: t.image_preview,
+            author: t.creator,
+            author_id: t.creator_id || t.author_id,
+            tags: t.tags || [],
+            category: t.category,
+            created_at: t.created_at,
+            likes: t.stats?.likes || 0,
+            views: t.stats?.views || 0,
+            status: 'approved'
+          }));
+          paginatedData = mappedFreeTemplates;
+        } catch (e) {
+          console.error('[API] FreeHost fetch error:', e);
+        }
+      }
+
+      const freeHostRegistry = await freeHostService.getRegistry();
+      const totalCount = gitSupabaseCount + (freeHostRegistry.totalTemplates || 0);
 
       res.json({ 
         data: paginatedData, 
-        hasMore 
+        hasMore: start + limitNum < totalCount
       });
     } catch (error: any) {
       console.error('API Error:', error);
