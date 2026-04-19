@@ -287,153 +287,38 @@ async function saveTemplateToGitHub(template: any) {
 }
 
 
-function mapSupabaseToTemplate(t: any) {
-  return {
-    id: t.id,
-    title: t.title,
-    description: t.description || '',
-    author: t.author_name || t.author || 'Anonymous',
-    author_id: t.author_id,
-    author_uid: t.author_id, // For compatibility
-    authorAvatar: t.author_avatar || '',
-    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || '',
-    bannerUrl: t.banner_url || t.image_url || t.thumbnail || '',
-    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || '',
-    likes: t.likes || 0,
-    views: t.views || 0,
-    category: t.category || 'Uncategorized',
-    tags: t.tags || [],
-    price: t.price || 'Free',
-    sourceCode: t.source_code || '',
-    fileUrl: t.file_url || '',
-    fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
-    status: t.status || 'approved',
-    sales: t.sales || 0,
-    earnings: t.earnings || 0,
-    created_at: t.created_at,
-    galleryImages: t.gallery_images || [],
-    videoUrl: t.video_url || ''
-  };
-}
+const mapSupabaseToTemplate = (t: any): any => ({
+  id: t.id,
+  title: t.title || t.name,
+  description: t.description || '',
+  author: t.author || t.author_name || t.creator || 'Anonymous',
+  author_id: t.author_id || t.creator_id,
+  author_email: t.author_email || t.creator_email,
+  author_avatar: t.author_avatar || t.creator_avatar,
+  authorAvatar: t.author_avatar || t.creator_avatar || '',
+  imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || t.image_preview || '',
+  banner_url: t.banner_url,
+  bannerUrl: t.banner_url || t.image_url || '',
+  thumbnail: t.thumbnail || t.thumbnail_url || t.image_preview || '',
+  preview_url: t.preview_url,
+  file_url: t.file_url,
+  fileUrl: t.file_url || '',
+  likes: t.likes || t.stats?.likes || 0,
+  views: t.views || t.stats?.views || 0,
+  category: t.category || 'Uncategorized',
+  tags: t.tags || [],
+  price: t.price || 0,
+  status: t.status || 'approved',
+  created_at: t.created_at || t.updated_at,
+  _source: t._source || 'supabase',
+  galleryImages: t.gallery_images || [],
+  videoUrl: t.video_url || ''
+});
 
 const app = express();
+// Firebase Error Handler Helper
 
-
-// Get Public Templates
-  app.get('/api/templates', async (req, res) => {
-    console.log(`[API] Received request for /api/templates.`);
-    console.log(`[API] SUPABASE_URL set:`, !!process.env.SUPABASE_URL);
-    console.log(`[API] GITHUB_TOKEN set:`, !!process.env.GITHUB_TOKEN);
-    try {
-      const page = parseInt(req.query.page as string) || 0;
-      const limitNum = parseInt(req.query.limit as string) || 6;
-      const category = req.query.category as string;
-      const searchQuery = req.query.searchQuery as string;
-      const sortBy = req.query.sortBy as string || 'newest';
-      const userId = req.query.userId as string;
-      const email = req.query.email as string;
-
-      // 1. Get templates from Supabase (Primary source for full metadata)
-      console.log(`[API] Fetching templates from Supabase...`);                
-      let data: any[] = [];
-      try {
-        const supabaseTemplates = await getSupabaseTemplates();
-        console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
-        data = supabaseTemplates.map(mapSupabaseToTemplate);
-      } catch (e) {
-        console.error('[API] Supabase fetch error:', e);
-      }
-
-      // 2. Get templates from repositories (GitHub/GitLab)
-      console.log(`[API] Fetching templates from RepoManager...`);
-      try {
-        const repoTemplates = await repoManager.getMergedRegistry();
-        console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
-        data.push(...repoTemplates);
-      } catch (e) {
-        console.error('[API] Repo fetch error:', e);
-      }
-
-      // 3. Get templates from freeHostService
-      console.log(`[API] Fetching templates from FreeHostService...`);
-      try {
-        const freeTemplates = await freeHostService.getTemplates(page, limitNum, category, searchQuery);
-        console.log(`[API] FreeHostService returned ${freeTemplates.length} templates.`);
-        const mappedFreeTemplates = freeTemplates.map((t: any) => ({
-          id: t.id,
-          title: t.name,
-          thumbnail: t.image_preview,
-          author: t.creator,
-          author_id: t.creator_id || t.author_id,
-          tags: t.tags || [],
-          category: t.category,
-          created_at: t.created_at,
-          likes: t.stats?.likes || 0,
-          views: t.stats?.views || 0,
-          status: 'approved'
-        }));
-        data.push(...mappedFreeTemplates);
-      } catch (e) {
-        console.error('[API] FreeHost fetch error:', e);
-      }
-
-      console.log(`[API] Total templates after merging: ${data.length}`);
-      
-      // Remove duplicates by ID
-      const uniqueTemplates: any[] = [];
-      const seenIds = new Set();
-      for (const t of data) {
-        if (t && t.id && !seenIds.has(t.id)) {
-          uniqueTemplates.push(t);
-          seenIds.add(t.id);
-        }
-      }
-      data = uniqueTemplates;
-      
-      console.log(`[API] Resulting unique templates count: ${data.length}`);
-      
-      // Filter by status 'approved' (or allow if status is missing)
-      data = data.filter((t: any) => !t.status || t.status === 'approved');
-
-      // Filter by userId or email if provided
-      if (userId || email) {
-        data = data.filter((t: any) => {
-          const matchId = userId && (t.author_id === userId || (t.author && t.author.id === userId));
-          const matchEmail = email && (t.author_email === email || (t.author && t.author.email === email));
-          return matchId || matchEmail;
-        });
-      }
-
-      if (category && category !== 'All') {
-        data = data.filter((t: any) => t.category === category);
-      }
-
-      if (searchQuery) {
-        const lowerQuery = searchQuery.toLowerCase();
-        data = data.filter((t: any) => 
-          t.title?.toLowerCase().includes(lowerQuery) || 
-          t.description?.toLowerCase().includes(lowerQuery)
-        );
-      }
-
-      if (sortBy === 'popular' || sortBy === 'likes') {
-        data = data.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-      } else {
-        data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-      }
-
-      const hasMore = data.length > (page + 1) * limitNum;
-      const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
-
-      res.json({ 
-        data: paginatedData, 
-        hasMore 
-      });
-    } catch (error: any) {
-      console.error('API Error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
+// Remove Public Templates old route (it is defined below using CacheWire)
 
   // Debug endpoint
   app.get('/api/debug/registry', async (req, res) => {
@@ -1231,62 +1116,49 @@ app.get('/api/templates', async (req, res) => {
   
   try {
     const page = parseInt(req.query.page as string) || 0;
-    const limit = parseInt(req.query.limit as string) || 6;
+    const limitNum = parseInt(req.query.limit as string) || 6;
     const category = req.query.category as string;
     const searchQuery = req.query.searchQuery as string;
     const sortBy = req.query.sortBy as string || 'newest';
+    const userId = req.query.userId as string;
+    const email = req.query.email as string;
 
     // FORCE SYNC WAIT for Vercel Cold Starts
     if (backgroundWire.registry.length === 0) {
-      console.log("[API] Cache is cold, waiting for synchronization wire...");
+      console.log("[API] Wire Cache is cold, waiting for synchronization...");
       await backgroundWire.ensureSynchronized(8000); 
     }
 
-    // Intercept with Live Cache Wire immediately if available
+    // Intercept with Live Cache Wire immediately
     let registry = [...backgroundWire.registry];
 
     // Fallback if cache is STILL empty/cold after wait
     if (registry.length === 0) {
       console.log("[API] Cache still cold after wait, performing direct fetch...");
-      const gitRegistry = await repoManager.getMergedRegistry().catch((e) => {
-        console.error('[API] Repo fetch error:', e);
-        return [];
-      });
-      const supabaseData = supabase 
-        ? await supabase.from('templates').select('*').order('created_at', { ascending: false }).then(res => res.data).catch((e) => {
-            console.error('[API] Supabase fetch error:', e);
-            return [];
-          })
-        : [];
+      const [gitRegistry, supabaseData, freeTemplates, tgTemplates] = await Promise.all([
+        repoManager.getMergedRegistry().catch(() => []),
+        supabase ? supabase.from('templates').select('*').then(res => res.data).catch(() => []) : Promise.resolve([]),
+        freeHostService.getTemplates(0, 500).catch(() => []),
+        telegramService.getTemplates().catch(() => [])
+      ]);
 
-      const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const templatesMap = new Map();
-      
-      if (Array.isArray(gitRegistry)) {
-        gitRegistry.forEach((t: any) => {
-          if (!templatesMap.has(t.id)) {
-            templatesMap.set(t.id, { ...t, _source: 'git' });
-          }
-        });
-      }
-      
-      mappedSupabase.forEach((t: any) => {
-        if (!templatesMap.has(t.id)) {
-          templatesMap.set(t.id, t);
-        }
+      [...(gitRegistry || []), ...(supabaseData || []), ...(freeTemplates || []), ...(tgTemplates || [])].forEach((t: any) => {
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
-
       registry = Array.from(templatesMap.values());
-      
-      const deletedTemplates = supabase 
-        ? await supabase.from('deleted_templates').select('id').then(res => res.data).catch(() => []) 
-        : [];
-        
-      const deletedIds = new Set((deletedTemplates || []).map((t: any) => t.id));
-      registry = registry.filter((t: any) => !deletedIds.has(t.id));
     }
     
     clearTimeout(timeoutId);
+
+    // Comprehensive Filtering
+    if (userId || email) {
+      registry = registry.filter((t: any) => {
+        const matchId = userId && (t.author_id === userId || (t.id && t.id.includes(userId)));
+        const matchEmail = email && (t.author_email === email || t.creator_email === email);
+        return matchId || matchEmail;
+      });
+    }
 
     if (category && category !== 'All') {
       registry = registry.filter((t: any) => t.category === category);
@@ -1294,41 +1166,28 @@ app.get('/api/templates', async (req, res) => {
     
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      registry = registry.filter((t: any) => t.title?.toLowerCase().includes(q));
+      registry = registry.filter((t: any) => 
+        (t.title && t.title.toLowerCase().includes(q)) || 
+        (t.name && t.name.toLowerCase().includes(q)) ||
+        (t.description && t.description.toLowerCase().includes(q))
+      );
     }
     
-    if (sortBy === 'popular') {
-      registry.sort((a: any, b: any) => (b.views || 0) - (a.views || 0));
-    } else if (sortBy === 'likes') {
+    // Sort
+    if (sortBy === 'popular' || sortBy === 'likes') {
       registry.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
-    } else if (backgroundWire.registry.length === 0) { // Only resort if pulled cold
+    } else {
       registry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     }
 
-    const start = page * limit;
-    const gitSupabaseCount = registry.length;
+    const hasMore = registry.length > (page + 1) * limitNum;
+    const paginatedData = registry.slice(page * limitNum, (page + 1) * limitNum);
     
-    let paginatedData = [];
-    if (start < gitSupabaseCount) {
-      paginatedData = registry.slice(start, start + limit);
-      if (paginatedData.length < limit) {
-        const needed = limit - paginatedData.length;
-        const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-        paginatedData.push(...extra);
-      }
-    } else {
-      const freeHostOffset = start - gitSupabaseCount;
-      const freeHostPage = Math.floor(freeHostOffset / limit);
-      const freeHostLimit = limit;
-      paginatedData = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
-    }
-
-    const registryStatus = await freeHostService.getRegistry();
-    const totalCount = gitSupabaseCount + registryStatus.totalTemplates;
-
-    res.json({ 
-      data: paginatedData, 
-      hasMore: start + limit < totalCount 
+    res.json({
+      data: paginatedData,
+      hasMore,
+      wire_status: 'stable',
+      sync_origin: 'CacheWire'
     });
   } catch (error: any) {
     console.error('API Error:', error);
