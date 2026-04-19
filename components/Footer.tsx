@@ -6,9 +6,10 @@ import { ScrollReveal } from './ScrollReveal';
 
 interface FooterProps {
   onShowNotification: (message: string) => void;
+  onOpenApiStatus: () => void;
 }
 
-const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
+const Footer: React.FC<FooterProps> = ({ onShowNotification, onOpenApiStatus }) => {
   const handleLink = (e: React.MouseEvent, url: string) => {
     e.preventDefault();
     playClickSound();
@@ -30,7 +31,13 @@ const Footer: React.FC<FooterProps> = ({ onShowNotification }) => {
                 </div>
 
                 {/* Socials */}
-                <div className="flex gap-6">
+                <div className="flex items-center gap-6">
+                    <button 
+                      onClick={() => { playClickSound(); onOpenApiStatus(); }}
+                      className="text-slate-500 hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest"
+                    >
+                      API Status
+                    </button>
                     <a href="https://x.com/GTqhqh48540" onClick={(e) => handleLink(e, 'https://x.com/GTqhqh48540')} className="text-slate-500 hover:text-white transition-colors"><TwitterIcon className="w-4 h-4" /></a>
                 </div>
             </div>

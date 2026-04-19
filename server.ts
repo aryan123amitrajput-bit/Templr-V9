@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './api/services/repoService';
 import { freeHostService } from './api/services/freeHostService';
+import { traffService } from './api/services/traffService';
 import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './api/services/supabaseService';
 import admin from 'firebase-admin';
 import fs from 'fs';
@@ -24,6 +25,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // --- BACKGROUND CACHE WIRE ---
 class CacheWire {
   public registry: any[] = [];
+  public creators: any[] = [];
+  public hosts: any[] = [];
+  public stats: any = {};
   public lastUpdated = 0;
   private syncPromise: Promise<void> | null = null;
   
@@ -43,19 +47,22 @@ class CacheWire {
   }
   
   async refresh() {
-    console.log("[Server CacheWire] 🔌 Synchronizing Wire...");
+    console.log("[Server CacheWire] 🔌 Synchronizing All Services Wires...");
     try {
-      const [gitRegistry, supabaseData, freeHostData] = await Promise.all([
+      const [gitRegistry, supabaseData, freeHostData, tgTemplates] = await Promise.all([
         repoManager.getMergedRegistry().catch(() => []),
         getSupabaseTemplates().catch((e) => {
           console.error('[Server CacheWire] Supabase fetch error:', e);
           return [];
         }),
-        freeHostService.getTemplates(0, 100).catch(() => [])
+        freeHostService.getTemplates(0, 500).catch(() => []),
+        telegramService.getTemplates().catch(() => [])
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
+      const mappedTelegram = (tgTemplates || []).map((t: any) => ({ ...t, _source: 'telegram' }));
+      
       const templatesMap = new Map();
       
       if (Array.isArray(gitRegistry)) {
@@ -67,20 +74,57 @@ class CacheWire {
       mappedFreeHost.forEach((t: any) => {
         if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
+
+      mappedTelegram.forEach((t: any) => {
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
       
       mappedSupabase.forEach((t: any) => {
         if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      // Disabled aggressive thumbnail filtering
       freshRegistry = freshRegistry.filter((t: any) => t);
       
       freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       
       this.registry = freshRegistry;
+
+      // Calculate Creators Wire
+      const creatorsMap = new Map();
+      this.registry.forEach((t: any) => {
+        const email = t.author_email || t.creator_email;
+        if (!email) return;
+        if (!creatorsMap.has(email)) {
+          creatorsMap.set(email, {
+            email,
+            name: t.author_name || t.creator || 'Anonymous',
+            avatar: t.author_avatar || t.creator_avatar || '',
+            templateCount: 0,
+            likes: 0,
+            views: 0
+          });
+        }
+        const creator = creatorsMap.get(email);
+        creator.templateCount++;
+        creator.likes += (t.likes || t.stats?.likes || 0);
+        creator.views += (t.views || t.stats?.views || 0);
+      });
+      this.creators = Array.from(creatorsMap.values()).sort((a, b) => (b.likes + b.views) - (a.likes + a.views)).slice(0, 20);
+
+      // Hosts Wire
+      this.hosts = await traffService.auditHosts().catch(() => []);
+
+      // Stats Wire
+      this.stats = {
+        totalTemplates: this.registry.length,
+        activeCreators: creatorsMap.size,
+        healthyHosts: this.hosts.filter(h => h.isReachable).length,
+        lastSync: new Date().toISOString()
+      };
+
       this.lastUpdated = Date.now();
-      console.log(`[Server CacheWire] ⚡ synchronized ${this.registry.length} templates implicitly into memory.`);
+      console.log(`[Server CacheWire] ⚡ Full Sync Complete: ${this.registry.length} templates, ${this.creators.length} creators.`);
     } catch (error) {
       console.error('[Server CacheWire] Sync failure:', error);
     }
@@ -1100,7 +1144,7 @@ function mapSupabaseToTemplate(t: any) {
   app.delete('/api/admin/templates/supabase', async (req, res) => {
     try {
       // In a real app, verify admin auth here
-      const { deleteAllTemplates } = await import('./server/services/supabaseService.js');
+      const { deleteAllTemplates } = await import('./api/services/supabaseService');
       await deleteAllTemplates();
       res.json({ success: true, message: 'All Supabase templates deleted' });
     } catch (error: any) {
@@ -1183,6 +1227,20 @@ function mapSupabaseToTemplate(t: any) {
           console.error('API Error (Update User):', error);
           res.status(500).json({ error: error.message });
       }
+  });
+
+  // Combined "Wire" Endpoint for everything at once
+  app.get('/api/wire', async (req, res) => {
+    if (backgroundWire.registry.length === 0) {
+        await backgroundWire.ensureSynchronized(8000);
+    }
+    res.json({
+        templates: backgroundWire.registry,
+        creators: backgroundWire.creators,
+        hosts: backgroundWire.hosts,
+        stats: backgroundWire.stats,
+        lastUpdated: backgroundWire.lastUpdated
+    });
   });
 
   // --- Vite Middleware ---

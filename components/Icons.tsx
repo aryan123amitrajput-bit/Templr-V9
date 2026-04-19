@@ -285,3 +285,23 @@ export const BookmarkIcon: React.FC<IconProps> = (props) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
   </svg>
 );
+
+export const ActivityIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12h3m3 0 1.5-4.5 3 9 1.5-4.5h3m-15 0a6.75 6.75 0 0 1 13.5 0v3a6.75 6.75 0 0 1-13.5 0v-3Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5h16.5M3.75 16.5h16.5M3.75 19.5h16.5" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2.25v3m0 13.5v3M4.5 12H3m18 0h-1.5" />
+  </svg>
+);
+
+export const ServerIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3v8.25a3 3 0 0 1-3 3m-13.5 0c1.242 0 2.25 1.008 2.25 2.25s-1.008 2.25-2.25 2.25m13.5-4.5c1.242 0 2.25 1.008 2.25 2.25s-1.008 2.25-2.25 2.25m-13.5 0h13.5m-13.5 0a3 3 0 0 1-3 3V21a3 3 0 0 1 3 3h13.5a3 3 0 0 1 3-3v-4.5a3 3 0 0 1-3-3" />
+  </svg>
+);
+
+export const DatabaseIcon: React.FC<IconProps> = (props) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+  </svg>
+);

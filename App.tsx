@@ -15,6 +15,7 @@ import SetupGuideModal from './components/SetupGuideModal';
 import ProfileSettingsModal from './components/ProfileSettingsModal';
 import SubscriptionModal from './components/SubscriptionModal';
 import DocumentationModal from './components/DocumentationModal';
+import ApiStatusModal from './components/ApiStatusModal';
 import Notification, { NotificationType } from './components/Notification';
 import ContactFloat from './components/ContactFloat';
 import * as api from './api';
@@ -83,6 +84,7 @@ const App: React.FC = () => {
   const [isProfileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [isSubscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [isDocumentationOpen, setDocumentationOpen] = useState(false);
+  const [isApiStatusOpen, setApiStatusOpen] = useState(false);
   
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null);
@@ -413,6 +415,8 @@ const App: React.FC = () => {
   const handleCloseCreator = useCallback(() => { playCloseModalSound(); setViewingCreator(null); }, []);
   const handleOpenDocumentation = useCallback(() => { playOpenModalSound(); setDocumentationOpen(true); }, []);
   const handleCloseDocumentation = useCallback(() => { playCloseModalSound(); setDocumentationOpen(false); }, []);
+  const handleOpenApiStatus = useCallback(() => { playOpenModalSound(); setApiStatusOpen(true); }, []);
+  const handleCloseApiStatus = useCallback(() => { playCloseModalSound(); setApiStatusOpen(false); }, []);
 
   const handleCloseSubscription = useCallback(() => setSubscriptionModalOpen(false), []);
   const handleCloseNotification = useCallback(() => setNotification(null), []);
@@ -654,7 +658,10 @@ const App: React.FC = () => {
           viewport={{ once: true }}
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
-          <Footer onShowNotification={(msg) => showNotification(msg, 'info')} />
+          <Footer 
+            onShowNotification={(msg) => showNotification(msg, 'info')} 
+            onOpenApiStatus={handleOpenApiStatus}
+          />
         </motion.div>
       </LazySection>
       
@@ -716,6 +723,7 @@ const App: React.FC = () => {
       />
       <SetupGuideModal isOpen={isSetupOpen} onClose={handleCloseSetup} />
       <DocumentationModal isOpen={isDocumentationOpen} onClose={handleCloseDocumentation} />
+      <ApiStatusModal isOpen={isApiStatusOpen} onClose={handleCloseApiStatus} />
       
       {/* 
           SUBSCRIPTION MODAL 

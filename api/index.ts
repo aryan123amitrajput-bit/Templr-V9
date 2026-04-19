@@ -31,6 +31,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Constantly caches standard template requests to return INSTANTLY on trigger
 class CacheWire {
   public registry: any[] = [];
+  public creators: any[] = [];
+  public hosts: any[] = [];
+  public stats: any = {};
   public lastUpdated = 0;
   private syncPromise: Promise<void> | null = null;
   
@@ -50,14 +53,14 @@ class CacheWire {
   }
   
   async refresh() {
-    console.log("[CacheWire] 🔌 Synchronizing Wire...");
+    console.log("[CacheWire] 🔌 Synchronizing All Services Wires...");
     try {
       // Small delay on Vercel to ensure env populates
       if (process.env.VERCEL) {
         await new Promise(r => setTimeout(r, 500));
       }
       
-      const [gitRegistry, supabaseData, deletedTemplatesData, freeHostData] = await Promise.all([
+      const [gitRegistry, supabaseData, deletedTemplatesData, freeHostData, tgTemplates] = await Promise.all([
         repoManager.getMergedRegistry().catch((e) => {
           console.error('[CacheWire] Repo error:', e);
           return [];
@@ -68,11 +71,14 @@ class CacheWire {
         supabase
           ? supabase.from('deleted_templates').select('id').then(res => res.data || []).catch(() => [])
           : Promise.resolve([]),
-        freeHostService.getTemplates(0, 100).catch(() => [])
+        freeHostService.getTemplates(0, 500).catch(() => []),
+        telegramService.getTemplates().catch(() => [])
       ]);
 
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
+      const mappedTelegram = (tgTemplates || []).map((t: any) => ({ ...t, _source: 'telegram' }));
+      
       const templatesMap = new Map();
       
       if (Array.isArray(gitRegistry)) {
@@ -84,21 +90,57 @@ class CacheWire {
       mappedFreeHost.forEach((t: any) => {
         if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
+
+      mappedTelegram.forEach((t: any) => {
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+      });
       
       mappedSupabase.forEach((t: any) => {
         if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
       });
 
       let freshRegistry = Array.from(templatesMap.values());
-      
       const deletedIds = new Set((deletedTemplatesData || []).map((t: any) => t.id));
       freshRegistry = freshRegistry.filter((t: any) => !deletedIds.has(t.id));
       
       freshRegistry.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       
       this.registry = freshRegistry;
+
+      // Calculate Creators Wire
+      const creatorsMap = new Map();
+      this.registry.forEach((t: any) => {
+        if (!t.author_email) return;
+        if (!creatorsMap.has(t.author_email)) {
+          creatorsMap.set(t.author_email, {
+            email: t.author_email,
+            name: t.author_name || 'Anonymous',
+            avatar: t.author_avatar || '',
+            templateCount: 0,
+            likes: 0,
+            views: 0
+          });
+        }
+        const creator = creatorsMap.get(t.author_email);
+        creator.templateCount++;
+        creator.likes += (t.likes || 0);
+        creator.views += (t.views || 0);
+      });
+      this.creators = Array.from(creatorsMap.values()).sort((a, b) => (b.likes + b.views) - (a.likes + a.views)).slice(0, 20);
+
+      // Hosts Wire
+      this.hosts = await traffService.auditHosts().catch(() => []);
+
+      // Stats Wire
+      this.stats = {
+        totalTemplates: this.registry.length,
+        activeCreators: creatorsMap.size,
+        healthyHosts: this.hosts.filter(h => h.isReachable).length,
+        lastSync: new Date().toISOString()
+      };
+
       this.lastUpdated = Date.now();
-      console.log(`[CacheWire] ⚡ synchronized ${this.registry.length} templates implicitly into memory.`);
+      console.log(`[CacheWire] ⚡ Full Sync Complete: ${this.registry.length} templates, ${this.creators.length} creators, ${this.hosts.length} hosts.`);
     } catch (error) {
       console.error('[CacheWire] Sync total failure:', error);
     }
@@ -1084,7 +1126,7 @@ app.post('/api/upload/beeimg', (req, res, next) => {
       return res.status(400).json({ error: "file is required" });
     }
 
-    const { uploadToBeeIMG } = await import('../server/services/beeimgService');
+    const { uploadToBeeIMG } = await import('./services/beeimgService');
     const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
     const directUrl = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
     
@@ -1534,6 +1576,65 @@ app.post('/api/user/update', async (req, res) => {
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
+});
+
+// Telegram File Proxy Wire
+app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
+    try {
+      const { botIndex, fileId } = req.params;
+      const tgUri = `tg://${botIndex}/${fileId}`;
+      
+      const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+      
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error(`Telegram responds with ${response.status}`);
+      
+      const contentType = response.headers.get('content-type');
+      const contentLength = response.headers.get('content-length');
+      
+      if (contentType) res.setHeader('Content-Type', contentType);
+      if (contentLength) res.setHeader('Content-Length', contentLength);
+      
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      
+      if (response.body) {
+        const readable = (response.body as any);
+        if (readable.pipe) {
+            readable.pipe(res);
+        } else {
+            const reader = readable.getReader();
+            const pump = async () => {
+                const { done, value } = await reader.read();
+                if (done) {
+                    res.end();
+                    return;
+                }
+                res.write(value);
+                await pump();
+            };
+            await pump();
+        }
+      } else {
+        res.status(404).end();
+      }
+    } catch (error: any) {
+      console.error('[API] Telegram proxy error:', error);
+      res.status(500).json({ error: error.message });
+    }
+});
+
+// Combined "Wire" Endpoint for everything at once
+app.get('/api/wire', async (req, res) => {
+    if (backgroundWire.registry.length === 0) {
+        await backgroundWire.ensureSynchronized(8000);
+    }
+    res.json({
+        templates: backgroundWire.registry,
+        creators: backgroundWire.creators,
+        hosts: backgroundWire.hosts,
+        stats: backgroundWire.stats,
+        lastUpdated: backgroundWire.lastUpdated
+    });
 });
 
 // For local development

@@ -707,6 +707,12 @@ export const uploadFileFromUrl = async (url: string): Promise<{ url: string; hos
     }
 };
 
+export const getWireData = async () => {
+    const res = await fetch('/api/wire');
+    if (!res.ok) throw new Error("Failed to fetch wire data");
+    return await res.json();
+};
+
 export const uploadFile = async (file: File, path: string): Promise<{ url: string; host: string }> => {
     if (!file) throw new Error("No file provided for upload.");
     
