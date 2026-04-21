@@ -49,14 +49,31 @@ class TemplateWireCache {
                 }
                 
                 // CLIENT-SIDE FALLBACK SECURE-SYNC (For Cloudflare Pages / Static Deployments)
-                // If the local API failed or returned empty (common on static hosts), try to sync directly from Supabase
+                // If the local API failed or returned empty (common on static hosts), try to sync directly from GitHub CDN, then Supabase
+                console.log("[TemplateWire] 🌐 Static Host Detected (or API down). Activating Client-Side Direct Wire...");
+                
+                try {
+                    // Try GitHub CDN directly first
+                    const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
+                    if (ghRes.ok) {
+                        const ghData = await ghRes.json();
+                        if (ghData && Array.isArray(ghData) && ghData.length > 0) {
+                            this.cache = ghData;
+                            this.isWired = true;
+                            console.log(`[TemplateWire] 🌍 Client-Side GitHub Wire linked to ${this.cache.length} templates.`);
+                            return;
+                        }
+                    }
+                } catch (ghError) {
+                    console.warn("[TemplateWire] 🌍 Client-Side GitHub Wire failed, falling back to Supabase.");
+                }
+
                 if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
-                   console.log("[TemplateWire] 🌐 Static Host Detected (or API down). Activating Client-Side Direct Wire...");
                    const { data, error } = await supabase.from('templates').select('*').order('created_at', { ascending: false }).limit(24);
                    if (!error && data) {
                        this.cache = data;
                        this.isWired = true;
-                       console.log(`[TemplateWire] 🌍 Client-Side Direct Wire linked to ${this.cache.length} templates.`);
+                       console.log(`[TemplateWire] 🌍 Client-Side Supabase Wire linked to ${this.cache.length} templates.`);
                    }
                 }
             } catch (error) {
@@ -337,34 +354,70 @@ export const getPublicTemplates = async (
         if (!response.ok) {
             console.warn(`[API] HTTP error ${response.status} for ${url}`);
             // FALLBACK FOR STATIC DEPLOYMENTS (Cloudflare/Vercel)
-            // If the /api endpoint is not found, fallback to direct Supabase calls
-            if (response.status === 404 && import.meta.env.VITE_SUPABASE_URL) {
-                console.warn("[Templates] API not found (404). Falling back to direct Supabase fetch...");
-                let query = supabase.from('templates').select('*', { count: 'exact' });
+            // If the /api endpoint is not found, fallback to direct GitHub CDN, then Supabase
+            if (response.status === 404) {
+                console.warn("[Templates] API not found (404). Falling back to CDN/Supabase...");
                 
-                if (category && category !== 'All') {
-                    query = query.eq('category', category);
+                try {
+                    const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
+                    if (ghRes.ok) {
+                        const ghData = (await ghRes.json()) || [];
+                        let filtered = [...ghData];
+                        
+                        if (category && category !== 'All') {
+                            filtered = filtered.filter(t => t.category === category);
+                        }
+                        if (searchQuery) {
+                            const sq = searchQuery.toLowerCase();
+                            filtered = filtered.filter(t => (t.title && t.title.toLowerCase().includes(sq)) || (t.description && t.description.toLowerCase().includes(sq)));
+                        }
+                        
+                        if (sortBy === 'popular' || sortBy === 'likes') {
+                            filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+                        } else {
+                            filtered.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+                        }
+                        
+                        const start = page * limitNum;
+                        const end = start + limitNum;
+                        const paginatedData = filtered.slice(start, end);
+                        
+                        return {
+                            data: paginatedData.map(t => mapToTemplate(t)),
+                            hasMore: end < filtered.length
+                        };
+                    }
+                } catch (ghErr) {
+                    console.warn("[Templates] GitHub CDN fallback failed", ghErr);
                 }
-                if (searchQuery) {
-                    query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+
+                if (import.meta.env.VITE_SUPABASE_URL) {
+                    let query = supabase.from('templates').select('*', { count: 'exact' });
+                    
+                    if (category && category !== 'All') {
+                        query = query.eq('category', category);
+                    }
+                    if (searchQuery) {
+                        query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+                    }
+                    
+                    if (sortBy === 'popular' || sortBy === 'likes') {
+                        query = query.order('likes', { ascending: false });
+                    } else {
+                        query = query.order('created_at', { ascending: false });
+                    }
+                    
+                    const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
+                    if (error) {
+                        console.error("[Supabase Fallback] Error:", error);
+                        throw error;
+                    }
+                    
+                    return { 
+                        data: (data || []).map(t => mapToTemplate(t)), 
+                        hasMore: (count || 0) > (page + 1) * limitNum 
+                    };
                 }
-                
-                if (sortBy === 'popular' || sortBy === 'likes') {
-                    query = query.order('likes', { ascending: false });
-                } else {
-                    query = query.order('created_at', { ascending: false });
-                }
-                
-                const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
-                if (error) {
-                    console.error("[Supabase Fallback] Error:", error);
-                    throw error;
-                }
-                
-                return { 
-                    data: (data || []).map(t => mapToTemplate(t)), 
-                    hasMore: (count || 0) > (page + 1) * limitNum 
-                };
             }
             throw new Error(`Failed to fetch templates: ${response.status}`);
         }
@@ -385,7 +438,27 @@ export const getPublicTemplates = async (
 export const getTemplateById = async (id: string): Promise<Template | null> => {
     try {
         const response = await fetch(`/api/templates/${id}`);
-        if (!response.ok) return null;
+        if (!response.ok) {
+            // FALLBACK
+            if (response.status === 404) {
+                try {
+                    const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
+                    if (ghRes.ok) {
+                        const ghData = await ghRes.json();
+                        const template = ghData.find((t: any) => t.id === id);
+                        if (template) return mapToTemplate(template);
+                    }
+                } catch (e) {
+                    // Ignore and fallback to supabase
+                }
+
+                if (import.meta.env.VITE_SUPABASE_URL) {
+                    const { data, error } = await supabase.from('templates').select('*').eq('id', id).single();
+                    if (!error && data) return mapToTemplate(data);
+                }
+            }
+            return null;
+        }
         const result = await response.json();
         return mapToTemplate(result.template);
     } catch (e: any) {
@@ -397,7 +470,51 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
 export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
     try {
         const response = await fetch('/api/creators');
-        if (!response.ok) throw new Error("Failed to fetch featured creators");
+        if (!response.ok) {
+            // FALLBACK
+            if (response.status === 404) {
+                try {
+                    const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
+                    let templates = [];
+                    if (ghRes.ok) {
+                        templates = await ghRes.json();
+                    } else if (import.meta.env.VITE_SUPABASE_URL) {
+                        const { data } = await supabase.from('templates').select('*');
+                        templates = data || [];
+                    }
+
+                    if (templates.length > 0) {
+                        const creatorsMap = new Map();
+                        templates.forEach((t: any) => {
+                            const email = t.author_email || t.creator_email;
+                            const name = t.author_name || t.creator || t.author || 'Anonymous';
+                            if (!email) return;
+                            if (!creatorsMap.has(email)) {
+                                creatorsMap.set(email, {
+                                    name: name,
+                                    email: email,
+                                    avatarUrl: t.author_avatar || t.creator_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                                    views: 0,
+                                    likes: 0,
+                                    templateCount: 0,
+                                    role: 'Creator'
+                                });
+                            }
+                            const creator = creatorsMap.get(email);
+                            creator.views += (t.views || t.stats?.views || 0);
+                            creator.likes += (t.likes || t.stats?.likes || 0);
+                            creator.templateCount += 1;
+                        });
+                        return Array.from(creatorsMap.values())
+                            .sort((a, b) => (b.likes + b.views) - (a.likes + a.views))
+                            .slice(0, 10);
+                    }
+                } catch (e) {
+                    console.error("Fallback creator fetch failed", e);
+                }
+            }
+            throw new Error("Failed to fetch featured creators");
+        }
         const result = await response.json();
         return result.data;
     } catch (e: any) {

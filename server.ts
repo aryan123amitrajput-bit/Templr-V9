@@ -937,7 +937,23 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
           }
       }
 
-      // 5. Create metadata object (pointing to the bundle)
+      // 5. Host Name & Link data on Paste.rs as a dedicated record
+      let pasteRsHostUrl = '';
+      try {
+          const nameAndLinkData = {
+              name: template.title || template.name,
+              preview_link: cleanPreviewUrl,
+              download_link: bundleUrl || template.file_url,
+              image_link: finalImageUrl
+          };
+          console.log(`[Paste.rs Registry] Hosting strict Name & Links for: ${template.title || template.name}`);
+          pasteRsHostUrl = await uploadToPasteRs(JSON.stringify(nameAndLinkData, null, 2));
+          console.log(`[Paste.rs Registry] Success: ${pasteRsHostUrl}`);
+      } catch (e: any) {
+          console.error("Paste.rs Name/Link Host Failed:", e.message);
+      }
+
+      // 6. Create metadata object (pointing to the bundle)
       const metadata: TemplateMetadata = {
         id: templateId,
         title: template.title || template.name,
@@ -948,6 +964,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         banner_url: finalBannerUrl,
         gallery_images: finalGalleryImages,
         file_url: template.file_url || '',
+        paste_rs_link: pasteRsHostUrl, // Store the Paste.rs Name/Link host URL
         source_code: bundleUrl, // Store the bundle URL here
         tags: template.tags || [],
         author: template.author_name || 'Anonymous',
