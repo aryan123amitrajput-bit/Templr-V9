@@ -14,5 +14,6 @@ export const uploadToBeeIMG = async (buffer: Buffer, originalName: string, mimet
         throw new Error(`BeeIMG upload failed: ${JSON.stringify(response.data)}`);
     }
 
-    return `https://${response.data.files.url}`;
+    const url = response.data.files.url;
+    return url.startsWith('http') ? url : `https://${url}`;
 };

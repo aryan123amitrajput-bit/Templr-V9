@@ -184,7 +184,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, creatorName }) =
                 {/* Avatar Glow */}
                 <div className="absolute -inset-2 bg-cyan-500/30 blur-md rounded-full"></div>
                 <div className="relative w-12 h-12 rounded-full p-[2px] bg-gradient-to-br from-white/20 to-white/5 border border-white/10 shadow-[inset_0_2px_4px_rgba(255,255,255,0.2)]">
-                    <img src={avatarUrl} alt={creatorName} className="w-full h-full rounded-full object-cover" />
+                    <img src={avatarUrl} alt={creatorName} referrerPolicy="no-referrer" className="w-full h-full rounded-full object-cover" />
                 </div>
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-[#0f111a] shadow-[0_0_8px_#4ade80]"></div>
              </div>

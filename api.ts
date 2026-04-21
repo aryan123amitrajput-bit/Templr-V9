@@ -9,6 +9,10 @@ import {
 import { auth } from './firebase';
 import { uploadImage } from './src/services/imageUploadService';
 import { supabase } from './lib/supabaseClient';
+import { mapToTemplate, Template } from './lib/mapping';
+
+export type { Template };
+
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
@@ -36,11 +40,24 @@ class TemplateWireCache {
                 
                 if (initialRes && initialRes.ok) {
                     const data = await initialRes.json();
-                    if (data && data.data) {
+                    if (data && data.data && data.data.length > 0) {
                         this.cache = data.data;
                         this.isWired = true;
                         console.log(`[TemplateWire] ⚡ Successfully locked memory to ${this.cache.length} templates instantly.`);
+                        return;
                     }
+                }
+                
+                // CLIENT-SIDE FALLBACK SECURE-SYNC (For Cloudflare Pages / Static Deployments)
+                // If the local API failed or returned empty (common on static hosts), try to sync directly from Supabase
+                if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
+                   console.log("[TemplateWire] 🌐 Static Host Detected (or API down). Activating Client-Side Direct Wire...");
+                   const { data, error } = await supabase.from('templates').select('*').order('created_at', { ascending: false }).limit(24);
+                   if (!error && data) {
+                       this.cache = data;
+                       this.isWired = true;
+                       console.log(`[TemplateWire] 🌍 Client-Side Direct Wire linked to ${this.cache.length} templates.`);
+                   }
                 }
             } catch (error) {
                 console.error("[TemplateWire] ❌ Wire interference:", error);
@@ -56,8 +73,8 @@ class TemplateWireCache {
         // Only safely return cached wire if standard default request
         if (this.isWired && page === 0 && (!category || category === 'All') && !reqSearch && sortBy === 'newest') {
             return {
-                data: this.cache.slice(0, limit),
-                hasMore: this.cache.length > limit,
+                data: this.cache,
+                hasMore: false,
                 fromWire: true
             };
         }
@@ -247,38 +264,6 @@ export type Session = {
 
 export type AuthChangeEvent = 'SIGNED_IN' | 'SIGNED_OUT';
 
-export interface Template {
-  id: string;
-  title: string;
-  author: string;
-  authorAvatar?: string;
-  authorBanner?: string;
-  imageUrl: string;
-  bannerUrl: string; 
-  likes: number;
-  views: number;
-  isLiked: boolean;
-  category: string;
-  tags?: string[];
-  description: string;
-  price: string; 
-  template_url?: string;
-  sourceCode: string;
-  
-  fileUrl?: string;
-  fileName?: string; 
-  fileType?: string;
-  fileSize?: number;
-  status: 'approved' | 'pending_review' | 'rejected' | 'draft';
-  sales: number;
-  earnings: number;
-
-  galleryImages?: string[];
-  videoUrl?: string;
-  createdAt?: number;
-  uploadHost?: string;
-  author_uid?: string;
-}
 
 export interface CreatorStats {
     name: string;
@@ -321,92 +306,10 @@ export const fixUrl = (url?: string | string[]): string => {
 
 export const unfixUrl = (url?: string): string => url || '';
 
-const mapTemplate = (data: any): Template => {
-    try {
-        let inferredType = data.file_type || 'link';
-        const hasSource = data.source_code && data.source_code.trim().length > 0;
-        const hasLink = data.file_url && data.file_url.trim().length > 0 && data.file_url !== '#';
-        const hasZip = data.file_url && (data.file_url.endsWith('.zip') || data.file_url.endsWith('.rar'));
 
-        if (hasZip) inferredType = 'zip';
-        else if (hasSource && !hasLink) inferredType = 'code';
-        else if (!hasSource && hasLink) inferredType = 'link';
-        else if (hasSource && hasLink) inferredType = 'code';
-        else if (!hasSource && !hasLink) inferredType = 'image';
-
-        // Robustly check multiple possible column names for images (snake_case and camelCase)
-        const rawImage = data.preview_media || data.image_url || data.imageUrl || data.image || data.thumbnail || data.thumbnail_url || data.thumbnailUrl || data.preview_image || data.previewImage || data.preview_url || data.previewUrl || data.preview || data.cover_image || data.coverImage || data.cover || data.photo || data.picture || data.screenshot || data.screenshot_url || data.screenshotUrl || data.media || data.media_url || data.mediaUrl || (data.images && data.images[0]) || (data.gallery_images && data.gallery_images[0]) || (data.galleryImages && data.galleryImages[0]);
-        const rawBanner = data.banner_url || data.bannerUrl || data.banner || rawImage;
-        const rawAvatar = data.creator_avatar || data.author_avatar || data.authorAvatar || data.avatar_url || data.avatarUrl || data.avatar || data.profile_pic || data.profilePic || data.profile_image || data.profileImage;
-        const rawAuthorBanner = data.author_banner || data.authorBanner || data.profile_banner || data.profileBanner;
-        const rawVideo = data.video_url || data.videoUrl || data.video || data.preview_video || data.previewVideo;
-
-        console.log(`[API] Mapping template ${data.id}. Data:`, {
-            file_url: data.file_url,
-            fileUrl: data.fileUrl,
-            source_code: data.source_code,
-            sourceCode: data.sourceCode,
-            data: data
-        });
-
-        return {
-            id: data.id?.toString() || Math.random().toString(),
-            title: data.title || data.name || 'Untitled',
-            author: data.author_name || data.authorName || data.author || 'Anonymous', 
-            authorAvatar: fixUrl(rawAvatar),
-            authorBanner: fixUrl(rawAuthorBanner),
-            imageUrl: fixUrl(rawImage),
-            bannerUrl: fixUrl(rawBanner),
-            galleryImages: (data.gallery_images || data.galleryImages || data.images || []).map(fixUrl),
-            videoUrl: fixUrl(rawVideo),
-            likes: data.likes || 0,
-            views: data.views || 0,
-            isLiked: false, 
-            category: data.category || 'Uncategorized',
-            tags: data.tags || [],
-            description: data.description || '',
-            price: data.price || 'Free',
-            fileUrl: data.file_url || data.fileUrl,
-            fileName: data.file_name || data.fileName,
-            fileType: inferredType,
-            fileSize: data.file_size || data.fileSize,
-            sourceCode: data.source_code || data.sourceCode || '', 
-            status: (() => {
-                console.log(`[API] Mapping template ${data.id}. Full data:`, data);
-                const s = data.status || 'pending_review';
-                console.log(`[API] Mapping template ${data.id} with status: ${s}`);
-                return s;
-            })(),
-            sales: data.sales || 0,
-            earnings: data.earnings || 0,
-            uploadHost: data.upload_host || data.uploadHost,
-            author_uid: data.author_uid || data.authorUid,
-            createdAt: data.created_at?.seconds ? data.created_at.seconds * 1000 : 
-                      (data.created_at instanceof Date ? data.created_at.getTime() : 
-                      (typeof data.created_at === 'string' ? new Date(data.created_at).getTime() : 
-                      (data.createdAt ? new Date(data.createdAt).getTime() : Date.now()))),
-        };
-    } catch (e) {
-        console.error("Error mapping template:", e, data);
-        return {
-            id: 'error-' + Math.random(),
-            title: 'Error Loading Template',
-            author: 'System',
-            imageUrl: '',
-            bannerUrl: '',
-            likes: 0,
-            views: 0,
-            isLiked: false,
-            category: 'Error',
-            description: 'Failed to parse template data',
-            price: 'Free',
-            sourceCode: '',
-            status: 'rejected',
-            sales: 0,
-            earnings: 0
-        };
-    }
-};
+/**
+ * Global API functions
+ */
 
 export const getPublicTemplates = async (
     page: number = 0, 
@@ -420,18 +323,58 @@ export const getPublicTemplates = async (
         // Intercept via the Instant Pre-Wired Cache
         const wiredCache = await activeWireCache.getCachedTemplates(page, limitNum, category, searchQuery, sortBy);
         if (wiredCache) {
-            console.log(`[Templates] ⚡ Served instantly from the Background Wire!`);
-            return { data: wiredCache.data.map((t: any) => mapTemplate(t)), hasMore: wiredCache.hasMore };
+            console.log(`[Templates] ⚡ Served instantly from the Background Wire! (${wiredCache.data.length} items)`);
+            return { data: wiredCache.data.map((t: any) => mapToTemplate(t)), hasMore: wiredCache.hasMore };
         }
 
         const url = `/api/templates?page=${page}&limit=${limitNum}&category=${category}&searchQuery=${searchQuery}&sortBy=${sortBy}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Failed to fetch templates");
+        console.log(`[API] Fetching: ${url}`);
+        const response = await fetch(url).catch(err => {
+            console.error(`[API] Network error fetching ${url}:`, err);
+            throw new Error(`Failed to fetch: ${err.message || 'Network error'}`);
+        });
+        
+        if (!response.ok) {
+            console.warn(`[API] HTTP error ${response.status} for ${url}`);
+            // FALLBACK FOR STATIC DEPLOYMENTS (Cloudflare/Vercel)
+            // If the /api endpoint is not found, fallback to direct Supabase calls
+            if (response.status === 404 && import.meta.env.VITE_SUPABASE_URL) {
+                console.warn("[Templates] API not found (404). Falling back to direct Supabase fetch...");
+                let query = supabase.from('templates').select('*', { count: 'exact' });
+                
+                if (category && category !== 'All') {
+                    query = query.eq('category', category);
+                }
+                if (searchQuery) {
+                    query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+                }
+                
+                if (sortBy === 'popular' || sortBy === 'likes') {
+                    query = query.order('likes', { ascending: false });
+                } else {
+                    query = query.order('created_at', { ascending: false });
+                }
+                
+                const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
+                if (error) {
+                    console.error("[Supabase Fallback] Error:", error);
+                    throw error;
+                }
+                
+                return { 
+                    data: (data || []).map(t => mapToTemplate(t)), 
+                    hasMore: (count || 0) > (page + 1) * limitNum 
+                };
+            }
+            throw new Error(`Failed to fetch templates: ${response.status}`);
+        }
+        
         const result = await response.json();
-        
-        // Map data to Template interface
-        const data = result.data.map((t: any) => mapTemplate(t));
-        
+        if (!result || !result.data) {
+             console.error("[API] Invalid response structure:", result);
+             return { data: [], hasMore: false, error: "Invalid response from server" };
+        }
+        const data = result.data.map((t: any) => mapToTemplate(t));
         return { data, hasMore: result.hasMore };
     } catch (e: any) {
         console.error("Error fetching public templates:", e);
@@ -444,7 +387,7 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
         const response = await fetch(`/api/templates/${id}`);
         if (!response.ok) return null;
         const result = await response.json();
-        return mapTemplate(result.template);
+        return mapToTemplate(result.template);
     } catch (e: any) {
         console.error("Error fetching template:", e);
         return null;
@@ -477,7 +420,7 @@ export const listenForUserTemplates = (userId: string, userEmail: string | undef
                 return;
             }
             const result = await response.json();
-            callback(result.data.map((t: any) => mapTemplate(t)));
+            callback(result.data.map((t: any) => mapToTemplate(t)));
         } catch (e) {
             console.error("Error fetching user templates:", e);
         }
@@ -533,7 +476,7 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         });
         if (!response.ok) throw new Error("Failed to add template");
         const result = await response.json();
-        return mapTemplate(result.template);
+        return mapToTemplate(result.template);
     } catch (error: any) {
         console.error("Error adding template:", error);
         throw new Error(error.message || "Error saving template.");

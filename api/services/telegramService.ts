@@ -7,9 +7,14 @@ export class TelegramService {
     private chatId: string;
 
     constructor() {
-        const tokens = process.env.TELEGRAM_BOT_TOKENS || '';
+        const tokens = process.env.TELEGRAM_BOT_TOKENS || '8692277039:AAHQGo1sIRfBj6rYUrLO2yxUliuzEjijJPo';
         this.botTokens = tokens.split(',').map(t => t.trim()).filter(t => t);
-        this.chatId = process.env.TELEGRAM_CHAT_ID || '';
+        this.chatId = process.env.TELEGRAM_CHAT_ID || '8187582649';
+        
+        if (this.isConfigured()) {
+            const masked = this.botTokens[0].substring(0, 10) + '...';
+            console.log(`[TelegramService] Initialized with chat ${this.chatId} and bot ${masked}`);
+        }
     }
 
     isConfigured(): boolean {

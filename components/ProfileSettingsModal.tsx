@@ -142,6 +142,7 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     <img 
                         src={bannerPreview} 
                         alt="Banner" 
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                     />
                 ) : (
@@ -180,6 +181,7 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                             <img 
                                 src={avatarPreview} 
                                 alt="Avatar" 
+                                referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                             />
                         ) : (

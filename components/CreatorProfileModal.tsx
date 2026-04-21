@@ -86,6 +86,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                         <img 
                             src={banner_url} 
                             alt={`${creatorName} banner`}
+                            referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-60"
                         />
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/50 to-[#050505]"></div>
@@ -112,6 +113,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     <img 
                                         src={avatar_url} 
                                         alt={creatorName}
+                                        referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover border border-white/10"
                                     />
                                 ) : (

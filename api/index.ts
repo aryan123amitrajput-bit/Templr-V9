@@ -4,6 +4,7 @@ import cors from 'cors';
 import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
 import { getSupabase, getTemplates as getSupabaseTemplates } from './services/supabaseService';
+import { mapToTemplate } from '../lib/mapping.ts';
 import { uploadToImgBB } from './services/imgbbService';
 import { uploadToImgHippo } from './services/imghippoService';
 import { uploadToGifyu } from './services/gifyuService';
@@ -26,6 +27,14 @@ import multer from 'multer';
 const upload = multer({ storage: multer.memoryStorage() });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+
+/**
+ * Maps Supabase template data to the frontend Template interface.
+ */
+function mapSupabaseToTemplate(t: any) {
+  return mapToTemplate(t);
+}
 
 // --- BACKGROUND CACHE WIRE ---
 // Constantly caches standard template requests to return INSTANTLY on trigger
@@ -60,43 +69,46 @@ class CacheWire {
         await new Promise(r => setTimeout(r, 500));
       }
       
-      const [gitRegistry, supabaseData, deletedTemplatesData, freeHostData, tgTemplates] = await Promise.all([
-        repoManager.getMergedRegistry().catch((e) => {
-          console.error('[CacheWire] Repo error:', e);
-          return [];
-        }),
-        supabase 
-          ? supabase.from('templates').select('*').order('created_at', { ascending: false }).then(res => res.data || []).catch(() => [])
-          : Promise.resolve([]),
-        supabase
-          ? supabase.from('deleted_templates').select('id').then(res => res.data || []).catch(() => [])
-          : Promise.resolve([]),
-        freeHostService.getTemplates(0, 500).catch(() => []),
-        telegramService.getTemplates().catch(() => [])
+      const results = await Promise.allSettled([
+        repoManager.getMergedRegistry(),
+        supabase ? supabase.from('templates').select('*').order('created_at', { ascending: false }).then(res => res.data || []) : Promise.resolve([]),
+        supabase ? supabase.from('deleted_templates').select('id').then(res => res.data || []) : Promise.resolve([]),
+        freeHostService.getTemplates(0, 500),
+        telegramService.getTemplates()
       ]);
 
+      const [gitRes, supabaseRes, deletedRes, freeRes, tgRes] = results;
+
+      const gitData = gitRes.status === 'fulfilled' ? gitRes.value : [];
+      const supabaseData = supabaseRes.status === 'fulfilled' ? supabaseRes.value : [];
+      const deletedTemplatesData = deletedRes.status === 'fulfilled' ? deletedRes.value : [];
+      const freeHostData = freeRes.status === 'fulfilled' ? freeRes.value : [];
+      const tgTemplates = tgRes.status === 'fulfilled' ? tgRes.value : [];
+
+      console.log(`[CacheWire] 📊 Sync results - GitHub: ${gitData.length}, Supabase: ${supabaseData.length}, FreeHost: ${freeHostData.length}, Telegram: ${tgTemplates.length}`);
+      
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
       const mappedTelegram = (tgTemplates || []).map((t: any) => ({ ...t, _source: 'telegram' }));
       
       const templatesMap = new Map();
       
-      if (Array.isArray(gitRegistry)) {
-        gitRegistry.forEach((t: any) => {
+      if (Array.isArray(gitData)) {
+        gitData.forEach((t: any) => {
           if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
         });
       }
       
       mappedFreeHost.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...mapSupabaseToTemplate(t), _source: 'freehost' });
       });
 
       mappedTelegram.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...mapSupabaseToTemplate(t), _source: 'telegram' });
       });
       
       mappedSupabase.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'supabase' });
       });
 
       let freshRegistry = Array.from(templatesMap.values());
@@ -140,9 +152,9 @@ class CacheWire {
       };
 
       this.lastUpdated = Date.now();
-      console.log(`[CacheWire] ⚡ Full Sync Complete: ${this.registry.length} templates, ${this.creators.length} creators, ${this.hosts.length} hosts.`);
+      console.log(`[CacheWire] ✅ Synchronized ${this.registry.length} total templates and ${this.creators.length} creators.`);
     } catch (error) {
-      console.error('[CacheWire] Sync total failure:', error);
+      console.error("[CacheWire] ❌ Sync failure:", error);
     }
   }
 }
@@ -287,33 +299,7 @@ async function saveTemplateToGitHub(template: any) {
 }
 
 
-const mapSupabaseToTemplate = (t: any): any => ({
-  id: t.id,
-  title: t.title || t.name,
-  description: t.description || '',
-  author: t.author || t.author_name || t.creator || 'Anonymous',
-  author_id: t.author_id || t.creator_id,
-  author_email: t.author_email || t.creator_email,
-  author_avatar: t.author_avatar || t.creator_avatar,
-  authorAvatar: t.author_avatar || t.creator_avatar || '',
-  imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || t.image_preview || '',
-  banner_url: t.banner_url,
-  bannerUrl: t.banner_url || t.image_url || '',
-  thumbnail: t.thumbnail || t.thumbnail_url || t.image_preview || '',
-  preview_url: t.preview_url,
-  file_url: t.file_url,
-  fileUrl: t.file_url || '',
-  likes: t.likes || t.stats?.likes || 0,
-  views: t.views || t.stats?.views || 0,
-  category: t.category || 'Uncategorized',
-  tags: t.tags || [],
-  price: t.price || 0,
-  status: t.status || 'approved',
-  created_at: t.created_at || t.updated_at,
-  _source: t._source || 'supabase',
-  galleryImages: t.gallery_images || [],
-  videoUrl: t.video_url || ''
-});
+
 
 const app = express();
 // Firebase Error Handler Helper

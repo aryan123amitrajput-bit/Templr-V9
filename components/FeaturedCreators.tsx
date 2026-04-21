@@ -98,8 +98,9 @@ const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({ onCreatorClick }) =
                                     <div className="relative w-24 h-24 mb-6 group-hover:scale-105 transition-transform duration-500">
                                         <div className="absolute inset-0 rounded-full border border-white/10 shadow-[0_0_30px_-5px_rgba(255,255,255,0.1)]"></div>
                                         <img 
-                                            src={creator.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`} 
+                                            src={creator.avatarUrl?.startsWith('http://http://') ? creator.avatarUrl.replace('http://http://', 'http://') : creator.avatarUrl?.startsWith('https://https://') ? creator.avatarUrl.replace('https://https://', 'https://') : creator.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creator.name)}&background=333&color=fff`} 
                                             alt={creator.name} 
+                                            referrerPolicy="no-referrer"
                                             onError={(e) => { 
                                                 const target = e.target as HTMLImageElement;
                                                 if (!target.src.includes('ui-avatars.com')) {

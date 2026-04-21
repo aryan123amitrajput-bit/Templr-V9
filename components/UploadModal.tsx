@@ -134,6 +134,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                             key={previewSrc || 'empty'}
                             src={previewSrc || undefined} 
                             alt="Preview" 
+                            referrerPolicy="no-referrer"
                             onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
                             className="w-full h-full object-contain" 
                         />

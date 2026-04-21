@@ -135,6 +135,7 @@ const DashboardTemplateCard: React.FC<{ template: Template, onDelete: () => void
                         <img 
                             src={signedBanner || template.bannerUrl} 
                             onError={handleImageError}
+                            referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
                         />
                     ) : (

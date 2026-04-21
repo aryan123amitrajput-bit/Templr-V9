@@ -7,6 +7,7 @@ import { uploadToImgHippo } from './api/services/imghippoService';
 import { uploadToGifyu } from './api/services/gifyuService';
 import { uploadToCatbox } from './api/services/catboxService';
 import { uploadToBeeIMG } from './api/services/beeimgService';
+import { uploadToUguu } from './api/services/uguuService';
 import { uploadToPasteRs } from './api/services/pasteService';
 import { telegramService } from './api/services/telegramService';
 import { Octokit } from '@octokit/rest';
@@ -16,11 +17,20 @@ import { repoManager, TemplateMetadata } from './api/services/repoService';
 import { freeHostService } from './api/services/freeHostService';
 import { traffService } from './api/services/traffService';
 import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './api/services/supabaseService';
+import { mapToTemplate } from './lib/mapping.ts';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+
+/**
+ * Maps Supabase template data to the frontend Template interface.
+ */
+function mapSupabaseToTemplate(t: any) {
+  return mapToTemplate(t);
+}
 
 // --- BACKGROUND CACHE WIRE ---
 class CacheWire {
@@ -49,8 +59,8 @@ class CacheWire {
   async refresh() {
     console.log("[Server CacheWire] 🔌 Synchronizing All Services Wires...");
     try {
-      const [gitRegistry, supabaseData, freeHostData, tgTemplates] = await Promise.all([
-        repoManager.getMergedRegistry().catch(() => []),
+      const results = await Promise.allSettled([
+        repoManager.getMergedRegistry(),
         getSupabaseTemplates().catch((e) => {
           console.error('[Server CacheWire] Supabase fetch error:', e);
           return [];
@@ -59,28 +69,37 @@ class CacheWire {
         telegramService.getTemplates().catch(() => [])
       ]);
 
+      const [gitRes, supabaseRes, freeRes, tgRes] = results;
+
+      const gitData = gitRes.status === 'fulfilled' ? gitRes.value : [];
+      const supabaseData = supabaseRes.status === 'fulfilled' ? supabaseRes.value : [];
+      const freeHostData = freeRes.status === 'fulfilled' ? freeRes.value : [];
+      const tgTemplates = tgRes.status === 'fulfilled' ? tgRes.value : [];
+      
+      console.log(`[Server CacheWire] 📊 Sync results - GitHub: ${gitData.length}, Supabase: ${supabaseData.length}, FreeHost: ${freeHostData.length}, Telegram: ${tgTemplates.length}`);
+
       const mappedSupabase = (supabaseData || []).map((t: any) => ({ ...t, _source: 'supabase' }));
       const mappedFreeHost = (freeHostData || []).map((t: any) => ({ ...t, _source: 'freehost' }));
       const mappedTelegram = (tgTemplates || []).map((t: any) => ({ ...t, _source: 'telegram' }));
       
       const templatesMap = new Map();
       
-      if (Array.isArray(gitRegistry)) {
-        gitRegistry.forEach((t: any) => {
+      if (Array.isArray(gitData)) {
+        gitData.forEach((t: any) => {
           if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'git' });
         });
       }
       
       mappedFreeHost.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...mapSupabaseToTemplate(t), _source: 'freehost' });
       });
 
       mappedTelegram.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...mapSupabaseToTemplate(t), _source: 'telegram' });
       });
       
       mappedSupabase.forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...mapSupabaseToTemplate(t), _source: 'supabase' });
       });
 
       let freshRegistry = Array.from(templatesMap.values());
@@ -93,13 +112,13 @@ class CacheWire {
       // Calculate Creators Wire
       const creatorsMap = new Map();
       this.registry.forEach((t: any) => {
-        const email = t.author_email || t.creator_email;
+        const email = t.author_email || t.authorEmail || t.creator_email;
         if (!email) return;
         if (!creatorsMap.has(email)) {
           creatorsMap.set(email, {
             email,
-            name: t.author_name || t.creator || 'Anonymous',
-            avatar: t.author_avatar || t.creator_avatar || '',
+            name: t.author_name || t.authorName || t.author || t.creator || 'Anonymous',
+            avatar: t.authorAvatar || t.author_avatar || t.creator_avatar || '',
             templateCount: 0,
             likes: 0,
             views: 0
@@ -278,7 +297,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     providers.push({
         name: 'BeeIMG',
         upload: async () => {
-            const apiKey = process.env.BEEIMG_API_KEY || '';
+            const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
             const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
             return { imageUrl: url, hostUsed: 'BeeIMG' };
         }
@@ -290,21 +309,24 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         upload: async () => {
             let userhash = process.env.CATBOX_USERHASH;
             if (userhash && userhash.length < 5) userhash = undefined; // Ignore dummy/empty values
-            const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-            return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+            try {
+                const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+                return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+            } catch (e: any) {
+                // Ignore 412 or Cloudflare blocks on Catbox
+                throw new Error("Catbox failed");
+            }
         }
     });
 
-    // ImgHippo (requires API key)
-    if (process.env.IMGHIPPO_API_KEY) {
-        providers.push({
-            name: 'ImgHippo',
-            upload: async () => {
-                const result = await uploadToImgHippo(buffer, originalname);
-                return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-            }
-        });
-    }
+    // ImgHippo
+    providers.push({
+        name: 'ImgHippo',
+        upload: async () => {
+            const result = await uploadToImgHippo(buffer, originalname);
+            return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+        }
+    });
 
     // ImgBB
     providers.push({
@@ -315,16 +337,14 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Gifyu (requires API key)
-    if (process.env.GIFYU_API_KEY) {
-        providers.push({
-            name: 'Gifyu',
-            upload: async () => {
-                const result = await uploadToGifyu(buffer, originalname, mimetype);
-                return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
-            }
-        });
-    }
+    // Uguu
+    providers.push({
+        name: 'Uguu',
+        upload: async () => {
+            const result = await uploadToUguu(buffer, originalname, mimetype);
+            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
+        }
+    });
 
     if (telegramService.isConfigured() && !isVideo) {
         providers.push({
@@ -337,18 +357,17 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         });
     }
 
-    // Supabase is the fallback
-    const fallbackProvider: UploadProvider = {
+    // Supabase
+    providers.push({
         name: 'Supabase',
         upload: async () => {
             const url = await uploadToSupabase(buffer, originalname, mimetype);
             return { imageUrl: url, hostUsed: 'Supabase' };
         }
-    };
+    });
 
     // Shuffle providers randomly
     const shuffledProviders = providers.sort(() => 0.5 - Math.random());
-    shuffledProviders.push(fallbackProvider);
 
     for (let i = 0; i < shuffledProviders.length; i++) {
         const provider = shuffledProviders[i];
@@ -358,7 +377,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         } catch (e: any) {
             console.warn(`[Upload] ${provider.name} failed:`, e.message);
             if (i === shuffledProviders.length - 1) {
-                console.error('[Upload] All external hosts failed including fallback.', e);
+                console.error('[Upload] All external hosts failed.');
                 throw new Error('Upload failed on all available external hosts.');
             }
         }
@@ -390,7 +409,26 @@ async function startServer() {
 
   // Health Check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      sync: {
+        lastUpdated: new Date(backgroundWire.lastUpdated).toISOString(),
+        totalTemplates: backgroundWire.registry.length,
+        creators: backgroundWire.creators.length
+      }
+    });
+  });
+
+  app.get('/api/sync-status', (req, res) => {
+    res.json({
+      lastUpdated: new Date(backgroundWire.lastUpdated).toISOString(),
+      updatedTimestamp: backgroundWire.lastUpdated,
+      templatesCount: backgroundWire.registry.length,
+      creatorsCount: backgroundWire.creators.length,
+      hostsCount: backgroundWire.hosts.length,
+      stats: backgroundWire.stats
+    });
   });
 
   // Telegram File Proxy
@@ -484,37 +522,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
     }
   });
 
-  /**
- * Maps Supabase template data to the frontend Template interface.
- */
-function mapSupabaseToTemplate(t: any) {
-  return {
-    id: t.id,
-    title: t.title,
-    description: t.description || '',
-    author: t.author_name || t.author || 'Anonymous',
-    author_id: t.author_id,
-    author_uid: t.author_id, // For compatibility
-    authorAvatar: t.author_avatar || '',
-    imageUrl: t.image_url || t.thumbnail || t.thumbnail_url || '',
-    bannerUrl: t.banner_url || t.image_url || t.thumbnail || '',
-    thumbnail: t.thumbnail_url || t.thumbnail || t.image_url || '',
-    likes: t.likes || 0,
-    views: t.views || 0,
-    category: t.category || 'Uncategorized',
-    tags: t.tags || [],
-    price: t.price || 'Free',
-    sourceCode: t.source_code || '',
-    fileUrl: t.file_url || '',
-    fileType: t.file_type || (t.file_url?.endsWith('.zip') ? 'zip' : 'html'),
-    status: t.status || 'approved',
-    sales: t.sales || 0,
-    earnings: t.earnings || 0,
-    created_at: t.created_at,
-    galleryImages: t.gallery_images || [],
-    videoUrl: t.video_url || ''
-  };
-}
+
 
 // --- API Routes ---
   app.post('/api/upload/url', async (req, res) => {
@@ -618,7 +626,6 @@ function mapSupabaseToTemplate(t: any) {
 
   // Get Public Templates
   app.get('/api/templates', async (req, res) => {
-    console.log(`[API] Received request for /api/templates. Query:`, req.query);
     try {
       const page = parseInt(req.query.page as string) || 0;
       const limitNum = parseInt(req.query.limit as string) || 6;
@@ -628,48 +635,24 @@ function mapSupabaseToTemplate(t: any) {
       const userId = req.query.userId as string;
       const email = req.query.email as string;
 
-      let data: any[] = [...backgroundWire.registry];
-
-      if (data.length === 0) {
-          console.log(`[API] Fetching templates from Supabase and GitHub natively...`);                
-          try {
-            const supabaseTemplates = await getSupabaseTemplates();
-            console.log(`[API] Supabase returned ${supabaseTemplates.length} templates.`);
-            data.push(...supabaseTemplates.map(mapSupabaseToTemplate));
-          } catch (e) {
-            console.error('[API] Supabase fetch error:', e);
-          }
-
-          try {
-            const repoTemplates = await repoManager.getMergedRegistry();
-            console.log(`[API] RepoManager returned ${repoTemplates.length} templates.`);
-            data.push(...repoTemplates);
-          } catch (e) {
-            console.error('[API] Repo fetch error:', e);
-          }
+      // Ensure we have data
+      if (backgroundWire.registry.length === 0) {
+        await backgroundWire.ensureSynchronized(8000);
       }
 
-      console.log(`[API] Total templates after caching and Git/Supabase merge: ${data.length}`);
-      
-      // Remove duplicates by ID from Git/Supabase cache
-      const uniqueTemplates: any[] = [];
-      const seenIds = new Set();
-      for (const t of data) {
-        if (t && t.id && !seenIds.has(t.id)) {
-          uniqueTemplates.push(t);
-          seenIds.add(t.id);
-        }
-      }
-      data = uniqueTemplates;
-      
+      let data = [...backgroundWire.registry];
+
       // Filter by status 'approved' (or allow if status is missing)
       data = data.filter((t: any) => !t.status || t.status === 'approved');
 
       // Filter by userId or email if provided
       if (userId || email) {
         data = data.filter((t: any) => {
-          const matchId = userId && (t.author_id === userId || (t.author && t.author.id === userId));
-          const matchEmail = email && (t.author_email === email || (t.author && t.author.email === email));
+          const authorId = t.author_id || t.authorId || (t.author && t.author.id);
+          const authorEmail = t.author_email || t.authorEmail || (t.author && t.author.email);
+          
+          const matchId = userId && authorId === userId;
+          const matchEmail = email && authorEmail === email;
           return matchId || matchEmail;
         });
       }
@@ -681,80 +664,29 @@ function mapSupabaseToTemplate(t: any) {
       if (searchQuery) {
         const lowerQuery = searchQuery.toLowerCase();
         data = data.filter((t: any) => 
-          t.title?.toLowerCase().includes(lowerQuery) || 
-          t.description?.toLowerCase().includes(lowerQuery)
+          (t.title && t.title.toLowerCase().includes(lowerQuery)) || 
+          (t.name && t.name.toLowerCase().includes(lowerQuery)) ||
+          (t.description && t.description.toLowerCase().includes(lowerQuery))
         );
       }
 
       if (sortBy === 'popular' || sortBy === 'likes') {
-        data = data.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
+        data.sort((a: any, b: any) => (b.likes || 0) - (a.likes || 0));
       } else {
-        data = data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
       }
 
-      // Pagination with freeHostService
-      const start = page * limitNum;
-      const gitSupabaseCount = data.length;
-      
-      let paginatedData = [];
-      if (start < gitSupabaseCount) {
-        paginatedData = data.slice(start, start + limitNum);
-        if (paginatedData.length < limitNum) {
-          const needed = limitNum - paginatedData.length;
-          try {
-            const extra = await freeHostService.getTemplates(0, needed, category, searchQuery);
-            const mappedFreeTemplates = extra.map((t: any) => ({
-              id: t.id,
-              title: t.name,
-              thumbnail: t.image_preview,
-              author: t.creator,
-              author_id: t.creator_id || t.author_id,
-              tags: t.tags || [],
-              category: t.category,
-              created_at: t.created_at,
-              likes: t.stats?.likes || 0,
-              views: t.stats?.views || 0,
-              status: 'approved'
-            }));
-            paginatedData.push(...mappedFreeTemplates);
-          } catch (e) {
-             console.error('[API] FreeHost fetch extra error:', e);
-          }
-        }
-      } else {
-        const freeHostOffset = start - gitSupabaseCount;
-        const freeHostPage = Math.floor(freeHostOffset / limitNum);
-        const freeHostLimit = limitNum;
-        try {
-          const extra = await freeHostService.getTemplates(freeHostPage, freeHostLimit, category, searchQuery);
-          const mappedFreeTemplates = extra.map((t: any) => ({
-            id: t.id,
-            title: t.name,
-            thumbnail: t.image_preview,
-            author: t.creator,
-            author_id: t.creator_id || t.author_id,
-            tags: t.tags || [],
-            category: t.category,
-            created_at: t.created_at,
-            likes: t.stats?.likes || 0,
-            views: t.stats?.views || 0,
-            status: 'approved'
-          }));
-          paginatedData = mappedFreeTemplates;
-        } catch (e) {
-          console.error('[API] FreeHost fetch error:', e);
-        }
-      }
-
-      const freeHostRegistry = await freeHostService.getRegistry();
-      const totalCount = gitSupabaseCount + (freeHostRegistry.totalTemplates || 0);
+      const totalCount = data.length;
+      const paginatedData = data.slice(page * limitNum, (page + 1) * limitNum);
 
       res.json({ 
         data: paginatedData, 
-        hasMore: start + limitNum < totalCount
+        hasMore: (page + 1) * limitNum < totalCount,
+        wire_status: 'stable',
+        total: totalCount
       });
     } catch (error: any) {
-      console.error('API Error:', error);
+      console.error('API Error:', error.message);
       res.status(500).json({ error: error.message });
     }
   });

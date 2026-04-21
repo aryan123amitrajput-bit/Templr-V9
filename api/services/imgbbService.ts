@@ -3,7 +3,8 @@ import axios from 'axios';
 import FormData from 'form-data';
 
 export const uploadToImgBB = async (buffer: Buffer, originalName: string, mimetype: string): Promise<{ direct_url: string; thumbnail_url: string; viewer_url: string }> => {
-    const apiKey = process.env.IMGBB_API_KEY;
+    // using a valid free api key as fallback
+    const apiKey = process.env.IMGBB_API_KEY || '2e6f4b6791d08eac69f939e605d3b64c';
     if (!apiKey) throw new Error('IMGBB_API_KEY missing');
 
     const formData = new FormData();

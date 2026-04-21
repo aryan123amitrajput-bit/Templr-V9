@@ -84,11 +84,21 @@ const videoManager = new VideoController();
 // Helper to downscale Unsplash images for thumbnails (huge performance win)
 const getOptimizedImageUrl = (url: string | undefined | null, width = 600) => {
     if (!url) return null;
+    
+    // Fix BeeIMG double https bug from corrupted database entries
+    if (url.startsWith('https://https://')) {
+        url = url.replace('https://https://', 'https://');
+    }
+    if (url.startsWith('http://http://')) {
+        url = url.replace('http://http://', 'http://');
+    }
+    
     if (url.includes('images.unsplash.com')) {
         if (url.includes('w=')) {
             return url.replace(/w=\d+/, `w=${width}`);
         }
-        return `${url}&w=${width}`;
+        const hasParams = url.includes('?');
+        return `${url}${hasParams ? '&' : '?'}w=${width}`;
     }
     return url;
 };
@@ -365,6 +375,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                          <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
                              <img 
                                 src={displayAvatar} 
+                                referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover" 
                                 alt={author} 
                                 onError={(e) => { 

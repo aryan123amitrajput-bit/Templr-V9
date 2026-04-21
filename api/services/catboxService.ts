@@ -9,7 +9,10 @@ export const uploadToCatbox = async (buffer: Buffer, originalName: string, mimet
     formData.append('fileToUpload', buffer, { filename: originalName, contentType: mimetype });
 
     const response = await axios.post('https://catbox.moe/user/api.php', formData, {
-        headers: formData.getHeaders()
+        headers: {
+            ...formData.getHeaders(),
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     });
 
     if (typeof response.data !== 'string' || !response.data.startsWith('http')) {
