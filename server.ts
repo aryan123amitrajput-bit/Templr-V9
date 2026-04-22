@@ -666,7 +666,11 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         data = data.filter((t: any) => 
           (t.title && t.title.toLowerCase().includes(lowerQuery)) || 
           (t.name && t.name.toLowerCase().includes(lowerQuery)) ||
-          (t.description && t.description.toLowerCase().includes(lowerQuery))
+          (t.description && t.description.toLowerCase().includes(lowerQuery)) ||
+          (t.tags && Array.isArray(t.tags) && t.tags.some((tag: string) => tag.toLowerCase().includes(lowerQuery))) ||
+          (t.author && t.author.toLowerCase().includes(lowerQuery)) ||
+          (t.author_name && t.author_name.toLowerCase().includes(lowerQuery)) ||
+          (t.creator && t.creator.toLowerCase().includes(lowerQuery))
         );
       }
 
@@ -775,7 +779,12 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const { id } = req.params;
       
       // 1. Try GitHub/GitLab
-      let template = await repoManager.getTemplateById(id);
+      let template: any = null;
+      try {
+        template = await repoManager.getTemplateById(id);
+      } catch (e: any) {
+        console.warn(`[API] GitHub getTemplateById failed: ${e.message}`);
+      }
       
       // 2. Try FreeHost
       if (!template) {
@@ -984,7 +993,11 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       };
 
       // 6. Save to GitHub
-      await repoManager.uploadTemplate(metadata);
+      try {
+        await repoManager.uploadTemplate(metadata);
+      } catch (repoErr: any) {
+        console.warn(`[API] Skipping GitHub save: ${repoErr.message}`);
+      }
 
       // 7. Save to Supabase (CRITICAL for persistence on refresh)
       try {

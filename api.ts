@@ -369,7 +369,15 @@ export const getPublicTemplates = async (
                         }
                         if (searchQuery) {
                             const sq = searchQuery.toLowerCase();
-                            filtered = filtered.filter(t => (t.title && t.title.toLowerCase().includes(sq)) || (t.description && t.description.toLowerCase().includes(sq)));
+                            filtered = filtered.filter(t => 
+                                (t.title && t.title.toLowerCase().includes(sq)) || 
+                                (t.name && t.name.toLowerCase().includes(sq)) || 
+                                (t.description && t.description.toLowerCase().includes(sq)) ||
+                                (t.tags && Array.isArray(t.tags) && t.tags.some((tag: string) => tag.toLowerCase().includes(sq))) ||
+                                (t.author && t.author.toLowerCase().includes(sq)) ||
+                                (t.author_name && t.author_name.toLowerCase().includes(sq)) ||
+                                (t.creator && t.creator.toLowerCase().includes(sq))
+                            );
                         }
                         
                         if (sortBy === 'popular' || sortBy === 'likes') {
@@ -398,7 +406,7 @@ export const getPublicTemplates = async (
                         query = query.eq('category', category);
                     }
                     if (searchQuery) {
-                        query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
+                        query = query.or(`title.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,creator.ilike.%${searchQuery}%`);
                     }
                     
                     if (sortBy === 'popular' || sortBy === 'likes') {

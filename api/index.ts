@@ -537,21 +537,24 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         upload: async () => {
             let userhash = process.env.CATBOX_USERHASH;
             if (userhash && userhash.length < 5) userhash = undefined; // Ignore dummy/empty values
-            const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-            return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+            try {
+                const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
+                return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+            } catch (e: any) {
+                // Ignore 412 or Cloudflare blocks on Catbox
+                throw new Error("Catbox failed");
+            }
         }
     });
 
-    // ImgHippo (requires API key)
-    if (process.env.IMGHIPPO_API_KEY) {
-        providers.push({
-            name: 'ImgHippo',
-            upload: async () => {
-                const result = await uploadToImgHippo(buffer, originalname);
-                return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
-            }
-        });
-    }
+    // ImgHippo
+    providers.push({
+        name: 'ImgHippo',
+        upload: async () => {
+            const result = await uploadToImgHippo(buffer, originalname);
+            return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+        }
+    });
 
     // ImgBB
     providers.push({
@@ -562,16 +565,15 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Gifyu (requires API key)
-    if (process.env.GIFYU_API_KEY) {
-        providers.push({
-            name: 'Gifyu',
-            upload: async () => {
-                const result = await uploadToGifyu(buffer, originalname, mimetype);
-                return { imageUrl: result.direct_url, hostUsed: 'Gifyu' };
-            }
-        });
-    }
+    // Uguu
+    providers.push({
+        name: 'Uguu',
+        upload: async () => {
+            const { uploadToUguu } = await import('./services/uguuService');
+            const result = await uploadToUguu(buffer, originalname, mimetype);
+            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
+        }
+    });
 
     if (telegramService.isConfigured() && !isVideo) {
         providers.push({
@@ -584,18 +586,28 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         });
     }
 
-    // Shuffle ALL providers randomly (including Telegram)
+    // Supabase
+    providers.push({
+        name: 'Supabase',
+        upload: async () => {
+            const { uploadPreviewImage } = await import('./services/supabaseService');
+            const url = await uploadPreviewImage(buffer, originalname, mimetype);
+            return { imageUrl: url, hostUsed: 'Supabase' };
+        }
+    });
+
+    // Shuffle providers randomly
     const shuffledProviders = providers.sort(() => 0.5 - Math.random());
 
     for (let i = 0; i < shuffledProviders.length; i++) {
         const provider = shuffledProviders[i];
         try {
-            console.log(`[Upload] Attempting upload with random host ${provider.name}...`);
+            console.log(`[Upload] Attempting upload with ${provider.name}...`);
             return await provider.upload();
         } catch (e: any) {
             console.warn(`[Upload] ${provider.name} failed:`, e.message);
             if (i === shuffledProviders.length - 1) {
-                console.error('[Upload] All external hosts failed.', e);
+                console.error('[Upload] All external hosts failed.');
                 throw new Error('Upload failed on all available external hosts.');
             }
         }
@@ -1293,13 +1305,78 @@ app.get('/api/user/templates', async (req, res) => {
 app.get('/api/templates/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    let content = await repoManager.getTemplateById(id);
-    if (!content) {
-      content = await freeHostService.getTemplateById(id);
+    
+    // Check background wire manually if it exists? 
+    // In vercel we have CacheWire inside api/index.ts? Wait, let's just use the direct methods.
+    
+    // 1. Try GitHub Registry
+    let template: any = null;
+    try {
+      template = await repoManager.getTemplateById(id);
+    } catch (e: any) {
+      console.warn(`[API] GitHub getTemplateById failed: ${e.message}`);
     }
+    
+    // 2. Try FreeHost
+    if (!template) {
+      template = await freeHostService.getTemplateById(id);
+    }
+    
+    // 3. Try Supabase
+    if (!template) {
+      const { getTemplates } = await import('./services/supabaseService');
+      const supabaseTemplates = await getTemplates();
+      const found = supabaseTemplates.find((t: any) => t.id === id);
+      if (found) {
+        template = mapSupabaseToTemplate(found);
+      }
+    }
+    
+    if (template) {
+      // Handle bundle if it's a bundle
+      if (template.is_bundle && template.source_code) {
+          try {
+              let bundleData: any = null;
+              
+              if (template.source_code.startsWith('/api/tg-file/')) {
+                  // It's a Telegram file, fetch it directly via the service
+                  const match = template.source_code.match(/^\/api\/tg-file\/(\d+)\/(.+)$/);
+                  if (match) {
+                      const botIndex = match[1];
+                      const fileId = match[2];
+                      const tgUri = `tg://${botIndex}/${fileId}`;
+                      console.log(`[API] Fetching bundle for template ${id} from Telegram: ${tgUri}`);
+                      
+                      const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+                      const response = await fetch(downloadUrl);
+                      if (response.ok) {
+                          bundleData = await response.json();
+                      }
+                  }
+              } else if (template.source_code.startsWith('http')) {
+                  // It's a Paste.rs or other HTTP URL
+                  console.log(`[API] Fetching bundle for template ${id} from ${template.source_code}`);
+                  const response = await fetch(template.source_code);
+                  if (response.ok) {
+                      bundleData = await response.json();
+                  }
+              }
 
-    if (content) {
-      res.json({ data: content });
+              if (bundleData) {
+                  template = { 
+                      ...template, 
+                      ...bundleData.metadata, 
+                      sourceCode: bundleData.sourceCode, 
+                      preview_url: bundleData.demoLink,
+                      galleryImages: bundleData.images?.gallery || [],
+                      bannerUrl: bundleData.images?.banner || template.bannerUrl
+                  };
+              }
+          } catch (e: any) {
+              console.error(`[API] Failed to fetch bundle for template ${id}:`, e.message);
+          }
+      }
+      res.json({ template: template, data: template });
     } else {
       res.status(404).json({ error: 'Template not found' });
     }
@@ -1310,72 +1387,189 @@ app.get('/api/templates/:id', async (req, res) => {
 });
 
 app.post('/api/templates', async (req, res) => {
-  try {
-    const { template } = req.body;
-    if (!template) return res.status(400).json({ error: 'Template is required' });
-    const templateId = crypto.randomUUID();
-    let finalImageUrl = template.preview_image || template.image_url || template.imageUrl || '';
-    let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
-    let finalGalleryImages = template.gallery_images || [];
-
-    const cleanPreviewUrl = generatePreviewUrl(template.file_url || finalImageUrl);
-    const metadata = {
-      id: templateId,
-      name: template.title || template.name,
-      description: template.description,
-      preview_url: cleanPreviewUrl,
-      thumbnail: finalImageUrl,
-      image_preview: finalImageUrl,
-      banner_url: finalBannerUrl,
-      gallery_images: finalGalleryImages,
-      file_url: template.file_url,
-      tags: template.tags || [],
-      creator: template.author_name || 'Anonymous',
-      creator_email: template.author_email,
-      creator_avatar: template.author_avatar || '',
-      created_at: new Date().toISOString(),
-      category: template.category,
-      price: template.price,
-      stats: { likes: 0, views: 0 }
-    };
-
     try {
-      const savedToRepo = await saveTemplateToGitHub(metadata);
-      if (!savedToRepo) await freeHostService.addTemplate(metadata);
-      try {
-        const supabasePayload = {
-          ...template,
-          id: templateId,
-          preview_image: finalImageUrl,
-          template_url: template.template_url || '',
-          banner_url: finalBannerUrl,
-          gallery_images: finalGalleryImages,
-          created_at: metadata.created_at
-        };
-        // Remove old fields if they exist in the spread
-        delete supabasePayload.image_url;
-        delete supabasePayload.image_preview;
-        delete supabasePayload.source_code;
-        delete supabasePayload.imageUrl;
-        delete supabasePayload.sourceCode;
-        
-        console.log(`[API] Inserting template into Supabase: ${templateId}`);
-        const { data, error } = await supabase.from('templates').insert(supabasePayload);
-        if (error) {
-          console.error('[API] Supabase insert error:', error);
-        } else {
-          console.log('[API] Supabase insert successful');
-        }
-      } catch (e) {
-        console.error('[API] Supabase insert exception:', e);
+      const { template } = req.body;
+      
+      if (!template) {
+        return res.status(400).json({ error: 'Template is required' });
       }
-      return res.json({ success: true, id: templateId, preview_url: cleanPreviewUrl, template: metadata });
-    } catch (saveError: any) {
-      return res.status(500).json({ success: false, error: saveError.message });
+
+      // 1. Generate unique ID
+      const templateId = crypto.randomUUID();
+
+      // 2. Process Images (Upload to Multi-service)
+      let finalImageUrl = template.preview_image || template.image_url || template.imageUrl || '';
+      let finalBannerUrl = template.banner_url || template.bannerUrl || finalImageUrl;
+      let finalGalleryImages = template.gallery_images || [];
+
+      // Upload main image
+      // Note: We use processUrlUpload but since it's not directly in api/index.ts, wait
+      if (finalImageUrl && finalImageUrl.startsWith('data:image')) {
+          const buffer = Buffer.from(finalImageUrl.split(',')[1], 'base64');
+          const ext = finalImageUrl.substring(finalImageUrl.indexOf('/') + 1, finalImageUrl.indexOf(';'));
+          const uploadRes = await processFileUpload(buffer, `preview.${ext}`, `image/${ext}`);
+          finalImageUrl = uploadRes.imageUrl;
+      }
+      
+      // Upload banner image
+      if (finalBannerUrl && finalBannerUrl.startsWith('data:image') && finalBannerUrl !== (template.preview_image || template.image_url || template.imageUrl)) {
+          const buffer = Buffer.from(finalBannerUrl.split(',')[1], 'base64');
+          const ext = finalBannerUrl.substring(finalBannerUrl.indexOf('/') + 1, finalBannerUrl.indexOf(';'));
+          const uploadRes = await processFileUpload(buffer, `banner.${ext}`, `image/${ext}`);
+          finalBannerUrl = uploadRes.imageUrl;
+      } else if (!finalBannerUrl || finalBannerUrl === template.preview_image || finalBannerUrl === template.image_url || finalBannerUrl === template.imageUrl) {
+        finalBannerUrl = finalImageUrl;
+      }
+
+      // Upload gallery images
+      if (Array.isArray(finalGalleryImages)) {
+        for (let i = 0; i < finalGalleryImages.length; i++) {
+          if (finalGalleryImages[i] && finalGalleryImages[i].startsWith('data:image')) {
+            const buffer = Buffer.from(finalGalleryImages[i].split(',')[1], 'base64');
+            const ext = finalGalleryImages[i].substring(finalGalleryImages[i].indexOf('/') + 1, finalGalleryImages[i].indexOf(';'));
+            const uploadRes = await processFileUpload(buffer, `gallery_${i}.${ext}`, `image/${ext}`);
+            finalGalleryImages[i] = uploadRes.imageUrl;
+          }
+        }
+      }
+
+      // 3. Process Source Code and Bundle Everything (Upload to Paste.rs)
+      let bundleUrl = '';
+      
+      // 4. Generate Clean Preview URL (mocked to just return the string if simple)
+      const cleanPreviewUrl = template.file_url || finalImageUrl || template.template_url;
+
+      const templateBundle = {
+        metadata: {
+          id: templateId,
+          title: template.title || template.name,
+          description: template.description || '',
+          tags: template.tags || [],
+          author: template.author_name || 'Anonymous',
+          category: template.category || 'Uncategorized',
+          price: template.price || 'Free',
+          created_at: new Date().toISOString(),
+        },
+        sourceCode: template.sourceCode || '',
+        demoLink: cleanPreviewUrl,
+        images: {
+          thumbnail: finalImageUrl,
+          banner: finalBannerUrl,
+          gallery: finalGalleryImages
+        }
+      };
+
+      try {
+          const bundleString = JSON.stringify(templateBundle);
+          const bundleBuffer = Buffer.from(bundleString, 'utf-8');
+          
+          if (telegramService.isConfigured()) {
+              console.log(`[Telegram Upload] Uploading template bundle for: ${template.title || template.name}`);
+              const tgUri = await telegramService.uploadDocument(bundleBuffer, `${templateId}.json`);
+              bundleUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+              console.log(`[Telegram Upload] Success: ${bundleUrl}`);
+          } else {
+              throw new Error("Telegram not configured");
+          }
+      } catch (tgError: any) {
+          console.warn(`[Telegram Upload] Failed (${tgError.message}), falling back to Paste.rs...`);
+          try {
+              console.log(`[Paste.rs Upload] Uploading template bundle for: ${template.title || template.name}`);
+              bundleUrl = await uploadToPasteRs(JSON.stringify(templateBundle));
+              console.log(`[Paste.rs Upload] Success: ${bundleUrl}`);
+          } catch (e: any) {
+              console.error("Paste.rs Upload Failed:", e.message);
+              throw new Error("Failed to upload template bundle to both Telegram and Paste.rs");
+          }
+      }
+
+      // 5. Host Name & Link data on Paste.rs as a dedicated record
+      let pasteRsHostUrl = '';
+      try {
+          const nameAndLinkData = {
+              name: template.title || template.name,
+              preview_link: cleanPreviewUrl,
+              download_link: bundleUrl || template.file_url,
+              image_link: finalImageUrl
+          };
+          console.log(`[Paste.rs Registry] Hosting strict Name & Links for: ${template.title || template.name}`);
+          pasteRsHostUrl = await uploadToPasteRs(JSON.stringify(nameAndLinkData, null, 2));
+          console.log(`[Paste.rs Registry] Success: ${pasteRsHostUrl}`);
+      } catch (e: any) {
+          console.error("Paste.rs Name/Link Host Failed:", e.message);
+      }
+
+      // 6. Create metadata object (pointing to the bundle)
+      const metadata = {
+        id: templateId,
+        title: template.title || template.name,
+        name: template.title || template.name,
+        description: template.description || '',
+        preview_url: cleanPreviewUrl,
+        thumbnail: finalImageUrl,
+        image_url: finalImageUrl,
+        image_preview: finalImageUrl,
+        banner_url: finalBannerUrl,
+        gallery_images: finalGalleryImages,
+        file_url: template.file_url || '',
+        paste_rs_link: pasteRsHostUrl, // Store the Paste.rs Name/Link host URL
+        source_code: bundleUrl, // Store the bundle URL here
+        tags: template.tags || [],
+        author: template.author_name || 'Anonymous',
+        creator: template.author_name || 'Anonymous',
+        author_name: template.author_name || 'Anonymous',
+        author_email: template.author_email || '',
+        creator_email: template.author_email || '',
+        author_avatar: template.author_avatar || '',
+        creator_avatar: template.author_avatar || '',
+        author_id: template.author_uid || template.author_id || '',
+        created_at: new Date().toISOString(),
+        category: template.category || 'Uncategorized',
+        price: template.price || 'Free',
+        views: 0,
+        likes: 0,
+        sales: 0,
+        earnings: 0,
+        status: template.status || 'approved',
+        is_bundle: true // Flag to indicate it's a bundle
+      };
+
+      // 6. Save to GitHub
+      try {
+        await repoManager.uploadTemplate(metadata as any);
+      } catch (repoErr: any) {
+        console.warn(`[API] Skipping GitHub save: ${repoErr.message}`);
+      }
+      try { await freeHostService.addTemplate(metadata as any); } catch(e) {}
+
+      // 7. Save to Supabase (CRITICAL for persistence on refresh)
+      try {
+        console.log(`[API] Attempting to save template ${templateId} to Supabase...`);
+        const { getSupabase } = await import('./services/supabaseService');
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+        if (supabaseUrl) {
+           const supabase = getSupabase();
+           await supabase.from('templates').insert({
+               ...metadata,
+               template_url: template.template_url || ''
+           } as any);
+           console.log(`[API] Successfully saved template ${templateId} to Supabase.`);
+        }
+      } catch (supabaseErr: any) {
+        console.error(`[API] Failed to save to Supabase: ${supabaseErr.message}`);
+      }
+      
+      return res.json({ 
+        success: true, 
+        id: templateId, 
+        preview_url: cleanPreviewUrl,
+        message: "Saved to GitHub successfully.",
+        template: { id: templateId, ...metadata }
+      });
+    } catch (error: any) {
+      console.error('API Error (Create Template):', error);
+      res.status(500).json({ error: error.message || 'Unknown error' });
     }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
 });
 
 app.put('/api/user/templates', async (req, res) => {
