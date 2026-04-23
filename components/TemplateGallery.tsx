@@ -26,6 +26,7 @@ interface TemplateGalleryProps {
   isLoggedIn: boolean; 
   currentUserId?: string;
   onDelete?: (id: string) => void;
+  onShowNotification: (message: string, type: NotificationType) => void;
 }
 
 type SortOption = 'newest' | 'popular' | 'likes';
@@ -44,7 +45,8 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     favoriteIds,
     isLoggedIn,
     currentUserId,
-    onDelete
+    onDelete,
+    onShowNotification
 }) => {
   const [activeFilter, setActiveFilter] = useState(initialCategory);
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,11 +55,10 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [isSearching, setIsSearching] = useState(false);
-  const [notification, setNotification] = useState<{message: string, type: NotificationType} | null>(null);
 
   const handleErrorReport = useCallback((msg: string) => {
-      setNotification({message: msg, type: 'error'});
-  }, []);
+      onShowNotification(msg, 'error');
+  }, [onShowNotification]);
 
   // Keyboard shortcut for search
   useEffect(() => {
@@ -558,15 +559,6 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         )}
       </div>
 
-      <AnimatePresence>
-          {notification && (
-              <Notification 
-                  message={notification.message}
-                  type={notification.type}
-                  onClose={() => setNotification(null)}
-              />
-          )}
-      </AnimatePresence>
     </section>
   );
 };

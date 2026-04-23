@@ -623,6 +623,7 @@ const App: React.FC = () => {
               onView={handleViewClick}
               onDelete={handleDeleteTemplate}
               onCreatorClick={handleOpenCreator}
+              onShowNotification={showNotification}
               likedIds={likedTemplateIds}
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}

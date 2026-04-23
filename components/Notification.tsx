@@ -33,9 +33,9 @@ const Notification: React.FC<NotificationProps> = ({ message, type = 'info', onC
   }, [message, type, onClose]);
 
   const styles = {
-      success: "from-emerald-900/90 to-emerald-950/90 border-emerald-500/30 text-emerald-200",
-      error: "from-red-900/90 to-red-950/90 border-red-500/30 text-red-200",
-      info: "from-blue-900/90 to-blue-950/90 border-blue-500/30 text-blue-200"
+      success: "from-emerald-950 to-emerald-950/95 border-emerald-500/40 text-emerald-100",
+      error: "from-red-950 to-red-950/95 border-red-500/40 text-red-100",
+      info: "from-blue-950 to-blue-950/95 border-blue-500/40 text-blue-100"
   };
 
   const icons = {
