@@ -97,10 +97,12 @@ const TagInput = ({ value, onChange, placeholder, maxTags = 5 }: { value: string
 
 const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading }: { file: File | null, onSelect: (f: File) => void, error?: boolean, type: 'image' | 'video', initialUrl?: string, isUploading?: boolean }) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const [loadError, setLoadError] = useState(false);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {
+            setLoadError(false); // Reset error on new select
             onSelect(selectedFile);
         }
     };
@@ -113,7 +115,7 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
             onClick={() => !isUploading && !file && !initialUrl && inputRef.current?.click()}
             className={`
                 group relative w-full aspect-video bg-[#121214] rounded-2xl border-2 border-dashed 
-                ${error ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#18181b]'} 
+                ${error || loadError ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 hover:border-blue-500/40 hover:bg-[#18181b]'} 
                 flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all duration-300
                 ${isUploading ? 'cursor-not-allowed' : ''}
             `}
@@ -135,8 +137,9 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                             src={previewSrc || undefined} 
                             alt="Preview" 
                             referrerPolicy="no-referrer"
-                            onError={(e) => { (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
-                            className="w-full h-full object-contain" 
+                            onError={(e) => { setLoadError(true); (e.target as HTMLImageElement).src = DEFAULT_VIDEO_THUMB; }}
+                            onLoad={() => setLoadError(false)}
+                            className={`w-full h-full object-contain ${loadError ? 'opacity-30' : ''}`} 
                         />
                     ) : (
                         <video 
@@ -146,9 +149,20 @@ const PreviewUploader = ({ file, onSelect, error, type, initialUrl, isUploading 
                             loop 
                             controls={!isUploading}
                             playsInline
+                            onError={() => setLoadError(true)}
+                            onLoadedData={() => setLoadError(false)}
                         />
                     )}
                     
+                    {/* Error Overlay */}
+                    {loadError && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 p-4 text-center">
+                            <XIcon className="w-8 h-8 text-red-500 mb-2" />
+                            <p className="text-sm font-bold text-red-100">Failed to load preview</p>
+                            <p className="text-[10px] text-red-300/60 mt-1 uppercase tracking-wider">Please try a different file</p>
+                        </div>
+                    )}
+
                     {/* Overlay Loading State */}
                     {isUploading && (
                         <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center">
