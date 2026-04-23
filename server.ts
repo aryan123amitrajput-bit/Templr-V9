@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import { createServer as createViteServer } from 'vite';
 import { uploadToImgBB } from './server/services/imgbbService';
 import { uploadToImgHippo } from './server/services/imghippoService';
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'url';
 import { repoManager, TemplateMetadata } from './server/services/repoService';
 import { freeHostService } from './server/services/freeHostService';
 import { traffService } from './server/services/traffService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadToSupabase } from './server/services/supabaseService';
 import { mapToTemplate } from './lib/mapping.ts';
 import admin from 'firebase-admin';
 import fs from 'fs';
@@ -418,6 +419,72 @@ async function startServer() {
         creators: backgroundWire.creators.length
       }
     });
+  });
+
+  // Temporary Migration Endpoint
+  app.post('/api/run-migration', async (req, res) => {
+      const { secret } = req.body;
+      if (secret !== process.env.MIGRATION_SECRET) {
+          return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      console.log('Starting migration...');
+      try {
+          const supabase = getSupabase();
+          const { data: templates, error } = await supabase.from('templates').select('id, image_url, banner_url, gallery_images');
+          
+          if (error) throw error;
+
+          const results = { successful: 0, failed: 0 };
+          for (const template of templates as any[]) {
+              const fields = ['image_url', 'banner_url', 'gallery_images'];
+              const updates: any = {};
+              let updated = false;
+
+              for (const field of fields) {
+                  let urls = template[field];
+                  if (!urls) continue;
+                  
+                  const urlArray = Array.isArray(urls) ? urls : [urls];
+                  const processedUrls = [];
+
+                  for (const url of urlArray) {
+                      if (typeof url !== 'string' || !url.includes('http') || url.includes('supabase.co')) {
+                          processedUrls.push(url);
+                          continue;
+                      }
+
+                      console.log(`Mirroring ${url} to Supabase...`);
+                      try {
+                          const response = await axios.get(url, { responseType: 'arraybuffer' });
+                          const buffer = Buffer.from(response.data);
+                          const fileName = `${template.id}/${field}/${Date.now()}_${Math.random()}.jpg`;
+                          
+                          const newUrl = await uploadToSupabase(buffer, fileName, 'image/jpeg');
+                          processedUrls.push(newUrl);
+                          updated = true;
+                      } catch (e: any) {
+                          console.error(`Failed to backup ${url}:`, e.message);
+                          processedUrls.push(url);
+                          results.failed++;
+                      }
+                  }
+
+                  if (updated) {
+                      updates[field] = Array.isArray(urls) ? processedUrls : processedUrls[0];
+                  }
+              }
+
+              if (updated) {
+                  await (supabase.from('templates') as any).update(updates).eq('id', template.id);
+                  results.successful++;
+              }
+          }
+          res.json({ status: 'Migration complete', results });
+      } catch (e: any) {
+          console.error('Migration failed:', e);
+          res.status(500).json({ error: e.message });
+      }
   });
 
   app.get('/api/sync-status', (req, res) => {

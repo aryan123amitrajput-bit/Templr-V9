@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
-import { getSupabase, getTemplates as getSupabaseTemplates, uploadPreviewImage } from '../server/services/supabaseService';
+import { getSupabase, getTemplates as getSupabaseTemplates, uploadToSupabase } from '../server/services/supabaseService';
 import { mapToTemplate } from '../lib/mapping';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
@@ -535,9 +535,19 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
 
+    type UploadResult = { imageUrl: string; hostUsed: string };
+    
+    // Return signature for dual upload result
+    type FinalUploadResult = { 
+        imageUrl: string; 
+        hostUsed: string; 
+        backupImageUrl?: string; 
+        backupHostUsed?: string 
+    };
+
     type UploadProvider = {
         name: string;
-        upload: () => Promise<{ imageUrl: string; hostUsed: string }>;
+        upload: () => Promise<UploadResult>;
     };
 
     const providers: UploadProvider[] = [];
@@ -572,8 +582,13 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     providers.push({
         name: 'ImgHippo',
         upload: async () => {
-            const result = await uploadToImgHippo(buffer, originalname);
-            return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+            try {
+                const result = await uploadToImgHippo(buffer, originalname);
+                return { imageUrl: result.direct_url, hostUsed: 'ImgHippo' };
+            } catch (e: any) {
+                console.error(`[Upload] ImgHippo failed: ${e.message}`);
+                throw new Error("ImgHippo failed");
+            }
         }
     });
 
@@ -610,7 +625,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     providers.push({
         name: 'Supabase',
         upload: async () => {
-            const url = await uploadPreviewImage(buffer, originalname, mimetype);
+            const url = await uploadToSupabase(buffer, originalname, mimetype);
             return { imageUrl: url, hostUsed: 'Supabase' };
         }
     });
@@ -618,21 +633,28 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     // Shuffle providers randomly
     const shuffledProviders = providers.sort(() => 0.5 - Math.random());
 
-    for (let i = 0; i < shuffledProviders.length; i++) {
+    const results: UploadResult[] = [];
+    for (let i = 0; i < shuffledProviders.length && results.length < 2; i++) {
         const provider = shuffledProviders[i];
         try {
             console.log(`[Upload] Attempting upload with ${provider.name}...`);
-            return await provider.upload();
+            const result = await provider.upload();
+            results.push(result);
         } catch (e: any) {
             console.warn(`[Upload] ${provider.name} failed:`, e.message);
-            if (i === shuffledProviders.length - 1) {
-                console.error('[Upload] All external hosts failed.');
-                throw new Error('Upload failed on all available external hosts.');
-            }
         }
     }
+
+    if (results.length === 0) {
+        throw new Error('Upload failed on all available external hosts.');
+    }
     
-    throw new Error('Upload failed on all available external hosts.');
+    return {
+        imageUrl: results[0].imageUrl,
+        hostUsed: results[0].hostUsed,
+        backupImageUrl: results[1]?.imageUrl,
+        backupHostUsed: results[1]?.hostUsed
+    };
 }
 
 // Upload File Proxy (New Workflow: ImgLink API for images, Supabase for videos)
@@ -655,10 +677,12 @@ app.post('/api/upload', (req, res, next) => {
     }
     console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}, Mime: ${file.mimetype}`);
 
-    const { imageUrl, hostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
+    const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
     console.log('[Upload] Host used:', hostUsed);
+    console.log('[Upload] Backup URL extracted:', backupImageUrl);
+    console.log('[Upload] Backup host used:', backupHostUsed);
 
     if (title) {
         console.log('[Upload] Saving to database...');
