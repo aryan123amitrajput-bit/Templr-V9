@@ -155,6 +155,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [isProxied, setIsProxied] = useState(false);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<any>(null); // Lottie ref
@@ -267,8 +268,14 @@ const CardContent: React.FC<TemplateCardProps> = ({
   }, [displayBanner]);
 
   const handleImageError = async (errorType: string) => {
+      if (!isProxied) {
+          console.warn(`[TemplateCard] ${errorType} failed, trying proxy...`);
+          setIsProxied(true);
+          return;
+      }
       setImageError(true);
       onErrorReport(`${errorType} failed for ${title}`);
+      // ... logging ...
       const errorContext = {
           id,
           title,
@@ -300,6 +307,10 @@ const CardContent: React.FC<TemplateCardProps> = ({
     hover: { y: -8, transition: { type: "spring", stiffness: 400, damping: 25 } }
   };
 
+  const finalBanner = isProxied 
+    ? `/api/proxy/image?url=${encodeURIComponent(signedBanner || displayBanner!)}` 
+    : (signedBanner || displayBanner!);
+
   return (
     <motion.div
       variants={cardVariants}
@@ -314,15 +325,15 @@ const CardContent: React.FC<TemplateCardProps> = ({
             <div className="absolute inset-0 z-0 bg-zinc-900">
                 {(signedBanner || displayBanner) && !imageError ? (
                     <img 
-                        key={signedBanner || displayBanner!}
-                        src={signedBanner || displayBanner!} 
+                        key={finalBanner}
+                        src={finalBanner} 
                         alt={`${title} - ${category} Landing Page Template Preview`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                             // Silently retry to avoid console spam
                             handleImageError('Image');
                         }}
-                        onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, signedBanner || displayBanner)}
+                        onLoad={() => console.log(`[TemplateCard] Loaded image for ${title}:`, finalBanner)}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                 ) : (

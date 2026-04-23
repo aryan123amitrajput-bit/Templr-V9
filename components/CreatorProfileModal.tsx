@@ -188,6 +188,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                                     onFavorite={() => onFavorite(template.id)}
                                     // Disable recursion
                                     onCreatorClick={() => {}}
+                                    onErrorReport={(msg) => console.log('Template Error:', msg)}
                                 />
                             </motion.div>
                         ))}

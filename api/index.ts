@@ -701,7 +701,13 @@ app.post('/api/upload', (req, res, next) => {
     }
 
     console.log('[Upload] Sending JSON response...');
-    res.json({ success: true, url: imageUrl, host: hostUsed });
+    res.json({ 
+        success: true, 
+        url: imageUrl, 
+        host: hostUsed,
+        backupUrl: backupImageUrl,
+        backupHost: backupHostUsed
+    });
   } catch (error: any) {
     console.error('Upload Error:', error);
     res.status(500).json({ error: error.message || 'Internal Server Error during upload' });
@@ -737,6 +743,22 @@ app.post('/api/upload/url', async (req, res) => {
     } catch (error: any) {
         console.error('URL Upload Error:', error);
         res.status(500).json({ error: error.message || 'Internal Server Error during URL upload' });
+    }
+});
+
+// Image Proxy to bypass hotlinking/CORS
+app.get('/api/proxy/image', async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) return res.status(400).json({ error: 'URL is required' });
+    
+    try {
+        console.log(`[Proxy] Fetching: ${imageUrl}`);
+        const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        res.set('Content-Type', response.headers['content-type'] || 'image/jpeg');
+        res.send(Buffer.from(response.data));
+    } catch (error: any) {
+        console.error('[Proxy] Error:', error.message);
+        res.status(500).json({ error: 'Failed to proxy image' });
     }
 });
 
