@@ -32,7 +32,12 @@ interface TemplateCardProps {
   onFavorite: (id: string) => void;
   onDelete?: (id: string) => void;
   onCreatorClick?: (authorName: string) => void;
+  onErrorReport: (msg: string) => void;
 }
+
+// ... CardContent props also needs onErrorReport ...
+// ... CardContent component also needs onErrorReport ...
+// ... handleImageError also needs to call onErrorReport ...
 
 // --- VIDEO CONCURRENCY CONTROLLER ---
 // Singleton manager to ensure only 3 videos play at once globally
@@ -144,7 +149,8 @@ const CardContent: React.FC<TemplateCardProps> = ({
   onLike,
   onFavorite,
   onDelete,
-  onCreatorClick
+  onCreatorClick,
+  onErrorReport
 }) => {
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -262,6 +268,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const handleImageError = async (errorType: string) => {
       setImageError(true);
+      onErrorReport(`${errorType} failed for ${title}`);
       const errorContext = {
           id,
           title,

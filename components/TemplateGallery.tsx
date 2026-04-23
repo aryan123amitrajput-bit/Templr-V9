@@ -7,6 +7,7 @@ import { SearchIcon, NoResultsIcon, XIcon, FilterIcon, SortIcon, ArrowRightIcon 
 import { ScrollReveal } from './ScrollReveal';
 import { BorderBeam } from './ui/BorderBeam';
 import { motion, AnimatePresence } from 'framer-motion';
+import Notification, { NotificationType } from './Notification';
 
 const filters = ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 'Blog'];
 
@@ -52,6 +53,11 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [isSearching, setIsSearching] = useState(false);
+  const [notification, setNotification] = useState<{message: string, type: NotificationType} | null>(null);
+
+  const handleErrorReport = useCallback((msg: string) => {
+      setNotification({message: msg, type: 'error'});
+  }, []);
 
   // Keyboard shortcut for search
   useEffect(() => {
@@ -517,6 +523,7 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
                             onFavorite={onFavorite}
                             onDelete={onDelete}
                             onCreatorClick={handleCreatorClick}
+                            onErrorReport={handleErrorReport}
                             author_uid={template.author_uid}
                             currentUserId={currentUserId}
                         />
@@ -550,6 +557,16 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
             </div>
         )}
       </div>
+
+      <AnimatePresence>
+          {notification && (
+              <Notification 
+                  message={notification.message}
+                  type={notification.type}
+                  onClose={() => setNotification(null)}
+              />
+          )}
+      </AnimatePresence>
     </section>
   );
 };
