@@ -1,0 +1,2 @@
+# Ignore the old services folder just in case it lingers on GitHub
+api/services/
