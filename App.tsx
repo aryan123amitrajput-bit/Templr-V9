@@ -94,6 +94,7 @@ const App: React.FC = () => {
 
   // --- DATA STATE ---
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [hasMoreTemplates, setHasMoreTemplates] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -179,7 +180,7 @@ const App: React.FC = () => {
   const loadTemplates = useCallback(async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      const { data, error } = await api.getPublicTemplates(0, 6);
+      const { data, hasMore, error } = await api.getPublicTemplates(0, 6);
       const msg = error?.toLowerCase() || '';
       if (error && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out')) && retryCount < 2) {
           console.warn(`Initial load failed, retrying... (${retryCount + 1})`);
@@ -187,6 +188,7 @@ const App: React.FC = () => {
           return;
       }
       setTemplates(data);
+      setHasMoreTemplates(hasMore !== undefined ? hasMore : true);
     } catch (e: any) {
       const msg = e.message?.toLowerCase() || '';
       if (retryCount < 2 && (msg.includes('fetch') || msg.includes('timeout') || msg.includes('timed out'))) {
@@ -612,6 +614,7 @@ const App: React.FC = () => {
           >
             <TemplateGallery 
               templates={templates}
+              initialHasMore={hasMoreTemplates}
               isLoading={isLoading}
               initialCategory={initialCategory}
               onMessageCreator={handleMessageCreator} 

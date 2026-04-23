@@ -12,6 +12,7 @@ const filters = ['All', 'Popular', 'Newest', 'Portfolio', 'E-commerce', 'SaaS', 
 
 interface TemplateGalleryProps {
   templates: Template[]; 
+  initialHasMore?: boolean;
   initialCategory?: string;
   onMessageCreator: (creatorName: string) => void;
   onView: (template: Template) => void;
@@ -30,6 +31,7 @@ type SortOption = 'newest' | 'popular' | 'likes';
 
 const TemplateGallery: React.FC<TemplateGalleryProps> = ({ 
     templates: initialTemplates,
+    initialHasMore,
     initialCategory = 'All',
     onMessageCreator, 
     onView, 
@@ -67,20 +69,23 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   // Real Data State
   const [data, setData] = useState<Template[]>(initialTemplates);
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(initialHasMore ?? true);
   const [isFetching, setIsFetching] = useState(false);
 
   // Sync initial templates if provided
   useEffect(() => {
-      if (initialTemplates) {
-          console.log(`[Gallery] Received ${initialTemplates.length} templates from parent`);
+      // Only sync if we are in the default unfiltered state, otherwise we overwrite user actions!
+      if (initialTemplates && page === 0 && activeFilter === 'All' && debouncedSearch === '' && sortBy === 'newest') {
+          console.log(`[Gallery] Received ${initialTemplates.length} templates from parent. HasMore: ${initialHasMore}`);
           setData(initialTemplates);
-          // If we receive a fresh batch (likely page 0), reset pagination state for consistency
+          if (initialHasMore !== undefined) {
+              setHasMore(initialHasMore);
+          }
           if (initialTemplates.length <= 6) {
               setPage(0);
           }
       }
-  }, [initialTemplates]);
+  }, [initialTemplates, initialHasMore, page, activeFilter, debouncedSearch, sortBy]);
 
   useEffect(() => {
     setActiveFilter(initialCategory);

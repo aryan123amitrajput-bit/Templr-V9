@@ -87,11 +87,40 @@ class TemplateWireCache {
             await this.wirePromise;
         }
         
-        // Only safely return cached wire if standard default request
-        if (this.isWired && page === 0 && (!category || category === 'All') && !reqSearch && sortBy === 'newest') {
+        // Only safely return cached wire if we are serving the default unfiltered list
+        if (this.isWired && (!category || category === 'All') && !reqSearch && sortBy === 'newest') {
+            const start = page * limit;
+            const end = start + limit;
+            
+            // If the start index goes beyond what we have in cache, 
+            // fallback to the true backend fetch to get the remaining items.
+            if (start >= this.cache.length) {
+                return null;
+            }
+            
+            const paginatedData = this.cache.slice(start, end);
+            
+            // If the cache only had 24 items, and we request items 18-24, 
+            // the paginated length is 6. `end < this.cache.length` would be 24 < 24 (false).
+            // But there might be millions of items on the actual server!
+            // We should only say `hasMore: false` if we actually fetched ALL items originally.
+            // For now, if we are near the end of the cache, we fallback to network for `hasMore` accuracy,
+            // or just always fall back to network if end >= cache length.
+            if (end > this.cache.length) {
+                return null;
+            }
+            
+            // Wait! If the cache *exactly* holds the items requested, we still don't know if the backend has more.
+            // If `end === this.cache.length`, we should let it through, but we MUST ensure `hasMore` is correct.
+            // Since we don't know the total size, it's safer to bypass cache for the page that ends at or past the cache boundary.
+            if (end >= this.cache.length && this.cache.length % limit === 0) {
+                // Return null to let the real API handle this boundary and provide the correct hasMore flag
+                return null;
+            }
+
             return {
-                data: this.cache,
-                hasMore: false,
+                data: paginatedData,
+                hasMore: true, // We know there are more or we would have bypassed above
                 fromWire: true
             };
         }
