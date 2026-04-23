@@ -1400,6 +1400,11 @@ app.post('/api/templates', async (req, res) => {
         return res.status(400).json({ error: 'Template is required' });
       }
 
+      // Check if template title is pure numbers or "anonymous" using our unified logic
+      if (!isValidTemplate(template)) {
+        return res.status(400).json({ error: 'Templates with purely numeric titles or anonymous placeholders are not allowed.' });
+      }
+
       // 1. Generate unique ID
       const templateId = crypto.randomUUID();
 

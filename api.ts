@@ -13,6 +13,25 @@ import { mapToTemplate, Template } from './lib/mapping';
 
 export type { Template };
 
+/**
+ * Ensures numeric-only templates and anonymous spam do not reach the UI 
+ */
+function isClientValidTemplate(t: any): boolean {
+  if (!t) return false;
+  const rawTitle = t.title || t.name;
+  if (!rawTitle) return false;
+  
+  const title = String(rawTitle).trim();
+  if (!title) return false;
+
+  const noSpace = title.replace(/\s/g, '');
+  if (/^\d+$/.test(noSpace)) return false; // purely numbers 
+
+  const tLower = title.toLowerCase();
+  if (tLower.includes('anonymous upload') || tLower.includes('anaoums') || tLower === 'anonymous') return false;
+
+  return true;
+}
 
 // ==========================================
 //   TEMPLR PRODUCTION ENGINE v10.0 (GITHUB)
@@ -41,7 +60,7 @@ class TemplateWireCache {
                 if (initialRes && initialRes.ok) {
                     const data = await initialRes.json();
                     if (data && data.data && data.data.length > 0) {
-                        this.cache = data.data;
+                        this.cache = data.data.filter(isClientValidTemplate);
                         this.isWired = true;
                         console.log(`[TemplateWire] ⚡ Successfully locked memory to ${this.cache.length} templates instantly.`);
                         return;
@@ -58,7 +77,7 @@ class TemplateWireCache {
                     if (ghRes.ok) {
                         const ghData = await ghRes.json();
                         if (ghData && Array.isArray(ghData) && ghData.length > 0) {
-                            this.cache = ghData;
+                            this.cache = ghData.filter(isClientValidTemplate);
                             this.isWired = true;
                             console.log(`[TemplateWire] 🌍 Client-Side GitHub Wire linked to ${this.cache.length} templates.`);
                             return;
@@ -71,7 +90,7 @@ class TemplateWireCache {
                 if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY) {
                    const { data, error } = await supabase.from('templates').select('*').order('created_at', { ascending: false }).limit(24);
                    if (!error && data) {
-                       this.cache = data;
+                       this.cache = data.filter(isClientValidTemplate);
                        this.isWired = true;
                        console.log(`[TemplateWire] 🌍 Client-Side Supabase Wire linked to ${this.cache.length} templates.`);
                    }
@@ -405,8 +424,9 @@ export const getPublicTemplates = async (
                     
                     const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
                     if (!error && data) {
+                        const validData = data.filter(isClientValidTemplate);
                         return { 
-                            data: data.map(t => mapToTemplate(t)), 
+                            data: validData.map(t => mapToTemplate(t)), 
                             hasMore: (count || 0) > (page + 1) * limitNum 
                         };
                     }
@@ -418,10 +438,10 @@ export const getPublicTemplates = async (
                     const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
                     if (ghRes.ok) {
                         const ghData = (await ghRes.json()) || [];
-                        let filtered = [...ghData];
+                        let filtered = ghData.filter(isClientValidTemplate);
                         
                         if (category && category !== 'All') {
-                            filtered = filtered.filter(t => t.category === category);
+                            filtered = filtered.filter((t: any) => t.category === category);
                         }
                         if (searchQuery) {
                             const sq = searchQuery.toLowerCase();
@@ -463,7 +483,7 @@ export const getPublicTemplates = async (
              console.error("[API] Invalid response structure:", result);
              return { data: [], hasMore: false, error: "Invalid response from server" };
         }
-        const data = result.data.map((t: any) => mapToTemplate(t));
+        const data = result.data.filter(isClientValidTemplate).map((t: any) => mapToTemplate(t));
         return { data, hasMore: result.hasMore };
     } catch (e: any) {
         console.error("Error fetching public templates:", e);
@@ -620,6 +640,10 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
         upload_host: templateData.uploadHost,
         author_uid: currentUser.uid
     };
+
+    if (!isClientValidTemplate(templatePayload)) {
+         throw new Error("Templates with purely numeric titles or anonymous placeholders are not allowed.");
+    }
 
     try {
         const response = await fetch('/api/templates', {
