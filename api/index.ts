@@ -36,6 +36,26 @@ function mapSupabaseToTemplate(t: any) {
   return mapToTemplate(t);
 }
 
+/**
+ * Filters out anonymous structural junk uploads.
+ */
+function isValidTemplate(t: any): boolean {
+  if (!t) return false;
+  const rawTitle = t.title || t.name;
+  if (!rawTitle) return false;
+  
+  const title = String(rawTitle).trim();
+  if (!title) return false;
+
+  const noSpace = title.replace(/\s/g, '');
+  if (/^\d+$/.test(noSpace)) return false; // purely numbers 
+
+  const tLower = title.toLowerCase();
+  if (tLower.includes('anonymous upload') || tLower.includes('anaoums') || tLower === 'anonymous') return false;
+
+  return true;
+}
+
 // --- BACKGROUND CACHE WIRE ---
 // Constantly caches standard template requests to return INSTANTLY on trigger
 class CacheWire {
@@ -111,7 +131,7 @@ class CacheWire {
         if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, { ...t, _source: 'supabase' });
       });
 
-      let freshRegistry = Array.from(templatesMap.values());
+      let freshRegistry = Array.from(templatesMap.values()).filter(isValidTemplate);
       const deletedIds = new Set((deletedTemplatesData || []).map((t: any) => t.id));
       freshRegistry = freshRegistry.filter((t: any) => !deletedIds.has(t.id));
       
@@ -1129,7 +1149,7 @@ app.get('/api/templates', async (req, res) => {
 
       const templatesMap = new Map();
       [...(gitRegistry || []), ...(supabaseData || []), ...(freeTemplates || []), ...(tgTemplates || [])].forEach((t: any) => {
-        if (t && t.id && !templatesMap.has(t.id)) templatesMap.set(t.id, t);
+        if (t && t.id && !templatesMap.has(t.id) && isValidTemplate(t)) templatesMap.set(t.id, t);
       });
       registry = Array.from(templatesMap.values());
     }
