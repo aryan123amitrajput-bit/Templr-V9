@@ -383,10 +383,37 @@ export const getPublicTemplates = async (
         if (!response.ok) {
             console.warn(`[API] HTTP error ${response.status} for ${url}`);
             // FALLBACK FOR STATIC DEPLOYMENTS (Cloudflare/Vercel)
-            // If the /api endpoint is not found, fallback to direct GitHub CDN, then Supabase
-            if (response.status === 404) {
-                console.warn("[Templates] API not found (404). Falling back to CDN/Supabase...");
+            // If the /api endpoint is not found or crashing, fallback to direct GitHub CDN, then Supabase
+            if (response.status === 404 || response.status >= 500) {
+                console.warn(`[Templates] API returned ${response.status}. Falling back to CDN/Supabase...`);
                 
+                try {
+                    let query = supabase.from('templates').select('*', { count: 'exact' }).eq('status', 'approved');
+                    
+                    if (category && category !== 'All') {
+                        query = query.eq('category', category);
+                    }
+                    if (searchQuery) {
+                        query = query.or(`title.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,creator.ilike.%${searchQuery}%`);
+                    }
+                    
+                    if (sortBy === 'popular' || sortBy === 'likes') {
+                        query = query.order('likes', { ascending: false });
+                    } else {
+                        query = query.order('created_at', { ascending: false });
+                    }
+                    
+                    const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
+                    if (!error && data) {
+                        return { 
+                            data: data.map(t => mapToTemplate(t)), 
+                            hasMore: (count || 0) > (page + 1) * limitNum 
+                        };
+                    }
+                } catch (sbErr) {
+                    console.error("[Supabase Fallback] Error:", sbErr);
+                }
+
                 try {
                     const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
                     if (ghRes.ok) {
@@ -427,34 +454,6 @@ export const getPublicTemplates = async (
                 } catch (ghErr) {
                     console.warn("[Templates] GitHub CDN fallback failed", ghErr);
                 }
-
-                if (import.meta.env.VITE_SUPABASE_URL) {
-                    let query = supabase.from('templates').select('*', { count: 'exact' });
-                    
-                    if (category && category !== 'All') {
-                        query = query.eq('category', category);
-                    }
-                    if (searchQuery) {
-                        query = query.or(`title.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,author_name.ilike.%${searchQuery}%,creator.ilike.%${searchQuery}%`);
-                    }
-                    
-                    if (sortBy === 'popular' || sortBy === 'likes') {
-                        query = query.order('likes', { ascending: false });
-                    } else {
-                        query = query.order('created_at', { ascending: false });
-                    }
-                    
-                    const { data, count, error } = await query.range(page * limitNum, (page + 1) * limitNum - 1);
-                    if (error) {
-                        console.error("[Supabase Fallback] Error:", error);
-                        throw error;
-                    }
-                    
-                    return { 
-                        data: (data || []).map(t => mapToTemplate(t)), 
-                        hasMore: (count || 0) > (page + 1) * limitNum 
-                    };
-                }
             }
             throw new Error(`Failed to fetch templates: ${response.status}`);
         }
@@ -477,7 +476,7 @@ export const getTemplateById = async (id: string): Promise<Template | null> => {
         const response = await fetch(`/api/templates/${id}`);
         if (!response.ok) {
             // FALLBACK
-            if (response.status === 404) {
+            if (response.status === 404 || response.status >= 500) {
                 try {
                     const ghRes = await fetch('https://cdn.jsdelivr.net/gh/templr-app/templates/registry.json');
                     if (ghRes.ok) {
@@ -628,7 +627,28 @@ export const addTemplate = async (templateData: NewTemplateData, user?: Session[
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ template: templatePayload })
         });
-        if (!response.ok) throw new Error("Failed to add template");
+        
+        if (!response.ok) {
+            // If backend fails on Vercel, fallback directly to Supabase insertion
+            if (response.status >= 500 || response.status === 404 || response.status === 413) {
+                 console.warn("[AddTemplate] Backend failed, inserting directly to Supabase...");
+                 const dbPayload = {
+                    ...templatePayload,
+                    file_url: templatePayload.file_url || templatePayload.template_url,
+                    image_url: templatePayload.preview_image
+                 };
+                 const { data: sbData, error: sbError } = await supabase
+                     .from('templates')
+                     .insert([dbPayload])
+                     .select()
+                     .single();
+                 
+                 if (sbError) throw sbError;
+                 if (sbData) return mapToTemplate(sbData);
+            }
+            throw new Error(`Failed to add template: ${response.status}`);
+        }
+        
         const result = await response.json();
         return mapToTemplate(result.template);
     } catch (error: any) {
@@ -839,6 +859,19 @@ export const uploadFile = async (file: File, path: string): Promise<{ url: strin
             });
 
             if (!response.ok) {
+                // If backend fails on Vercel (e.g. payload too large), fallback directly to Supabase!
+                if (response.status === 413 || response.status >= 500 || response.status === 404) {
+                     console.warn("[Upload] Backend failed, bypassing backend directly to Supabase assets...");
+                     const uploadPromise = supabase.storage.from('assets').upload(safePath, file, { 
+                         upsert: true,
+                         contentType: file.type || 'application/octet-stream'
+                     });
+                     const { error } = await uploadPromise;
+                     if (error) throw error;
+                     const { data } = supabase.storage.from('assets').getPublicUrl(safePath);
+                     return { url: fixUrl(data.publicUrl), host: 'Supabase' };
+                }
+                
                 const contentType = response.headers.get("content-type");
                 if (contentType && contentType.includes("application/json")) {
                     const errorData = await response.json();

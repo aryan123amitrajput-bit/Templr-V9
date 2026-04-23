@@ -2,23 +2,23 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
-import { createServer as createViteServer } from 'vite';
-import { getSupabase, getTemplates as getSupabaseTemplates } from './services/supabaseService';
-import { mapToTemplate } from '../lib/mapping.ts';
-import { uploadToImgBB } from './services/imgbbService';
-import { uploadToImgHippo } from './services/imghippoService';
-import { uploadToGifyu } from './services/gifyuService';
-import { uploadToCatbox } from './services/catboxService';
-import { uploadToBeeIMG } from './services/beeimgService';
-import { telegramService } from './services/telegramService';
+import { getSupabase, getTemplates as getSupabaseTemplates, uploadPreviewImage } from '../server/services/supabaseService';
+import { mapToTemplate } from '../lib/mapping';
+import { uploadToImgBB } from '../server/services/imgbbService';
+import { uploadToImgHippo } from '../server/services/imghippoService';
+import { uploadToGifyu } from '../server/services/gifyuService';
+import { uploadToCatbox, urlUploadToCatbox, deleteFromCatbox, createCatboxAlbum, editCatboxAlbum, addToCatboxAlbum, removeFromCatboxAlbum, deleteCatboxAlbum } from '../server/services/catboxService';
+import { uploadToBeeIMG } from '../server/services/beeimgService';
+import { uploadToUguu } from '../server/services/uguuService';
+import { telegramService } from '../server/services/telegramService';
 import { Octokit } from '@octokit/rest';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager } from './services/repoService';
-import { uploadToPasteRs } from './services/pasteService';
-import { freeHostService } from './services/freeHostService';
-import { traffService } from './services/traffService';
-import { templrAuditor } from './services/templrAuditor';
+import { repoManager } from '../server/services/repoService';
+import { uploadToPasteRs } from '../server/services/pasteService';
+import { freeHostService } from '../server/services/freeHostService';
+import { traffService } from '../server/services/traffService';
+import { templrAuditor } from '../server/services/templrAuditor';
 import admin from 'firebase-admin';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -569,7 +569,6 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     providers.push({
         name: 'Uguu',
         upload: async () => {
-            const { uploadToUguu } = await import('./services/uguuService');
             const result = await uploadToUguu(buffer, originalname, mimetype);
             return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
         }
@@ -590,7 +589,6 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     providers.push({
         name: 'Supabase',
         upload: async () => {
-            const { uploadPreviewImage } = await import('./services/supabaseService');
             const url = await uploadPreviewImage(buffer, originalname, mimetype);
             return { imageUrl: url, hostUsed: 'Supabase' };
         }
@@ -732,7 +730,6 @@ app.post('/api/catbox/urlupload', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL is required' });
     
     const userhash = process.env.CATBOX_USERHASH || '';
-    const { urlUploadToCatbox } = await import('./services/catboxService');
     const result = await urlUploadToCatbox(url, userhash);
     res.json(result);
   } catch (error: any) {
@@ -750,7 +747,6 @@ app.post('/api/catbox/deletefiles', async (req, res) => {
     const userhash = process.env.CATBOX_USERHASH;
     if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is not configured on the server' });
     
-    const { deleteFromCatbox } = await import('./services/catboxService');
     const result = await deleteFromCatbox(files, userhash);
     res.json({ success: true, result });
   } catch (error: any) {
@@ -772,7 +768,6 @@ app.post('/api/catbox/album/:action', async (req, res) => {
       addToCatboxAlbum, 
       removeFromCatboxAlbum, 
       deleteCatboxAlbum 
-    } = await import('./services/catboxService');
 
     let result;
     switch (action) {
@@ -1009,7 +1004,6 @@ app.post('/api/upload/beeimg', (req, res, next) => {
       return res.status(400).json({ error: "file is required" });
     }
 
-    const { uploadToBeeIMG } = await import('./services/beeimgService');
     const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
     const directUrl = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
     
@@ -1324,7 +1318,6 @@ app.get('/api/templates/:id', async (req, res) => {
     
     // 3. Try Supabase
     if (!template) {
-      const { getTemplates } = await import('./services/supabaseService');
       const supabaseTemplates = await getTemplates();
       const found = supabaseTemplates.find((t: any) => t.id === id);
       if (found) {
@@ -1545,7 +1538,6 @@ app.post('/api/templates', async (req, res) => {
       // 7. Save to Supabase (CRITICAL for persistence on refresh)
       try {
         console.log(`[API] Attempting to save template ${templateId} to Supabase...`);
-        const { getSupabase } = await import('./services/supabaseService');
         const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
         if (supabaseUrl) {
            const supabase = getSupabase();
@@ -1676,34 +1668,10 @@ app.get('/api/wire', async (req, res) => {
     });
 });
 
-// For local development
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-  const PORT = 3000;
-  const startServer = async () => {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-    app.use(errorHandler);
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  };
-  startServer();
-} else if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
-  // Production standalone (not Vercel)
-  const PORT = 3000;
-  const distPath = path.resolve(__dirname, '..', 'dist');
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      if (req.url.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
-  }
-  app.use(errorHandler);
-  app.listen(PORT, '0.0.0.0');
-}
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 export default app;

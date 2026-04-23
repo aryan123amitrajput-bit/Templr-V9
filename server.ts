@@ -2,21 +2,21 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
-import { uploadToImgBB } from './api/services/imgbbService';
-import { uploadToImgHippo } from './api/services/imghippoService';
-import { uploadToGifyu } from './api/services/gifyuService';
-import { uploadToCatbox } from './api/services/catboxService';
-import { uploadToBeeIMG } from './api/services/beeimgService';
-import { uploadToUguu } from './api/services/uguuService';
-import { uploadToPasteRs } from './api/services/pasteService';
-import { telegramService } from './api/services/telegramService';
+import { uploadToImgBB } from './server/services/imgbbService';
+import { uploadToImgHippo } from './server/services/imghippoService';
+import { uploadToGifyu } from './server/services/gifyuService';
+import { uploadToCatbox } from './server/services/catboxService';
+import { uploadToBeeIMG } from './server/services/beeimgService';
+import { uploadToUguu } from './server/services/uguuService';
+import { uploadToPasteRs } from './server/services/pasteService';
+import { telegramService } from './server/services/telegramService';
 import { Octokit } from '@octokit/rest';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { repoManager, TemplateMetadata } from './api/services/repoService';
-import { freeHostService } from './api/services/freeHostService';
-import { traffService } from './api/services/traffService';
-import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './api/services/supabaseService';
+import { repoManager, TemplateMetadata } from './server/services/repoService';
+import { freeHostService } from './server/services/freeHostService';
+import { traffService } from './server/services/traffService';
+import { getTemplates as getSupabaseTemplates, deleteTemplate as deleteSupabaseTemplate, getUserTemplates as getSupabaseUserTemplates, updateUser as updateSupabaseUser, getSupabase, addTemplate as addSupabaseTemplate, uploadPreviewImage as uploadToSupabase } from './server/services/supabaseService';
 import { mapToTemplate } from './lib/mapping.ts';
 import admin from 'firebase-admin';
 import fs from 'fs';
@@ -1106,7 +1106,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   app.delete('/api/admin/templates/supabase', async (req, res) => {
     try {
       // In a real app, verify admin auth here
-      const { deleteAllTemplates } = await import('./api/services/supabaseService');
+      const { deleteAllTemplates } = await import('./server/services/supabaseService');
       await deleteAllTemplates();
       res.json({ success: true, message: 'All Supabase templates deleted' });
     } catch (error: any) {
