@@ -2,10 +2,10 @@ import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { uploadToImgBB } from '../api/services/imgbbService';
-import { uploadToGifyu } from '../api/services/gifyuService';
-import { uploadToImgHippo } from '../api/services/imghippoService';
-import { uploadToCatbox } from '../api/services/catboxService';
+import { uploadToImgBB } from './services/imgbbService';
+import { uploadToGifyu } from './services/gifyuService';
+import { uploadToImgHippo } from './services/imghippoService';
+import { uploadToCatbox } from './services/catboxService';
 
 // Load environment variables
 dotenv.config();

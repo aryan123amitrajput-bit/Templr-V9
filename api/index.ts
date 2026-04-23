@@ -762,13 +762,6 @@ app.post('/api/catbox/album/:action', async (req, res) => {
     const { title, desc, files, short } = req.body;
     const userhash = process.env.CATBOX_USERHASH || '';
     
-    const { 
-      createCatboxAlbum, 
-      editCatboxAlbum, 
-      addToCatboxAlbum, 
-      removeFromCatboxAlbum, 
-      deleteCatboxAlbum 
-
     let result;
     switch (action) {
       case 'create':
@@ -1318,7 +1311,7 @@ app.get('/api/templates/:id', async (req, res) => {
     
     // 3. Try Supabase
     if (!template) {
-      const supabaseTemplates = await getTemplates();
+      const supabaseTemplates = await getSupabaseTemplates();
       const found = supabaseTemplates.find((t: any) => t.id === id);
       if (found) {
         template = mapSupabaseToTemplate(found);

@@ -27,5 +27,13 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "working-repo-temp",
+    "scripts",
+    "test-*.ts",
+    "test_*.ts",
+    "backup",
+    "dist"
+  ]
 }
