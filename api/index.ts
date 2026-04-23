@@ -42,16 +42,17 @@ function mapSupabaseToTemplate(t: any) {
 function isValidTemplate(t: any): boolean {
   if (!t) return false;
   const rawTitle = t.title || t.name;
-  if (!rawTitle) return false;
   
-  const title = String(rawTitle).trim();
-  if (!title) return false;
-
-  const noSpace = title.replace(/\s/g, '');
-  if (/^\d+$/.test(noSpace)) return false; // purely numbers 
-
-  const tLower = title.toLowerCase();
-  if (tLower.includes('anonymous upload') || tLower.includes('anaoums') || tLower === 'anonymous') return false;
+  if (rawTitle) {
+      const title = String(rawTitle).trim();
+      if (title.length > 0) {
+          const noSpace = title.replace(/\s/g, '');
+          if (/^\d+$/.test(noSpace)) return false; // purely numbers 
+        
+          const tLower = title.toLowerCase();
+          if (tLower.includes('anonymous upload') || tLower.includes('anaoums') || tLower === 'anonymous') return false;
+      }
+  }
 
   return true;
 }
