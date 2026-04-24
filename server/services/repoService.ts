@@ -199,18 +199,48 @@ export class RepoManager {
         return [];
       }
     } else {
-      // GitLab Raw URL
-      const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json/raw?ref=main`;
-      try {
-        const response = await fetch(url, {
-          headers: { 'PRIVATE-TOKEN': repo.token }
-        });
-        if (response.ok) {
-          data = await response.json();
-        } else if (response.status === 404) {
-          data = [];
-        } else {
+      // GitLab fetch logic
+      const tryFetch = async (useToken: boolean): Promise<TemplateMetadata[] | null> => {
+        const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/registry.json/raw?ref=main`;
+        try {
+          const headers: any = {};
+          if (useToken && repo.token) {
+            headers['PRIVATE-TOKEN'] = repo.token;
+          }
+          const response = await fetch(url, { headers });
+          if (response.ok) {
+            return await response.json();
+          }
+          if (response.status === 404) {
+            return [];
+          }
+          if (response.status === 401 || response.status === 403) {
+            return null; // Signals unauthorized
+          }
           throw new Error(`GitLab error: ${response.statusText}`);
+        } catch (e) {
+          if (useToken) return null;
+          throw e;
+        }
+      };
+
+      try {
+        // Try with token first
+        let result = await tryFetch(true);
+        if (result === null) {
+          // If unauthorized, try without token (public raw URL)
+          const publicUrl = `https://gitlab.com/${repo.projectId}/-/raw/main/registry.json`;
+          const pubRes = await fetch(publicUrl);
+          if (pubRes.ok) {
+            data = await pubRes.json();
+          } else if (pubRes.status === 404) {
+            data = [];
+          } else {
+            console.error(`GitLab public registry fetch failed for ${cacheKey}: ${pubRes.statusText}`);
+            return [];
+          }
+        } else {
+          data = result;
         }
       } catch (e) {
         console.error(`GitLab registry fetch error for ${cacheKey}:`, e);
@@ -385,12 +415,26 @@ export class RepoManager {
             continue;
           }
         } else {
+          const filePath = `templates/${templateId}.json`;
           const url = `https://gitlab.com/api/v4/projects/${encodeURIComponent(repo.projectId!)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=main`;
-          const response = await fetch(url, {
-            headers: { 'PRIVATE-TOKEN': repo.token }
-          });
-          if (response.ok) {
-            return await response.json();
+          try {
+            const headers: any = {};
+            if (repo.token) headers['PRIVATE-TOKEN'] = repo.token;
+            
+            const response = await fetch(url, { headers });
+            if (response.ok) {
+              return await response.json();
+            }
+            if (response.status === 401 || response.status === 403) {
+              // Try public URL
+              const publicUrl = `https://gitlab.com/${repo.projectId}/-/raw/main/${filePath}`;
+              const pubRes = await fetch(publicUrl);
+              if (pubRes.ok) {
+                return await pubRes.json();
+              }
+            }
+          } catch (e) {
+            console.error(`GitLab template fetch failed for ${templateId}:`, e);
           }
         }
       }

@@ -314,8 +314,8 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
                 const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
                 return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
             } catch (e: any) {
-                // Ignore 412 or Cloudflare blocks on Catbox
-                throw new Error("Catbox failed");
+                console.error(`[Upload] Catbox failed: ${e.message}`);
+                throw new Error(`Catbox failed: ${e.message}`);
             }
         }
     });
@@ -506,38 +506,17 @@ async function startServer() {
       
       const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
       
-      // Stream the file from Telegram to the client
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Telegram responded with ${response.status}`);
-      }
+      const r = await axios({
+        method: 'GET',
+        url: downloadUrl,
+        responseType: 'stream'
+      });
       
-      // Pass headers from Telegram
-      const contentType = response.headers.get('content-type');
-      const contentLength = response.headers.get('content-length');
-      
-      if (contentType) res.setHeader('Content-Type', contentType);
-      if (contentLength) res.setHeader('Content-Length', contentLength);
-      
-      // Cache the file for 24 hours
+      if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
+      if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      if (response.body) {
-        // Node 18+ fetch response.body is a ReadableStream
-        // We can use stream.pipeline or just pipe if it's a node-fetch stream
-        // Since we are in express, we can pipe the web stream to the node stream
-        const readableWebStream = response.body as any;
-        const reader = readableWebStream.getReader();
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        res.end();
-      } else {
-        res.status(500).json({ error: 'No response body from Telegram' });
-      }
+      r.data.pipe(res);
     } catch (error: any) {
       console.error('[Telegram Proxy] Error:', error.message);
       res.status(500).json({ error: 'Failed to fetch file from Telegram' });

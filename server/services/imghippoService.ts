@@ -18,7 +18,7 @@ export const uploadToImgHippo = async (buffer: Buffer, originalName: string, api
     if (!key) throw new Error('IMGHIPPO_API_KEY missing');
 
     const formData = new FormData();
-    formData.append('image', buffer.toString('base64'));
+    formData.append('image', buffer, { filename: originalName });
     formData.append('api_key', key);
 
     const response = await client.post('https://api.imghippo.com/v1/upload', formData, {

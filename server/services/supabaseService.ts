@@ -35,7 +35,8 @@ export function getSupabase() {
  */
 export async function uploadToSupabase(fileBuffer: Buffer, fileName: string, mimetype: string): Promise<string> {
   const supabase = getSupabase();
-  const bucketName = process.env.SUPABASE_BUCKET || 'templates';
+  const bucketName = (process.env.SUPABASE_BUCKET && process.env.SUPABASE_BUCKET.trim()) || 'templates';
+  console.log(`[Supabase] Using bucket: "${bucketName}"`);
   
   const filePath = `previews/${fileName}`;
 

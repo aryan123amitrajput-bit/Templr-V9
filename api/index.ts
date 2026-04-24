@@ -572,8 +572,8 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
                 const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
                 return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
             } catch (e: any) {
-                // Ignore 412 or Cloudflare blocks on Catbox
-                throw new Error("Catbox failed");
+                console.error(`[Upload] Catbox failed: ${e.message}`);
+                throw new Error(`Catbox failed: ${e.message}`);
             }
         }
     });
@@ -1684,37 +1684,17 @@ app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
       
       const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
       
-      const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error(`Telegram responds with ${response.status}`);
+      const r = await axios({
+          method: 'GET',
+          url: downloadUrl,
+          responseType: 'stream'
+      });
       
-      const contentType = response.headers.get('content-type');
-      const contentLength = response.headers.get('content-length');
-      
-      if (contentType) res.setHeader('Content-Type', contentType);
-      if (contentLength) res.setHeader('Content-Length', contentLength);
-      
+      if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
+      if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      if (response.body) {
-        const readable = (response.body as any);
-        if (readable.pipe) {
-            readable.pipe(res);
-        } else {
-            const reader = readable.getReader();
-            const pump = async () => {
-                const { done, value } = await reader.read();
-                if (done) {
-                    res.end();
-                    return;
-                }
-                res.write(value);
-                await pump();
-            };
-            await pump();
-        }
-      } else {
-        res.status(404).end();
-      }
+      r.data.pipe(res);
     } catch (error: any) {
       console.error('[API] Telegram proxy error:', error);
       res.status(500).json({ error: error.message });
