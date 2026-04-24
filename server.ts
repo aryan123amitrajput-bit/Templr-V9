@@ -270,14 +270,18 @@ async function processUrlUpload(url: string): Promise<string> {
         const contentType = response.headers.get('content-type') || 'image/jpeg';
         const originalName = url.split('/').pop()?.split('?')[0] || 'image.jpg';
         
-        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
-        console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}`);
+        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType);
+        console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}, Backup Host: ${backupHostUsed}, Backup URL: ${backupImageUrl}`);
         return imageUrl;
     } catch (error: any) {
         console.error(`[Url Upload] Failed to process URL ${url}:`, error.message);
         return url; // Fallback to original URL
     }
 }
+
+// LRU Strategy configuration
+const hostUsageRecord: Record<string, number> = {};
+let hostUsageCounter = 0;
 
 /**
  * Upload logic using external hosting only (Requested by user).
@@ -367,24 +371,41 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Shuffle providers randomly
-    const shuffledProviders = providers.sort(() => 0.5 - Math.random());
+    // Order providers by Least Recently Used (LRU)
+    const sortedProviders = providers.sort((a, b) => {
+        const usageA = hostUsageRecord[a.name] || 0;
+        const usageB = hostUsageRecord[b.name] || 0;
+        return usageA - usageB;
+    });
 
-    for (let i = 0; i < shuffledProviders.length; i++) {
-        const provider = shuffledProviders[i];
+    const results: any[] = [];
+    for (let i = 0; i < sortedProviders.length && results.length < 2; i++) {
+        const provider = sortedProviders[i];
+        
+        // Update the LRU counter to mark as recently used (moves to the back of the queue)
+        hostUsageCounter++;
+        hostUsageRecord[provider.name] = hostUsageCounter;
+        
         try {
-            console.log(`[Upload] Attempting upload with ${provider.name}...`);
-            return await provider.upload();
+            console.log(`[Upload] Attempting upload with ${provider.name} (LRU turn: ${hostUsageRecord[provider.name]})...`);
+            const result = await provider.upload();
+            results.push(result);
         } catch (e: any) {
             console.warn(`[Upload] ${provider.name} failed:`, e.message);
-            if (i === shuffledProviders.length - 1) {
-                console.error('[Upload] All external hosts failed.');
-                throw new Error('Upload failed on all available external hosts.');
-            }
         }
     }
+
+    if (results.length === 0) {
+        console.error('[Upload] All external hosts failed.');
+        throw new Error('Upload failed on all available external hosts.');
+    }
     
-    throw new Error('Upload failed on all available external hosts.');
+    return {
+        imageUrl: results[0].imageUrl,
+        hostUsed: results[0].hostUsed,
+        backupImageUrl: results[1]?.imageUrl,
+        backupHostUsed: results[1]?.hostUsed
+    };
 }
 
 async function startServer() {
@@ -634,10 +655,10 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const originalName = filePath.split('/').pop() || 'upload';
       console.log(`[Proxy Upload] Processing multi-service upload for: ${originalName} (${contentType})`);
 
-      const { imageUrl, hostUsed } = await processFileUpload(buffer, originalName, contentType);
+      const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType);
 
-      console.log(`[Proxy Upload] Success. Host: ${hostUsed}, URL: ${imageUrl}`);
-      res.json({ url: imageUrl, host: hostUsed });
+      console.log(`[Proxy Upload] Success. Host: ${hostUsed}, URL: ${imageUrl}, Backup Host: ${backupHostUsed}, Backup URL: ${backupImageUrl}`);
+      res.json({ url: imageUrl, host: hostUsed, backupUrl: backupImageUrl, backupHost: backupHostUsed });
     } catch (error: any) {
       console.error('Upload Proxy Error:', error);
       res.status(500).json({ error: error.message });

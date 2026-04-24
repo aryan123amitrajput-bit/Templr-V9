@@ -529,6 +529,10 @@ app.post('/api/upload/pastesrs', async (req, res) => {
   }
 });
 
+// LRU Strategy configuration
+const hostUsageRecord: Record<string, number> = {};
+let hostUsageCounter = 0;
+
 // Upload File Proxy (New Workflow: External only)
 async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
     const isVideo = mimetype.startsWith('video/');
@@ -630,14 +634,23 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Shuffle providers randomly
-    const shuffledProviders = providers.sort(() => 0.5 - Math.random());
+    // Order providers by Least Recently Used (LRU)
+    const sortedProviders = providers.sort((a, b) => {
+        const usageA = hostUsageRecord[a.name] || 0;
+        const usageB = hostUsageRecord[b.name] || 0;
+        return usageA - usageB;
+    });
 
     const results: UploadResult[] = [];
-    for (let i = 0; i < shuffledProviders.length && results.length < 2; i++) {
-        const provider = shuffledProviders[i];
+    for (let i = 0; i < sortedProviders.length && results.length < 2; i++) {
+        const provider = sortedProviders[i];
+        
+        // Update the LRU counter to mark as recently used (moves to the back of the queue)
+        hostUsageCounter++;
+        hostUsageRecord[provider.name] = hostUsageCounter;
+        
         try {
-            console.log(`[Upload] Attempting upload with ${provider.name}...`);
+            console.log(`[Upload] Attempting upload with ${provider.name} (LRU turn: ${hostUsageRecord[provider.name]})...`);
             const result = await provider.upload();
             results.push(result);
         } catch (e: any) {
@@ -734,12 +747,14 @@ app.post('/api/upload/url', async (req, res) => {
             originalname = `${originalname}.${ext}`;
         }
 
-        const { imageUrl, hostUsed } = await processFileUpload(buffer, originalname, mimetype);
+        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalname, mimetype);
 
         console.log('[URL Upload] Final URL extracted:', imageUrl);
         console.log('[URL Upload] Host used:', hostUsed);
+        console.log('[URL Upload] Backup URL extracted:', backupImageUrl);
+        console.log('[URL Upload] Backup host used:', backupHostUsed);
 
-        res.json({ success: true, url: imageUrl, host: hostUsed });
+        res.json({ success: true, url: imageUrl, host: hostUsed, backupUrl: backupImageUrl, backupHost: backupHostUsed });
     } catch (error: any) {
         console.error('URL Upload Error:', error);
         res.status(500).json({ error: error.message || 'Internal Server Error during URL upload' });
