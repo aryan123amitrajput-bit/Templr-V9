@@ -557,8 +557,8 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         name: 'BeeIMG',
         upload: async () => {
             const apiKey = process.env.BEEIMG_API_KEY || '';
-            const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-            return { imageUrl: url, hostUsed: 'BeeIMG' };
+            const result = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+            return { imageUrl: result.direct_url, hostUsed: 'BeeIMG' };
         }
     });
 
@@ -1065,12 +1065,14 @@ app.post('/api/upload/beeimg', (req, res, next) => {
     }
 
     const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
-    const directUrl = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
+    const result = await uploadToBeeIMG(file.buffer, file.originalname, file.mimetype, apiKey);
     
     res.json({
       success: true,
       provider: 'beeimg',
-      direct_url: directUrl
+      direct_url: result.direct_url,
+      thumbnail_url: result.thumbnail_url,
+      viewer_url: result.viewer_url
     });
   } catch (error: any) {
     console.error('BeeIMG Upload Error:', error);

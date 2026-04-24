@@ -299,8 +299,8 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         name: 'BeeIMG',
         upload: async () => {
             const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
-            const url = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
-            return { imageUrl: url, hostUsed: 'BeeIMG' };
+            const result = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
+            return { imageUrl: result.direct_url, hostUsed: 'BeeIMG' };
         }
     });
 
