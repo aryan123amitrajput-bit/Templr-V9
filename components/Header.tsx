@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon, RocketIcon } from './Icons';
 import { playClickSound } from '../audio';
+import { getRandomAvatar } from '../lib/imageUtils';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -134,7 +135,7 @@ const Header: React.FC<HeaderProps> = ({
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="block rounded-full focus:outline-none active:scale-95 transition-transform ml-1">
                                 <div className="w-7 h-7 rounded-full p-[1px] bg-gradient-to-b from-white/20 to-transparent">
                                     <img 
-                                        src={session.user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.user.email || 'U')}&background=333&color=fff`} 
+                                        src={session.user.user_metadata?.avatar_url || getRandomAvatar(session.user.email || 'U')} 
                                         alt="User" 
                                         referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover"

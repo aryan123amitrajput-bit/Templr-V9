@@ -5,6 +5,7 @@ import { XIcon, CameraIcon, CheckCircleIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 import { updateUserProfile, uploadFile, Session } from '../api';
 import { NotificationType } from './Notification';
+import { getRandomAvatar } from '../lib/imageUtils';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -32,7 +33,7 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   useEffect(() => {
       if (isOpen && session) {
           setFullName(session.user.user_metadata?.full_name || '');
-          setAvatarPreview(session.user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${session.user.email}&background=333&color=fff`);
+          setAvatarPreview(session.user.user_metadata?.avatar_url || getRandomAvatar(session.user.email || 'User'));
           setBannerPreview(session.user.user_metadata?.banner_url || null);
           setAvatarFile(null);
           setBannerFile(null);

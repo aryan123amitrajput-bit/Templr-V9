@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { XIcon, SendIcon } from './Icons';
 import { playClickSound, playTypingSound } from '../audio';
+import { getRandomAvatar } from '../lib/imageUtils';
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -118,7 +119,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, creatorName }) =
   
   const modalRef = useRef<HTMLDivElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorName)}&background=334155&color=e2e8f0&bold=true`;
+  const avatarUrl = getRandomAvatar(creatorName);
 
   useEffect(() => {
     if (chatBodyRef.current) {

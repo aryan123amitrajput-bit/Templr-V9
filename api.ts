@@ -10,6 +10,7 @@ import { auth } from './firebase';
 import { uploadImage } from './src/services/imageUploadService';
 import { supabase } from './lib/supabaseClient';
 import { mapToTemplate, Template } from './lib/mapping';
+import { getRandomAvatar } from './lib/imageUtils';
 
 export type { Template };
 
@@ -550,7 +551,7 @@ export const getFeaturedCreators = async (): Promise<CreatorStats[]> => {
                                 creatorsMap.set(email, {
                                     name: name,
                                     email: email,
-                                    avatarUrl: t.author_avatar || t.creator_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                                    avatarUrl: t.author_avatar || t.creator_avatar || getRandomAvatar(name),
                                     views: 0,
                                     likes: 0,
                                     templateCount: 0,

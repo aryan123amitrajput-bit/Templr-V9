@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
 
+import { getRandomAvatar } from '../lib/imageUtils';
+
 interface TemplateCardProps {
   id: string;
   title: string;
@@ -259,7 +261,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
 
   const rawBanner = bannerUrl || imageUrl;
   const displayBanner = getOptimizedImageUrl(rawBanner);
-  const displayAvatar = authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`;
+  const displayAvatar = authorAvatar || getRandomAvatar(author);
 
   // Reset error state if the image URL changes (e.g., component reused)
   useEffect(() => {
@@ -398,8 +400,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
                                 alt={author} 
                                 onError={(e) => { 
                                     const target = e.target as HTMLImageElement;
-                                    if (!target.src.includes('ui-avatars.com')) {
-                                        target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=000&color=fff`; 
+                                    const defaultAv = getRandomAvatar(author);
+                                    if (target.src !== defaultAv) {
+                                        target.src = defaultAv; 
                                     }
                                 }}
                              />

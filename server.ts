@@ -6,6 +6,23 @@ import { createServer as createViteServer } from 'vite';
 import { uploadToImgBB } from './server/services/imgbbService';
 import { uploadToImgHippo } from './server/services/imghippoService';
 import { uploadToGifyu } from './server/services/gifyuService';
+
+const DEFAULT_AVATARS = [
+  'https://i.imageupload.app/6ecf1b3511dc6873b369.png',
+  'https://i.imageupload.app/4e3f7466ca960ff9a04e.png',
+  'https://i.imageupload.app/69263b7ea6907dc13228.png',
+  'https://i.imageupload.app/6d34075d016122b5895c.png',
+  'https://i.imageupload.app/705e4fe7627a07493e0d.jpeg',
+  'https://i.imageupload.app/758ff53eeb7633c224c2.jpeg'
+];
+
+const getRandomAvatar = (seed?: string) => {
+  if (!seed) return DEFAULT_AVATARS[0];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
+};
+
 // Removed Catbox
 import { uploadToBeeIMG } from './server/services/beeimgService';
 import { uploadToUguu } from './server/services/uguuService';
@@ -379,7 +396,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     });
 
     const results: any[] = [];
-    for (let i = 0; i < sortedProviders.length && results.length < 2; i++) {
+    for (let i = 0; i < sortedProviders.length && results.length < 1; i++) {
         const provider = sortedProviders[i];
         
         // Update the LRU counter to mark as recently used (moves to the back of the queue)
@@ -404,9 +421,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     return {
         imageUrl: results[0].imageUrl,
-        hostUsed: results[0].hostUsed,
-        backupImageUrl: results[1]?.imageUrl,
-        backupHostUsed: results[1]?.hostUsed
+        hostUsed: results[0].hostUsed
     };
 }
 
@@ -794,7 +809,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
           creatorsMap.set(t.author_email, {
             author_name: t.author_name || 'Anonymous',
             author_email: t.author_email,
-            author_avatar: t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name || 'Anonymous')}&background=random`,
+            author_avatar: t.author_avatar || getRandomAvatar(t.author_name || 'Anonymous'),
             views: 0,
             likes: 0,
             templates: 0
