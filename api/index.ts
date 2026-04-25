@@ -558,7 +558,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
 
-    type UploadResult = { imageUrl: string; hostUsed: string };
+    type UploadResult = { imageUrl: string; hostUsed: string; backupImageUrl?: string; backupHostUsed?: string };
     
     // Return signature for dual upload result
     type FinalUploadResult = { 
@@ -617,13 +617,27 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
+    // Telegram
     if (telegramService.isConfigured() && !isVideo) {
         providers.push({
             name: 'Telegram',
             upload: async () => {
                 const tgUri = await telegramService.uploadImage(buffer, originalname);
                 const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+                
+                // Uguu Backup
+                try {
+                    const uguuResult = await uploadToUguu(buffer, originalname, mimetype);
+                    return { 
+                        imageUrl: proxyUrl, 
+                        hostUsed: 'Telegram', 
+                        backupImageUrl: uguuResult.direct_url, 
+                        backupHostUsed: 'Uguu' 
+                    };
+                } catch (e) {
+                    console.error('[Upload] Telegram Uguu backup failed:', e);
+                    return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+                }
             }
         });
     }
@@ -680,7 +694,9 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     return {
         imageUrl: results[0].imageUrl,
-        hostUsed: results[0].hostUsed
+        hostUsed: results[0].hostUsed,
+        backupImageUrl: results[0].backupImageUrl,
+        backupHostUsed: results[0].backupHostUsed
     };
 }
 
