@@ -1617,14 +1617,14 @@ app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
       const r = await axios({
           method: 'GET',
           url: downloadUrl,
-          responseType: 'stream'
+          responseType: 'arraybuffer'
       });
       
       if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
       if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      r.data.pipe(res);
+      res.end(Buffer.from(r.data));
     } catch (error: any) {
       console.error('[API] Telegram proxy error:', error);
       res.status(500).json({ error: error.message });
