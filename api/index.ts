@@ -558,7 +558,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
 
-    type UploadResult = { imageUrl: string; hostUsed: string; backupImageUrl?: string; backupHostUsed?: string };
+    type UploadResult = { imageUrl: string; hostUsed: string };
     
     // Return signature for dual upload result
     type FinalUploadResult = { 
@@ -617,27 +617,13 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Telegram
     if (telegramService.isConfigured() && !isVideo) {
         providers.push({
             name: 'Telegram',
             upload: async () => {
                 const tgUri = await telegramService.uploadImage(buffer, originalname);
                 const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-                
-                // Uguu Backup
-                try {
-                    const uguuResult = await uploadToUguu(buffer, originalname, mimetype);
-                    return { 
-                        imageUrl: proxyUrl, 
-                        hostUsed: 'Telegram', 
-                        backupImageUrl: uguuResult.direct_url, 
-                        backupHostUsed: 'Uguu' 
-                    };
-                } catch (e) {
-                    console.error('[Upload] Telegram Uguu backup failed:', e);
-                    return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
-                }
+                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
             }
         });
     }
@@ -694,9 +680,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     return {
         imageUrl: results[0].imageUrl,
-        hostUsed: results[0].hostUsed,
-        backupImageUrl: results[0].backupImageUrl,
-        backupHostUsed: results[0].backupHostUsed
+        hostUsed: results[0].hostUsed
     };
 }
 
@@ -1627,23 +1611,20 @@ app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
     try {
       const { botIndex, fileId } = req.params;
       const tgUri = `tg://${botIndex}/${fileId}`;
-      console.log(`[API] Telegram proxy: Fetching ${tgUri}`);
       
       const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
-      console.log(`[API] Telegram proxy: DownloadUrl ${downloadUrl}`);
       
       const r = await axios({
           method: 'GET',
           url: downloadUrl,
           responseType: 'arraybuffer'
       });
-      console.log(`[API] Telegram proxy: Fetched status ${r.status}, type ${r.headers['content-type']}`);
       
       if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
       if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      res.send(Buffer.from(r.data));
+      res.end(Buffer.from(r.data));
     } catch (error: any) {
       console.error('[API] Telegram proxy error:', error);
       res.status(500).json({ error: error.message });
