@@ -1611,20 +1611,23 @@ app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
     try {
       const { botIndex, fileId } = req.params;
       const tgUri = `tg://${botIndex}/${fileId}`;
+      console.log(`[API] Telegram proxy: Fetching ${tgUri}`);
       
       const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+      console.log(`[API] Telegram proxy: DownloadUrl ${downloadUrl}`);
       
       const r = await axios({
           method: 'GET',
           url: downloadUrl,
           responseType: 'arraybuffer'
       });
+      console.log(`[API] Telegram proxy: Fetched status ${r.status}, type ${r.headers['content-type']}`);
       
       if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
       if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      res.end(Buffer.from(r.data));
+      res.send(Buffer.from(r.data));
     } catch (error: any) {
       console.error('[API] Telegram proxy error:', error);
       res.status(500).json({ error: error.message });
