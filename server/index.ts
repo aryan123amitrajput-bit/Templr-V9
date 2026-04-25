@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { uploadToImgBB } from './services/imgbbService';
 import { uploadToGifyu } from './services/gifyuService';
 import { uploadToImgHippo } from './services/imghippoService';
-import { uploadToCatbox } from './services/catboxService';
+// Removed Catbox
 
 // Load environment variables
 dotenv.config();
@@ -77,18 +77,6 @@ app.post('/api/templates/upload', upload.single('preview'), async (req, res) => 
             const result = await uploadToImgHippo(file.buffer, file.originalname);
             publicUrl = result.direct_url;
             hostUsed = 'ImgHippo';
-        } catch (e: any) {
-            console.warn('[Upload] ImgHippo failed, trying Catbox...', e.message);
-        }
-    }
-
-    // 5. Try Catbox
-    if (!publicUrl) {
-        try {
-            const userhash = process.env.CATBOX_USERHASH || '';
-            const result = await uploadToCatbox(file.buffer, file.originalname, file.mimetype, userhash);
-            publicUrl = result.direct_url;
-            hostUsed = 'Catbox';
         } catch (e: any) {
             console.error('[Upload Error] All external hosts failed:', e.message);
             throw new Error('Upload failed on all available external hosts. Please check your internet connection or API keys.');

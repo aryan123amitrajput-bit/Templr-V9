@@ -21,7 +21,8 @@ class TelegramService {
         formData.append('document', buffer, { filename });
 
         const response = await axios.post(url, formData, {
-            headers: formData.getHeaders()
+            headers: formData.getHeaders(),
+            timeout: 15000
         });
 
         if (!response.data.ok) {
@@ -36,7 +37,7 @@ class TelegramService {
     async getFileDownloadUrl(tgUri: string): Promise<string> {
         const fileId = tgUri.replace('tg://0/', '');
         const getFileUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
-        const response = await axios.get(getFileUrl);
+        const response = await axios.get(getFileUrl, { timeout: 15000 });
 
         if (!response.data.ok) {
             throw new Error(`Telegram getFile failed: ${response.data.description}`);
@@ -59,7 +60,8 @@ class TelegramService {
         formData.append('photo', buffer, { filename });
 
         const response = await axios.post(url, formData, {
-            headers: formData.getHeaders()
+            headers: formData.getHeaders(),
+            timeout: 15000
         });
 
         if (!response.data.ok) {

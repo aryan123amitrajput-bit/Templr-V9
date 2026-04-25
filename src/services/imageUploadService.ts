@@ -59,17 +59,6 @@ const fileToBase64 = (blob: Blob): Promise<string> => {
 };
 
 // 3. Native Frontend Fallbacks (Bypass blocked Vercel backends)
-const uploadToCatboxDirect = async (blob: Blob): Promise<string> => {
-    const formData = new FormData();
-    formData.append('reqtype', 'fileupload');
-    formData.append('fileToUpload', blob, 'image.jpg');
-    const response = await fetch('https://catbox.moe/user/api.php', {
-        method: 'POST',
-        body: formData
-    });
-    if (!response.ok) throw new Error('Catbox direct upload failed');
-    return (await response.text()).trim();
-};
 
 const uploadToBeeIMGDirect = async (blob: Blob): Promise<string> => {
     const formData = new FormData();
@@ -154,7 +143,6 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
             
             // Native Frontend Providers Randomizer!
             const fallbacks = [
-                { name: 'Catbox Direct', fn: uploadToCatboxDirect },
                 { name: 'BeeIMG Direct', fn: uploadToBeeIMGDirect }
             ];
             

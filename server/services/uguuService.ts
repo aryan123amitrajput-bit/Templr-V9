@@ -7,7 +7,10 @@ export const uploadToUguu = async (buffer: Buffer, filename: string, mimetype: s
     formData.append('files[]', buffer, { filename });
 
     const response = await axios.post('https://uguu.se/upload.php', formData, {
-        headers: formData.getHeaders()
+        headers: {
+            ...formData.getHeaders(),
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     });
 
     if (response.data && response.data.files && response.data.files[0]) {

@@ -423,7 +423,10 @@ const UploadModal: React.FC<UploadModalProps> = ({
           // Small delay before navigating to ensure notification is processed
           setTimeout(() => {
               onDashboardClick();
-              setTimeout(() => onClose(), 500);
+              onClose();
+              setTimeout(() => {
+                  window.location.reload();
+              }, 600);
           }, 100);
       } catch (e: any) {
           playNotificationSound();

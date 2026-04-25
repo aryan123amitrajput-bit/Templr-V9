@@ -7,7 +7,7 @@ import { mapToTemplate } from '../lib/mapping';
 import { uploadToImgBB } from '../server/services/imgbbService';
 import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToGifyu } from '../server/services/gifyuService';
-import { uploadToCatbox, urlUploadToCatbox, deleteFromCatbox, createCatboxAlbum, editCatboxAlbum, addToCatboxAlbum, removeFromCatboxAlbum, deleteCatboxAlbum } from '../server/services/catboxService';
+// Removed Catbox
 import { uploadToBeeIMG } from '../server/services/beeimgService';
 import { uploadToUguu } from '../server/services/uguuService';
 import { telegramService } from '../server/services/telegramService';
@@ -532,6 +532,8 @@ app.post('/api/upload/pastesrs', async (req, res) => {
 // LRU Strategy configuration
 const hostUsageRecord: Record<string, number> = {};
 let hostUsageCounter = 0;
+// Track failed hosts to skip them temporarily (5 minutes)
+const hostPenaltyRecord: Record<string, number> = {};
 
 // Upload File Proxy (New Workflow: External only)
 async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
@@ -563,22 +565,6 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             const apiKey = process.env.BEEIMG_API_KEY || '';
             const result = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
             return { imageUrl: result.direct_url, hostUsed: 'BeeIMG' };
-        }
-    });
-
-    // Catbox (supports anonymous, valid userhash optional)
-    providers.push({
-        name: 'Catbox',
-        upload: async () => {
-            let userhash = process.env.CATBOX_USERHASH;
-            if (userhash && userhash.length < 5) userhash = undefined; // Ignore dummy/empty values
-            try {
-                const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-                return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
-            } catch (e: any) {
-                console.error(`[Upload] Catbox failed: ${e.message}`);
-                throw new Error(`Catbox failed: ${e.message}`);
-            }
         }
     });
 
@@ -634,8 +620,19 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Order providers by Least Recently Used (LRU)
-    const sortedProviders = providers.sort((a, b) => {
+    // Filter out penalized providers unless everything is penalized
+    const now = Date.now();
+    let availableProviders = providers.filter(p => !hostPenaltyRecord[p.name] || hostPenaltyRecord[p.name] < now);
+    if (availableProviders.length === 0) {
+        // If all are penalized, try anyway but clear penalties so we can rediscover working ones
+        availableProviders = providers;
+        Object.keys(hostPenaltyRecord).forEach(k => delete hostPenaltyRecord[k]);
+    }
+
+    // Order providers by Least Recently Used (LRU) but always prioritize Uguu
+    const sortedProviders = availableProviders.sort((a, b) => {
+        if (a.name === 'Uguu') return -1;
+        if (b.name === 'Uguu') return 1;
         const usageA = hostUsageRecord[a.name] || 0;
         const usageB = hostUsageRecord[b.name] || 0;
         return usageA - usageB;
@@ -653,8 +650,10 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             console.log(`[Upload] Attempting upload with ${provider.name} (LRU turn: ${hostUsageRecord[provider.name]})...`);
             const result = await provider.upload();
             results.push(result);
+            console.log(`[Upload] Success with ${provider.name}!`);
         } catch (e: any) {
-            console.warn(`[Upload] ${provider.name} failed:`, e.message);
+            hostPenaltyRecord[provider.name] = Date.now() + 5 * 60 * 1000; // 5 min penalty
+            console.log(`[Upload] Host ${provider.name} skipped due to error: ${e.message}. Switching to next...`);
         }
     }
 
@@ -775,105 +774,6 @@ app.get('/api/proxy/image', async (req, res) => {
         console.error('[Proxy] Error:', error.message);
         res.status(500).json({ error: 'Failed to proxy image' });
     }
-});
-
-// Upload File Proxy (Catbox)
-app.post('/api/upload/catbox', (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    next();
-  });
-}, async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'No file provided' });
-
-    console.log(`[Catbox Upload] Received POST /api/upload/catbox`);
-    const userhash = process.env.CATBOX_USERHASH || '';
-    const result = await uploadToCatbox(file.buffer, file.originalname, file.mimetype, userhash);
-    
-    res.json({
-      url: result.direct_url,
-      direct_url: result.direct_url,
-      thumbnail_url: result.thumbnail_url,
-      viewer_url: result.viewer_url,
-      provider: 'catbox'
-    });
-  } catch (error: any) {
-    console.error('Catbox proxy error:', error);
-    res.status(500).json({ error: error.message || 'Catbox proxy failed' });
-  }
-});
-
-// Catbox URL Upload Proxy
-app.post('/api/catbox/urlupload', async (req, res) => {
-  try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
-    
-    const userhash = process.env.CATBOX_USERHASH || '';
-    const result = await urlUploadToCatbox(url, userhash);
-    res.json(result);
-  } catch (error: any) {
-    console.error('Catbox urlupload error:', error);
-    res.status(500).json({ error: error.message || 'Catbox urlupload failed' });
-  }
-});
-
-// Catbox Delete Files Proxy
-app.post('/api/catbox/deletefiles', async (req, res) => {
-  try {
-    const { files } = req.body;
-    if (!files || !Array.isArray(files)) return res.status(400).json({ error: 'files array is required' });
-    
-    const userhash = process.env.CATBOX_USERHASH;
-    if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is not configured on the server' });
-    
-    const result = await deleteFromCatbox(files, userhash);
-    res.json({ success: true, result });
-  } catch (error: any) {
-    console.error('Catbox deletefiles error:', error);
-    res.status(500).json({ error: error.message || 'Catbox deletefiles failed' });
-  }
-});
-
-// Catbox Album Operations
-app.post('/api/catbox/album/:action', async (req, res) => {
-  try {
-    const { action } = req.params;
-    const { title, desc, files, short } = req.body;
-    const userhash = process.env.CATBOX_USERHASH || '';
-    
-    let result;
-    switch (action) {
-      case 'create':
-        result = await createCatboxAlbum(title || '', desc || '', files || [], userhash);
-        break;
-      case 'edit':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await editCatboxAlbum(short, title || '', desc || '', files || [], userhash);
-        break;
-      case 'add':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await addToCatboxAlbum(short, files || [], userhash);
-        break;
-      case 'remove':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await removeFromCatboxAlbum(short, files || [], userhash);
-        break;
-      case 'delete':
-        if (!userhash) return res.status(400).json({ error: 'CATBOX_USERHASH is required for this action' });
-        result = await deleteCatboxAlbum(short, userhash);
-        break;
-      default:
-        return res.status(400).json({ error: 'Invalid album action' });
-    }
-    
-    res.json({ success: true, result });
-  } catch (error: any) {
-    console.error(`Catbox album action error:`, error);
-    res.status(500).json({ error: error.message || 'Catbox album action failed' });
-  }
 });
 
 // Upload File Proxy (GitHub Fallback)

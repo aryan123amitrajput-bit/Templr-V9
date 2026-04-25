@@ -6,7 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { uploadToImgBB } from './server/services/imgbbService';
 import { uploadToImgHippo } from './server/services/imghippoService';
 import { uploadToGifyu } from './server/services/gifyuService';
-import { uploadToCatbox } from './server/services/catboxService';
+// Removed Catbox
 import { uploadToBeeIMG } from './server/services/beeimgService';
 import { uploadToUguu } from './server/services/uguuService';
 import { uploadToPasteRs } from './server/services/pasteService';
@@ -256,14 +256,17 @@ async function processUrlUpload(url: string): Promise<string> {
     if (!url || !url.startsWith('http')) return url;
     
     // Skip if already on Supabase or other known hosts
-    const hosts = ['supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'catbox.moe', 'gifyu.com', 'imghippo.com'];
+    const hosts = ['supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se'];
     if (hosts.some(host => url.includes(host))) {
         return url;
     }
 
     try {
         console.log(`[Url Upload] Fetching content from: ${url}`);
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
         if (!response.ok) throw new Error(`Failed to fetch image from URL: ${url}`);
         
         const buffer = Buffer.from(await response.arrayBuffer());
@@ -282,6 +285,8 @@ async function processUrlUpload(url: string): Promise<string> {
 // LRU Strategy configuration
 const hostUsageRecord: Record<string, number> = {};
 let hostUsageCounter = 0;
+// Track failed hosts to skip them temporarily (5 minutes)
+const hostPenaltyRecord: Record<string, number> = {};
 
 /**
  * Upload logic using external hosting only (Requested by user).
@@ -305,22 +310,6 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             const apiKey = process.env.BEEIMG_API_KEY || '098dccd10fb840e72711cdf846b50222';
             const result = await uploadToBeeIMG(buffer, originalname, mimetype, apiKey);
             return { imageUrl: result.direct_url, hostUsed: 'BeeIMG' };
-        }
-    });
-
-    // Catbox (supports anonymous, valid userhash optional)
-    providers.push({
-        name: 'Catbox',
-        upload: async () => {
-            let userhash = process.env.CATBOX_USERHASH;
-            if (userhash && userhash.length < 5) userhash = undefined; // Ignore dummy/empty values
-            try {
-                const result = await uploadToCatbox(buffer, originalname, mimetype, userhash);
-                return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
-            } catch (e: any) {
-                console.error(`[Upload] Catbox failed: ${e.message}`);
-                throw new Error(`Catbox failed: ${e.message}`);
-            }
         }
     });
 
@@ -371,8 +360,19 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Order providers by Least Recently Used (LRU)
-    const sortedProviders = providers.sort((a, b) => {
+    // Filter out penalized providers unless everything is penalized
+    const now = Date.now();
+    let availableProviders = providers.filter(p => !hostPenaltyRecord[p.name] || hostPenaltyRecord[p.name] < now);
+    if (availableProviders.length === 0) {
+        // If all are penalized, try anyway but clear penalties
+        availableProviders = providers;
+        Object.keys(hostPenaltyRecord).forEach(k => delete hostPenaltyRecord[k]);
+    }
+
+    // Order providers by Least Recently Used (LRU) but always prioritize Uguu
+    const sortedProviders = availableProviders.sort((a, b) => {
+        if (a.name === 'Uguu') return -1;
+        if (b.name === 'Uguu') return 1;
         const usageA = hostUsageRecord[a.name] || 0;
         const usageB = hostUsageRecord[b.name] || 0;
         return usageA - usageB;
@@ -390,8 +390,10 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
             console.log(`[Upload] Attempting upload with ${provider.name} (LRU turn: ${hostUsageRecord[provider.name]})...`);
             const result = await provider.upload();
             results.push(result);
+            console.log(`[Upload] Success with ${provider.name}!`);
         } catch (e: any) {
-            console.warn(`[Upload] ${provider.name} failed:`, e.message);
+            hostPenaltyRecord[provider.name] = Date.now() + 5 * 60 * 1000; // 5 min penalty
+            console.log(`[Upload] Host ${provider.name} skipped due to error: ${e.message}. Switching to next...`);
         }
     }
 

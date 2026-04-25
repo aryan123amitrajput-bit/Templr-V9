@@ -7,8 +7,11 @@ export const uploadToBeeIMG = async (buffer: Buffer, filename: string, mimetype:
     formData.append('file', buffer, { filename });
     if (apiKey) formData.append('api_key', apiKey);
 
-    const response = await axios.post('https://beeimg.com/api/upload/file/png/', formData, {
-        headers: formData.getHeaders()
+    const response = await axios.post('https://beeimg.com/api/upload/file/json/', formData, {
+        headers: {
+            ...formData.getHeaders(),
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
     });
 
     if (response.data && response.data.files && response.data.files.url) {
@@ -19,5 +22,5 @@ export const uploadToBeeIMG = async (buffer: Buffer, filename: string, mimetype:
             viewer_url: url
         };
     }
-    throw new Error('BeeIMG upload failed');
+    throw new Error(`BeeIMG upload failed: ${JSON.stringify(response.data)}`);
 };
