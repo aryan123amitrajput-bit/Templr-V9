@@ -1,22 +1,38 @@
 export const DEFAULT_AVATARS = [
-  'https://i.imageupload.app/6ecf1b3511dc6873b369.png',
-  'https://i.imageupload.app/4e3f7466ca960ff9a04e.png',
-  'https://i.imageupload.app/69263b7ea6907dc13228.png',
-  'https://i.imageupload.app/6d34075d016122b5895c.png',
-  'https://i.imageupload.app/705e4fe7627a07493e0d.jpeg',
-  'https://i.imageupload.app/758ff53eeb7633c224c2.jpeg'
+  'https://imageupload.app/i/6ecf1b3511dc6873b369',
+  'https://imageupload.app/en/i/4e3f7466ca960ff9a04e',
+  'https://imageupload.app/en/i/69263b7ea6907dc13228',
+  'https://imageupload.app/en/i/6d34075d016122b5895c',
+  'https://imageupload.app/en/i/705e4fe7627a07493e0d',
+  'https://imageupload.app/en/i/758ff53eeb7633c224c2'
 ];
 
 export const getRandomAvatar = (seed?: string) => {
-  if (!seed) {
-    return DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)];
+  const name = seed ? encodeURIComponent(seed) : 'User';
+  return `https://ui-avatars.com/api/?name=${name}&background=random`;
+};
+
+export const resolveImageUrl = (url: string | null | undefined, seed?: string): string => {
+  if (!url) return getRandomAvatar(seed);
+  
+  let parsedUrl = url;
+  if (parsedUrl.startsWith('https://https://')) parsedUrl = parsedUrl.replace('https://https://', 'https://');
+  if (parsedUrl.startsWith('http://http://')) parsedUrl = parsedUrl.replace('http://http://', 'http://');
+
+  if (parsedUrl.startsWith('tg://')) {
+      return `/api/tg-file/${parsedUrl.replace('tg://', '')}`;
   }
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  
+  if (parsedUrl.startsWith('http://') && !parsedUrl.includes('localhost') && !parsedUrl.includes('127.0.0.1')) {
+      return `/api/proxy/image?url=${encodeURIComponent(parsedUrl)}`;
   }
-  const index = Math.abs(hash) % DEFAULT_AVATARS.length;
-  return DEFAULT_AVATARS[index];
+
+  const problematicHosts = ['catbox.moe', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se'];
+  if (problematicHosts.some(h => parsedUrl.includes(h)) && !parsedUrl.includes('/api/proxy/image')) {
+      return `/api/proxy/image?url=${encodeURIComponent(parsedUrl)}`;
+  }
+  
+  return parsedUrl;
 };
 
 export const getProxiedImageUrl = (url: string | { src: string } | undefined | null): string => {

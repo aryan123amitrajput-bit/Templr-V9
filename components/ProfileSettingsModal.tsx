@@ -5,7 +5,7 @@ import { XIcon, CameraIcon, CheckCircleIcon } from './Icons';
 import { playClickSound, playSuccessSound, playNotificationSound } from '../audio';
 import { updateUserProfile, uploadFile, Session } from '../api';
 import { NotificationType } from './Notification';
-import { getRandomAvatar } from '../lib/imageUtils';
+import { getRandomAvatar, resolveImageUrl } from '../lib/imageUtils';
 
 interface ProfileSettingsModalProps {
   isOpen: boolean;
@@ -180,10 +180,15 @@ const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     >
                         {avatarPreview ? (
                             <img 
-                                src={avatarPreview} 
+                                src={resolveImageUrl(avatarPreview, session?.user?.email || 'U')} 
                                 alt="Avatar" 
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    const def = getRandomAvatar(session?.user?.email || 'U');
+                                    if (target.src !== def) target.src = def;
+                                }}
                             />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-zinc-500">

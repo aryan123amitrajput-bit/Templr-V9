@@ -424,9 +424,6 @@ const UploadModal: React.FC<UploadModalProps> = ({
           setTimeout(() => {
               onDashboardClick();
               onClose();
-              setTimeout(() => {
-                  window.location.reload();
-              }, 600);
           }, 100);
       } catch (e: any) {
           playNotificationSound();

@@ -109,65 +109,32 @@ export const uploadImage = async (file: File): Promise<UploadResult> => {
     try {
         console.log(`[Orchestrator] Optimizing image: ${file.name}`);
         const optimizedBlob = await optimizeImage(file);
-        const base64File = await fileToBase64(optimizedBlob);
         
-        console.log(`[Orchestrator] Sending optimized image to backend proxy...`);
-        try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    file: base64File, 
-                    path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
-                })
-            });
+        console.log(`[Orchestrator] Uploading to backend proxy...`);
+        const base64File = await fileToBase64(optimizedBlob);
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                file: base64File, 
+                path: `optimized/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}` 
+            })
+        });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Backend upload failed: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            return {
-                success: true,
-                provider: data.host || 'Multi-service Proxy',
-                direct_url: data.url,
-                thumbnail_url: data.url,
-                viewer_url: data.url,
-                fallback_used: data.host !== '0008888 (Primary)'
-            };
-        } catch (backendError) {
-            console.warn(`[Orchestrator] Vercel backend failed. ATTEMPTING 3RD PARTY FRONTEND FALLBACKS...`);
-            
-            // Native Frontend Providers Randomizer!
-            const fallbacks = [
-                { name: 'BeeIMG Direct', fn: uploadToBeeIMGDirect }
-            ];
-            
-            // Shuffle
-            fallbacks.sort(() => 0.5 - Math.random());
-            
-            for (const fb of fallbacks) {
-                try {
-                    console.log(`[Frontend Fallback] Attempting ${fb.name}...`);
-                    const url = await fb.fn(optimizedBlob);
-                    return {
-                        success: true,
-                        provider: fb.name,
-                        direct_url: url,
-                        thumbnail_url: url,
-                        viewer_url: url,
-                        fallback_used: true
-                    };
-                } catch (e) {
-                    console.error(`[Frontend Fallback] ${fb.name} failed`, e);
-                }
-            }
-            
-            throw backendError;
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Backend upload failed: ${response.statusText}`);
         }
+
+        const data = await response.json();
+        return {
+            success: true,
+            provider: data.host || 'Multi-service Proxy',
+            direct_url: data.url,
+            thumbnail_url: data.url,
+            viewer_url: data.url,
+            fallback_used: false
+        };
     } catch (error) {
         const lastError = error instanceof Error ? error.message : String(error);
         console.error(`[Orchestrator] Image upload failed:`, lastError);

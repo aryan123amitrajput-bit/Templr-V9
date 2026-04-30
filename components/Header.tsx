@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon, RocketIcon } from './Icons';
+import { UploadIcon, SpeakerWaveIcon, SpeakerXMarkIcon, CpuIcon, CogIcon, CheckCircleIcon, RocketIcon, SearchIcon } from './Icons';
 import { playClickSound } from '../audio';
-import { getRandomAvatar } from '../lib/imageUtils';
+import { getRandomAvatar, resolveImageUrl } from '../lib/imageUtils';
 import type { Session } from '../api';
 import { BorderBeam } from './ui/BorderBeam';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,6 +19,8 @@ interface HeaderProps {
   onOpenSettings?: () => void;
   isSubscribed?: boolean;
   creditsLeft?: number; // New prop
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -32,7 +34,9 @@ const Header: React.FC<HeaderProps> = ({
     onOpenSetup, 
     onOpenSettings,
     isSubscribed = false,
-    creditsLeft
+    creditsLeft,
+    searchQuery = '',
+    onSearchChange
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,6 +79,20 @@ const Header: React.FC<HeaderProps> = ({
                      <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wide">Online</span>
                 </div>
             </div>
+
+            {/* Search Bar - Add this here */}
+            {onSearchChange && (
+            <div className="hidden md:flex items-center mx-4 group/search relative">
+                <SearchIcon className="absolute left-3 w-3.5 h-3.5 text-slate-500 group-focus-within/search:text-blue-400" />
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    placeholder="Search..."
+                    className="bg-zinc-900/50 text-white text-xs rounded-full pl-9 pr-4 py-1.5 border border-white/10 focus:outline-none focus:border-blue-500/50 w-48 transition-all"
+                />
+            </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center gap-3 pl-2">
@@ -135,10 +153,15 @@ const Header: React.FC<HeaderProps> = ({
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="block rounded-full focus:outline-none active:scale-95 transition-transform ml-1">
                                 <div className="w-7 h-7 rounded-full p-[1px] bg-gradient-to-b from-white/20 to-transparent">
                                     <img 
-                                        src={session.user.user_metadata?.avatar_url || getRandomAvatar(session.user.email || 'U')} 
+                                        src={resolveImageUrl(session.user.user_metadata?.avatar_url, session.user.email || 'U')} 
                                         alt="User" 
                                         referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover"
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            const def = getRandomAvatar(session.user?.email || 'U');
+                                            if (target.src !== def) target.src = def;
+                                        }}
                                     />
                                 </div>
                             </button>

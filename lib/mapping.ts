@@ -40,10 +40,19 @@ export interface Template {
  */
 function fixUrl(url: string | undefined | null): string {
     if (!url) return '';
+    
+    // Handle BeeIMG double https bug
+    if (typeof url === 'string') {
+        if (url.startsWith('https://https://')) url = url.replace('https://https://', 'https://');
+        if (url.startsWith('http://http://')) url = url.replace('http://http://', 'http://');
+    }
+
     if (url.startsWith('tg://')) {
         // tg://{botIndex}/{fileId} -> /api/tg-file/{botIndex}/{fileId}
         return `/api/tg-file/${url.replace('tg://', '')}`;
     }
+
+    // Do not proxy images. Let the browser load them directly.
     return url;
 }
 

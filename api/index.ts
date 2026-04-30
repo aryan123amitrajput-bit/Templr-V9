@@ -9,12 +9,9 @@ import { uploadToImgHippo } from '../server/services/imghippoService';
 import { uploadToGifyu } from '../server/services/gifyuService';
 
 const DEFAULT_AVATARS = [
-  'https://i.imageupload.app/6ecf1b3511dc6873b369.png',
-  'https://i.imageupload.app/4e3f7466ca960ff9a04e.png',
-  'https://i.imageupload.app/69263b7ea6907dc13228.png',
-  'https://i.imageupload.app/6d34075d016122b5895c.png',
-  'https://i.imageupload.app/705e4fe7627a07493e0d.jpeg',
-  'https://i.imageupload.app/758ff53eeb7633c224c2.jpeg'
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/a9f0707c-e291-4925-8430-de8f2433ce2c.jpg',
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/576141b7-da4e-4e05-94ea-80973303cc21.jpg',
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/e9ec4fb5-f1a1-4d2e-9d28-189b2f1a0d60.png'
 ];
 
 const getRandomAvatar = (seed?: string) => {
@@ -24,15 +21,16 @@ const getRandomAvatar = (seed?: string) => {
   return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
 };
 
-// Removed Catbox
+// Added Catbox & Uguu
 import { uploadToBeeIMG } from '../server/services/beeimgService';
 import { uploadToUguu } from '../server/services/uguuService';
+import { uploadToCatbox } from '../server/services/catboxService';
+import { uploadToPasteRs } from '../server/services/pasteService';
 import { telegramService } from '../server/services/telegramService';
 import { Octokit } from '@octokit/rest';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { repoManager } from '../server/services/repoService';
-import { uploadToPasteRs } from '../server/services/pasteService';
 import { freeHostService } from '../server/services/freeHostService';
 import { traffService } from '../server/services/traffService';
 import { templrAuditor } from '../server/services/templrAuditor';
@@ -553,7 +551,7 @@ let hostUsageCounter = 0;
 const hostPenaltyRecord: Record<string, number> = {};
 
 // Upload File Proxy (New Workflow: External only)
-async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
+async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string, filePath?: string) {
     const isVideo = mimetype.startsWith('video/');
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
@@ -574,6 +572,35 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     };
 
     const providers: UploadProvider[] = [];
+
+    if (telegramService.isConfigured() && !isVideo) {
+        providers.push({
+            name: 'Telegram',
+            upload: async () => {
+                const tgUri = await telegramService.uploadImage(buffer, originalname);
+                const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+            }
+        });
+    }
+
+    // Catbox
+    providers.push({
+        name: 'Catbox',
+        upload: async () => {
+            const result = await uploadToCatbox(buffer, originalname);
+            return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+        }
+    });
+
+    // Uguu
+    providers.push({
+        name: 'Uguu',
+        upload: async () => {
+            const result = await uploadToUguu(buffer, originalname, mimetype);
+            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
+        }
+    });
 
     // BeeIMG
     providers.push({
@@ -608,26 +635,6 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Uguu
-    providers.push({
-        name: 'Uguu',
-        upload: async () => {
-            const result = await uploadToUguu(buffer, originalname, mimetype);
-            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
-        }
-    });
-
-    if (telegramService.isConfigured() && !isVideo) {
-        providers.push({
-            name: 'Telegram',
-            upload: async () => {
-                const tgUri = await telegramService.uploadImage(buffer, originalname);
-                const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
-            }
-        });
-    }
-
     // Supabase
     providers.push({
         name: 'Supabase',
@@ -646,17 +653,34 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         Object.keys(hostPenaltyRecord).forEach(k => delete hostPenaltyRecord[k]);
     }
 
-    // Order providers by Least Recently Used (LRU) but always prioritize Uguu
+    // Order providers by Priority, then Least Recently Used (LRU)
+    // Preference: If path includes 'avatars/', avoid Uguu (temporary)
+    // Otherwise: Uguu > Telegram > Catbox > Others
+    const isAvatar = originalname.toLowerCase().includes('avatar') || originalname.toLowerCase().includes('profile') || (filePath && filePath.includes('avatar')); 
+    
     const sortedProviders = availableProviders.sort((a, b) => {
-        if (a.name === 'Uguu') return -1;
-        if (b.name === 'Uguu') return 1;
+        let priority: Record<string, number> = { 'Uguu': 1, 'Telegram': 2, 'Catbox': 3 };
+        
+        // If it looks like an avatar, demote Uguu (Temporary) to bottom
+        if (isAvatar) {
+            if (a.name === 'Uguu') return 1;
+            if (b.name === 'Uguu') return -1;
+            // Also prioritize Supabase and Telegram for avatars
+            priority = { 'Supabase': 1, 'Telegram': 2, 'Catbox': 3, 'ImgBB': 4 };
+        }
+
+        const pA = priority[a.name] || 99;
+        const pB = priority[b.name] || 99;
+        
+        if (pA !== pB) return pA - pB;
+        
         const usageA = hostUsageRecord[a.name] || 0;
         const usageB = hostUsageRecord[b.name] || 0;
         return usageA - usageB;
     });
 
     const results: UploadResult[] = [];
-    for (let i = 0; i < sortedProviders.length && results.length < 1; i++) {
+    for (let i = 0; i < sortedProviders.length && results.length < 2; i++) {
         const provider = sortedProviders[i];
         
         // Update the LRU counter to mark as recently used (moves to the back of the queue)
@@ -680,7 +704,9 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     return {
         imageUrl: results[0].imageUrl,
-        hostUsed: results[0].hostUsed
+        hostUsed: results[0].hostUsed,
+        backupImageUrl: results[1]?.imageUrl || '',
+        backupHostUsed: results[1]?.hostUsed || ''
     };
 }
 
@@ -704,7 +730,7 @@ app.post('/api/upload', (req, res, next) => {
     }
     console.log(`[General Upload Request] File: ${file.originalname}, Size: ${file.size}, Mime: ${file.mimetype}`);
 
-    const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype);
+    const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(file.buffer, file.originalname, file.mimetype, req.body.path);
 
     console.log('[Upload] Final URL extracted:', imageUrl);
     console.log('[Upload] Host used:', hostUsed);
@@ -761,7 +787,7 @@ app.post('/api/upload/url', async (req, res) => {
             originalname = `${originalname}.${ext}`;
         }
 
-        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalname, mimetype);
+        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalname, mimetype, url);
 
         console.log('[URL Upload] Final URL extracted:', imageUrl);
         console.log('[URL Upload] Host used:', hostUsed);
@@ -1617,14 +1643,14 @@ app.get('/api/tg-file/:botIndex/:fileId', async (req, res) => {
       const r = await axios({
           method: 'GET',
           url: downloadUrl,
-          responseType: 'arraybuffer'
+          responseType: 'stream'
       });
       
       if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
       if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      res.end(Buffer.from(r.data));
+      r.data.pipe(res);
     } catch (error: any) {
       console.error('[API] Telegram proxy error:', error);
       res.status(500).json({ error: error.message });

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { HeartIcon, EyeIcon, ArrowRightIcon, LockIcon, LayersIcon, GlobeIcon, FileCodeIcon, SmartphoneIcon, BookmarkIcon, XIcon } from './Icons';
 import { playClickSound, playLikeSound } from '../audio';
 
-import { getRandomAvatar } from '../lib/imageUtils';
+import { getRandomAvatar, resolveImageUrl } from '../lib/imageUtils';
 
 interface TemplateCardProps {
   id: string;
@@ -13,6 +13,7 @@ interface TemplateCardProps {
   authorAvatar?: string;
   imageUrl: string; 
   bannerUrl: string; 
+  backupBannerUrl?: string;
   likes: number;
   views: number;
   isLiked: boolean;
@@ -134,6 +135,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
   authorAvatar,
   imageUrl,
   bannerUrl, 
+  backupBannerUrl,
   likes, 
   views, 
   isLiked, 
@@ -158,6 +160,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
   const [videoError, setVideoError] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isProxied, setIsProxied] = useState(false);
+  const [usingBackup, setUsingBackup] = useState(false);
   const [signedBanner, setSignedBanner] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<any>(null); // Lottie ref
@@ -259,8 +262,9 @@ const CardContent: React.FC<TemplateCardProps> = ({
       }
   };
 
-  const rawBanner = bannerUrl || imageUrl;
-  const displayBanner = getOptimizedImageUrl(rawBanner);
+  const rawBanner = usingBackup ? (backupBannerUrl || bannerUrl || imageUrl) : (bannerUrl || imageUrl);
+  const resolvedBanner = resolveImageUrl(rawBanner, id);
+  const displayBanner = getOptimizedImageUrl(resolvedBanner);
   const displayAvatar = authorAvatar || getRandomAvatar(author);
 
   // Reset error state if the image URL changes (e.g., component reused)
@@ -270,11 +274,21 @@ const CardContent: React.FC<TemplateCardProps> = ({
   }, [displayBanner]);
 
   const handleImageError = async (errorType: string) => {
-      if (!isProxied) {
+      // First try proxying
+      if (!isProxied && !displayBanner?.includes('/api/proxy/image')) {
           console.warn(`[TemplateCard] ${errorType} failed, trying proxy...`);
           setIsProxied(true);
           return;
       }
+      
+      // If already proxied and we have a backup, try the backup
+      if (backupBannerUrl && !usingBackup) {
+          console.warn(`[TemplateCard] Proxied ${errorType} failed, trying backup URL...`);
+          setUsingBackup(true);
+          setIsProxied(false); // Restart from non-proxied for backup
+          return;
+      }
+
       setImageError(true);
       onErrorReport(`${errorType} failed for ${title}`);
       // ... logging ...
@@ -309,9 +323,10 @@ const CardContent: React.FC<TemplateCardProps> = ({
     hover: { y: -8, transition: { type: "spring", stiffness: 400, damping: 25 } }
   };
 
-  const finalBanner = isProxied 
-    ? `/api/proxy/image?url=${encodeURIComponent(signedBanner || displayBanner!)}` 
-    : (signedBanner || displayBanner!);
+  const baseBanner = signedBanner || displayBanner || '';
+  const finalBanner = isProxied && !baseBanner.includes('/api/proxy/image')
+    ? `/api/proxy/image?url=${encodeURIComponent(baseBanner)}` 
+    : baseBanner;
 
   return (
     <motion.div
@@ -394,7 +409,7 @@ const CardContent: React.FC<TemplateCardProps> = ({
                     <div className="flex items-center gap-2 pointer-events-auto cursor-pointer group/author w-fit" onClick={handleCreatorClick}>
                          <div className="relative w-4 h-4 rounded-full overflow-hidden border border-white/20">
                              <img 
-                                src={displayAvatar} 
+                                src={resolveImageUrl(displayAvatar, author)} 
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover" 
                                 alt={author} 

@@ -8,12 +8,9 @@ import { uploadToImgHippo } from './server/services/imghippoService';
 import { uploadToGifyu } from './server/services/gifyuService';
 
 const DEFAULT_AVATARS = [
-  'https://i.imageupload.app/6ecf1b3511dc6873b369.png',
-  'https://i.imageupload.app/4e3f7466ca960ff9a04e.png',
-  'https://i.imageupload.app/69263b7ea6907dc13228.png',
-  'https://i.imageupload.app/6d34075d016122b5895c.png',
-  'https://i.imageupload.app/705e4fe7627a07493e0d.jpeg',
-  'https://i.imageupload.app/758ff53eeb7633c224c2.jpeg'
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/a9f0707c-e291-4925-8430-de8f2433ce2c.jpg',
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/576141b7-da4e-4e05-94ea-80973303cc21.jpg',
+  'https://i.supaimg.com/32068b00-0aee-4bf6-a6fa-1811fc05efa4/e9ec4fb5-f1a1-4d2e-9d28-189b2f1a0d60.png'
 ];
 
 const getRandomAvatar = (seed?: string) => {
@@ -23,9 +20,10 @@ const getRandomAvatar = (seed?: string) => {
   return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
 };
 
-// Removed Catbox
+// Added Catbox & Uguu
 import { uploadToBeeIMG } from './server/services/beeimgService';
 import { uploadToUguu } from './server/services/uguuService';
+import { uploadToCatbox } from './server/services/catboxService';
 import { uploadToPasteRs } from './server/services/pasteService';
 import { telegramService } from './server/services/telegramService';
 import { Octokit } from '@octokit/rest';
@@ -273,7 +271,7 @@ async function processUrlUpload(url: string): Promise<string> {
     if (!url || !url.startsWith('http')) return url;
     
     // Skip if already on Supabase or other known hosts
-    const hosts = ['supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se'];
+    const hosts = ['supabase.co', 'i.ibb.co', 'imgbb.com', 'i.111666.best', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se', 'catbox.moe', 'files.catbox.moe'];
     if (hosts.some(host => url.includes(host))) {
         return url;
     }
@@ -290,8 +288,7 @@ async function processUrlUpload(url: string): Promise<string> {
         const contentType = response.headers.get('content-type') || 'image/jpeg';
         const originalName = url.split('/').pop()?.split('?')[0] || 'image.jpg';
         
-        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType);
-        console.log(`[Url Upload] Successfully processed URL. Host: ${hostUsed}, New URL: ${imageUrl}, Backup Host: ${backupHostUsed}, Backup URL: ${backupImageUrl}`);
+        const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType, url);
         return imageUrl;
     } catch (error: any) {
         console.error(`[Url Upload] Failed to process URL ${url}:`, error.message);
@@ -308,7 +305,7 @@ const hostPenaltyRecord: Record<string, number> = {};
 /**
  * Upload logic using external hosting only (Requested by user).
  */
-async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string) {
+async function processFileUpload(buffer: Buffer, originalname: string, mimetype: string, filePath?: string) {
     const isVideo = mimetype.startsWith('video/');
     
     console.log(`[Upload] Processing ${isVideo ? 'video' : 'image'} upload: ${originalname}`);
@@ -319,6 +316,35 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     };
 
     const providers: UploadProvider[] = [];
+
+    if (telegramService.isConfigured() && !isVideo) {
+        providers.push({
+            name: 'Telegram',
+            upload: async () => {
+                const tgUri = await telegramService.uploadImage(buffer, originalname);
+                const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
+                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
+            }
+        });
+    }
+
+    // Catbox
+    providers.push({
+        name: 'Catbox',
+        upload: async () => {
+            const result = await uploadToCatbox(buffer, originalname);
+            return { imageUrl: result.direct_url, hostUsed: 'Catbox' };
+        }
+    });
+
+    // Uguu
+    providers.push({
+        name: 'Uguu',
+        upload: async () => {
+            const result = await uploadToUguu(buffer, originalname, mimetype);
+            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
+        }
+    });
 
     // BeeIMG
     providers.push({
@@ -348,27 +374,7 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         }
     });
 
-    // Uguu
-    providers.push({
-        name: 'Uguu',
-        upload: async () => {
-            const result = await uploadToUguu(buffer, originalname, mimetype);
-            return { imageUrl: result.direct_url, hostUsed: 'Uguu' };
-        }
-    });
-
-    if (telegramService.isConfigured() && !isVideo) {
-        providers.push({
-            name: 'Telegram',
-            upload: async () => {
-                const tgUri = await telegramService.uploadImage(buffer, originalname);
-                const proxyUrl = `/api/tg-file/${tgUri.replace('tg://', '')}`;
-                return { imageUrl: proxyUrl, hostUsed: 'Telegram' };
-            }
-        });
-    }
-
-    // Supabase
+    // Supabase Exclusive (Primary)
     providers.push({
         name: 'Supabase',
         upload: async () => {
@@ -386,17 +392,23 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
         Object.keys(hostPenaltyRecord).forEach(k => delete hostPenaltyRecord[k]);
     }
 
-    // Order providers by Least Recently Used (LRU) but always prioritize Uguu
+    // Order providers by Priority, then Least Recently Used (LRU)
+    // Preference: Supabase first
     const sortedProviders = availableProviders.sort((a, b) => {
-        if (a.name === 'Uguu') return -1;
-        if (b.name === 'Uguu') return 1;
+        let priority: Record<string, number> = { 'Supabase': 1, 'Catbox': 2, 'Uguu': 3 };
+        
+        const pA = priority[a.name] || 99;
+        const pB = priority[b.name] || 99;
+        
+        if (pA !== pB) return pA - pB;
+        
         const usageA = hostUsageRecord[a.name] || 0;
         const usageB = hostUsageRecord[b.name] || 0;
         return usageA - usageB;
     });
 
     const results: any[] = [];
-    for (let i = 0; i < sortedProviders.length && results.length < 1; i++) {
+    for (let i = 0; i < sortedProviders.length && results.length < 2; i++) {
         const provider = sortedProviders[i];
         
         // Update the LRU counter to mark as recently used (moves to the back of the queue)
@@ -421,7 +433,9 @@ async function processFileUpload(buffer: Buffer, originalname: string, mimetype:
     
     return {
         imageUrl: results[0].imageUrl,
-        hostUsed: results[0].hostUsed
+        hostUsed: results[0].hostUsed,
+        backupImageUrl: results[1]?.imageUrl || '',
+        backupHostUsed: results[1]?.hostUsed || ''
     };
 }
 
@@ -547,14 +561,14 @@ async function startServer() {
       const r = await axios({
         method: 'GET',
         url: downloadUrl,
-        responseType: 'arraybuffer'
+        responseType: 'stream'
       });
       
       if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
       if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      res.end(Buffer.from(r.data));
+      r.data.pipe(res);
     } catch (error: any) {
       console.error('[Telegram Proxy] Error:', error.message);
       res.status(500).json({ error: 'Failed to fetch file from Telegram' });
@@ -672,9 +686,7 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
       const originalName = filePath.split('/').pop() || 'upload';
       console.log(`[Proxy Upload] Processing multi-service upload for: ${originalName} (${contentType})`);
 
-      const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType);
-
-      console.log(`[Proxy Upload] Success. Host: ${hostUsed}, URL: ${imageUrl}, Backup Host: ${backupHostUsed}, Backup URL: ${backupImageUrl}`);
+      const { imageUrl, hostUsed, backupImageUrl, backupHostUsed } = await processFileUpload(buffer, originalName, contentType, filePath);
       res.json({ url: imageUrl, host: hostUsed, backupUrl: backupImageUrl, backupHost: backupHostUsed });
     } catch (error: any) {
       console.error('Upload Proxy Error:', error);
@@ -709,6 +721,35 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
   });
 
   // Get Public Templates
+  app.get('/api/user/templates', async (req, res) => {
+    try {
+      const email = req.query.email as string;
+      const userId = req.query.userId as string;
+      
+      if (!email && !userId) {
+          return res.status(400).json({ error: 'Email or userId is required' });
+      }
+      
+      if (backgroundWire.registry.length === 0) {
+        await backgroundWire.ensureSynchronized(8000);
+      }
+
+      let data = [...backgroundWire.registry];
+
+      data = data.filter((t: any) => {
+        const authorId = t.author_id || t.authorId || (t.author && typeof t.author === 'object' ? t.author.id : '');
+        const authorEmail = t.author_email || t.authorEmail || (t.author && typeof t.author === 'object' ? t.author.email : '');
+        
+        return (email && authorEmail === email) || (userId && authorId === userId);
+      });
+
+      res.json({ data });
+    } catch (error: any) {
+      console.error('API Error (User Templates):', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get('/api/templates', async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 0;
@@ -1287,6 +1328,89 @@ Sitemap: https://templr-v9.vercel.app/sitemap.xml`);
         stats: backgroundWire.stats,
         lastUpdated: backgroundWire.lastUpdated
     });
+  });
+
+  // Image Proxy to bypass hotlinking/CORS
+  app.get('/api/proxy/image', async (req, res) => {
+    const url = req.query.url as string;
+    if (!url) return res.status(400).json({ error: 'Missing url' });
+    
+    const fetchWithFallback = async (targetUrl: string): Promise<{ buffer: ArrayBuffer, contentType: string | null }> => {
+        let urlObj;
+        try {
+            urlObj = new URL(targetUrl);
+        } catch (err) {
+            console.error(`[Proxy] Invalid URL passed to proxy: ${targetUrl}`);
+            throw new Error('INVALID_URL');
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        try {
+            const response = await fetch(targetUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Referer': `${urlObj.protocol}//${urlObj.hostname}/`
+                },
+                signal: controller.signal,
+                redirect: 'follow'
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.status === 404) {
+                throw new Error('NOT_FOUND');
+            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            return {
+                buffer: await response.arrayBuffer(),
+                contentType: response.headers.get('content-type')
+            };
+        } catch (e) {
+            clearTimeout(timeoutId);
+            throw e;
+        }
+    };
+
+    try {
+        let result;
+        try {
+            result = await fetchWithFallback(url);
+        } catch (e: any) {
+            if (e.message === 'INVALID_URL') {
+                return res.status(400).json({ error: 'Invalid URL provided' });
+            }
+            if (e.message === 'NOT_FOUND' || e.message === 'HTTP 404') {
+                return res.redirect('https://placehold.co/800x600/111/444.png?text=Image+Expired');
+            }
+            console.warn(`[Proxy] Direct fetch failed for ${url} (${e.message}), trying weserv.nl fallback...`);
+            try {
+                const fallbackUrl = `https://images.weserv.nl/?url=${encodeURIComponent(url)}`;
+                result = await fetchWithFallback(fallbackUrl);
+            } catch (fallbackError: any) {
+                if (fallbackError.message === 'NOT_FOUND' || fallbackError.message === 'HTTP 404') {
+                    return res.redirect('https://placehold.co/800x600/111/444.png?text=Image+Expired');
+                }
+                console.error(`[Proxy] Fallback also failed for ${url}:`, fallbackError.message);
+                throw fallbackError;
+            }
+        }
+        
+        const { buffer, contentType } = result;
+        console.log(`[Proxy] Successfully fetched ${url}, size: ${buffer.byteLength} bytes`);
+        
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.send(Buffer.from(buffer));
+    } catch (error: any) {
+        console.error(`[Proxy] Error fetching ${url}:`, error.message);
+        res.status(500).json({ error: `Proxy failed: ${error.message}` });
+    }
   });
 
   // --- Vite Middleware ---

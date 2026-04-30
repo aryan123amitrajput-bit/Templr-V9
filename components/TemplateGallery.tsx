@@ -27,6 +27,7 @@ interface TemplateGalleryProps {
   currentUserId?: string;
   onDelete?: (id: string) => void;
   onShowNotification: (message: string, type: NotificationType) => void;
+  externalSearchQuery?: string;
 }
 
 type SortOption = 'newest' | 'popular' | 'likes';
@@ -46,11 +47,19 @@ const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     isLoggedIn,
     currentUserId,
     onDelete,
-    onShowNotification
+    onShowNotification,
+    externalSearchQuery
 }) => {
   const [activeFilter, setActiveFilter] = useState(initialCategory);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState(externalSearchQuery || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(externalSearchQuery || '');
+
+  // Sync external search
+  useEffect(() => {
+    if (externalSearchQuery !== undefined) {
+      setSearchQuery(externalSearchQuery);
+    }
+  }, [externalSearchQuery]);
   const [isFocused, setIsFocused] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');

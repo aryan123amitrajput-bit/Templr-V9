@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { XIcon, CheckCircleIcon, MapPinIcon, LinkIcon } from './Icons';
 import TemplateCard from './TemplateCard';
 import { Template, fixUrl } from '../api';
+import { getRandomAvatar, resolveImageUrl } from '../lib/imageUtils';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;
@@ -84,7 +85,7 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                 {banner_url && (
                     <div className="absolute inset-0">
                         <img 
-                            src={banner_url} 
+                            src={resolveImageUrl(banner_url, creatorName)} 
                             alt={`${creatorName} banner`}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover opacity-60"
@@ -111,10 +112,15 @@ const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({
                              <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full p-1">
                                 {avatar_url ? (
                                     <img 
-                                        src={avatar_url} 
+                                        src={resolveImageUrl(avatar_url, creatorName)} 
                                         alt={creatorName}
                                         referrerPolicy="no-referrer"
                                         className="w-full h-full rounded-full object-cover border border-white/10"
+                                        onError={(e) => {
+                                            const target = e.target as HTMLImageElement;
+                                            const def = getRandomAvatar(creatorName);
+                                            if (target.src !== def) target.src = def;
+                                        }}
                                     />
                                 ) : (
                                     <div className="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center border border-white/10">

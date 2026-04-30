@@ -30,7 +30,21 @@ const LIMIT_MAX = 3;
 const USAGE_KEY = 'templr_usage_v12_strict'; 
 const PRO_KEY = 'templr_pro_v12_strict';
 
-const LazySection: React.FC<{ children: React.ReactNode; minHeight?: string }> = ({ children, minHeight = "800px" }) => {
+interface LazySectionProps {
+  children: React.ReactNode;
+  minHeight?: string;
+  threshold?: number;
+  rootMargin?: string;
+  once?: boolean;
+}
+
+const LazySection: React.FC<LazySectionProps> = ({ 
+  children, 
+  minHeight = "400px", 
+  threshold = 0.1,
+  rootMargin = "200px",
+  once = true 
+}) => {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
   const [hasRendered, setHasRendered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -42,30 +56,29 @@ const LazySection: React.FC<{ children: React.ReactNode; minHeight?: string }> =
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) {
-      setHasRendered(true);
-      return;
-    }
+    // If not desktop, we might still want to lazy load, but usually mobile scrolling is faster
+    // Let's enable it for everyone if they want performance, but keep the desktop check if desired.
+    // Fixed: Making lazy loading work for everyone as per request "ensuring content is only rendered when it enters the viewport"
     
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           setHasRendered(true);
-          observer.disconnect();
+          if (once) {
+            observer.disconnect();
+          }
+        } else if (!once) {
+          setHasRendered(false);
         }
       },
-      { rootMargin: '400px' }
+      { rootMargin, threshold }
     );
     
     if (ref.current) {
       observer.observe(ref.current);
     }
     return () => observer.disconnect();
-  }, [isDesktop]);
-
-  if (!isDesktop) {
-    return <>{children}</>;
-  }
+  }, [rootMargin, threshold, once]);
 
   return (
     <div ref={ref} style={{ minHeight: hasRendered ? 'auto' : minHeight }}>
@@ -98,6 +111,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
+  const [appSearchQuery, setAppSearchQuery] = useState('');
   
   // --- SUBSCRIPTION STATE ---
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
@@ -591,6 +605,8 @@ const App: React.FC = () => {
         onOpenSettings={handleOpenSettings}
         isSubscribed={isSubscribed}
         creditsLeft={isSubscribed ? undefined : creditsRemaining} 
+        searchQuery={appSearchQuery}
+        onSearchChange={setAppSearchQuery}
       />
       
       <main>
@@ -628,6 +644,7 @@ const App: React.FC = () => {
               favoriteIds={favoriteTemplateIds}
               isLoggedIn={!!session}
               currentUserId={session?.user?.uid}
+              externalSearchQuery={appSearchQuery}
             />
           </motion.div>
         </LazySection>

@@ -368,6 +368,15 @@ export const fixUrl = (url?: string | string[]): string => {
         trimmedUrl = trimmedUrl.slice(1, -1).trim();
     }
     
+    // Handle tg:// protocol
+    if (trimmedUrl.startsWith('tg://')) {
+        return `/api/tg-file/${trimmedUrl.replace('tg://', '')}`;
+    }
+
+    // Handle BeeIMG double https bug
+    if (trimmedUrl.startsWith('https://https://')) trimmedUrl = trimmedUrl.replace('https://https://', 'https://');
+    if (trimmedUrl.startsWith('http://http://')) trimmedUrl = trimmedUrl.replace('http://http://', 'http://');
+
     return trimmedUrl;
 };
 
@@ -587,7 +596,7 @@ export const listenForUserTemplates = (userId: string, userEmail: string | undef
     let interval: any;
     const fetchTemplates = async () => {
         try {
-            const url = `/api/user/templates?email=${encodeURIComponent(userEmail || '')}`;
+            const url = `/api/user/templates?email=${encodeURIComponent(userEmail || '')}&userId=${encodeURIComponent(userId || '')}`;
             const response = await fetch(url);
             if (!response.ok) {
                 const text = await response.text();
