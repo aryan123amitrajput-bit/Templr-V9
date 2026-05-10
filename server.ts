@@ -557,21 +557,38 @@ async function startServer() {
       const tgUri = `tg://${botIndex}/${fileId}`;
       
       const downloadUrl = await telegramService.getFileDownloadUrl(tgUri);
+      console.log(`[Telegram Proxy] Fetched download URL: ${downloadUrl}`);
       
       const r = await axios({
         method: 'GET',
         url: downloadUrl,
-        responseType: 'stream'
+        responseType: 'stream',
+        timeout: 30000,
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
       });
       
-      if (r.headers['content-type']) res.setHeader('Content-Type', r.headers['content-type']);
-      if (r.headers['content-length']) res.setHeader('Content-Length', r.headers['content-length']);
+      // Copy key headers
+      const proxyHeaders = ['content-type', 'content-length', 'etag', 'last-modified'];
+      for (const h of proxyHeaders) {
+          if (r.headers[h]) res.setHeader(h, r.headers[h]);
+      }
       res.setHeader('Cache-Control', 'public, max-age=86400');
+      
+      r.data.on('error', (err: any) => {
+          console.error('[Telegram Proxy] Stream error:', err);
+          if (!res.headersSent) res.status(500).json({ error: 'Stream error during fetch' });
+      });
       
       r.data.pipe(res);
     } catch (error: any) {
-      console.error('[Telegram Proxy] Error:', error.message);
-      res.status(500).json({ error: 'Failed to fetch file from Telegram' });
+      console.error('[Telegram Proxy] Error Details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data
+      });
+      res.status(500).json({ error: 'Failed to fetch file from Telegram', details: error.message });
     }
   });
 
