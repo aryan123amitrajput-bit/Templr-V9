@@ -27,7 +27,7 @@ export const resolveImageUrl = (url: string | null | undefined, seed?: string): 
       return `/api/proxy/image?url=${encodeURIComponent(parsedUrl)}`;
   }
 
-  const problematicHosts = ['catbox.moe', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se'];
+  const problematicHosts = ['catbox.moe', 'beeimg.com', 'gifyu.com', 'imghippo.com', 'uguu.se', 'api.telegram.org'];
   if (problematicHosts.some(h => parsedUrl.includes(h)) && !parsedUrl.includes('/api/proxy/image')) {
       return `/api/proxy/image?url=${encodeURIComponent(parsedUrl)}`;
   }
